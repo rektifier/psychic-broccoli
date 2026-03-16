@@ -735,7 +735,7 @@ export function buildWorkspaceTree(files: DiscoveredFile[]): TreeNode[] {
           name: folderName,
           path: currentPath,
           children: [],
-          expanded: true, // Default to expanded
+          expanded: false, // Default to collapsed
         };
         currentLevel.push(folder);
       }

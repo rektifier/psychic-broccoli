@@ -14,7 +14,7 @@
     TRACE:'#666677', CONNECT:'#CC4455',
   };
 
-  let fileExpanded = true;
+  let fileExpanded = false;
   let namingIndex: number = -1;
   let namingValue: string = '';
   let confirmDeleteIndex: number = -1;

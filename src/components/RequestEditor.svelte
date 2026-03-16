@@ -200,6 +200,12 @@
       spellcheck="false"
     />
 
+    <button class="btn-insert-url" on:click={() => openPicker('url')} title="Insert variable">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+    </button>
+
     <button
       class="btn-send"
       on:click={send}
@@ -411,6 +417,25 @@
   }
   .url-input::placeholder {
     color: #AAA;
+  }
+
+  .btn-insert-url {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .btn-insert-url:hover {
+    background: #E4E4EA;
+    color: #D4900A;
   }
 
   .btn-send {
