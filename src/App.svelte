@@ -20,7 +20,7 @@
 
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
-  import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+  import { invoke } from '@tauri-apps/api/core';
   import { join, basename } from '@tauri-apps/api/path';
 
   let showEnvEditor = false;
@@ -64,6 +64,17 @@
       namedResults: $namedResults,
       dotenvVariables: $dotenvVariables,
     };
+  }
+
+  // Clear stale named results and response when environment changes
+  let lastEnv: string | null = null;
+  $: if ($activeEnvironment !== lastEnv) {
+    if (lastEnv !== null) {
+      namedResults.set({});
+      currentResponse.set(null);
+      sentRequest = null;
+    }
+    lastEnv = $activeEnvironment;
   }
 
   // Reactive resolved URL - all store dependencies are explicit so Svelte tracks them
@@ -202,21 +213,25 @@
 
       sentRequest = { method: request.method, url, headers, body };
 
-      const res = await tauriFetch(url, {
-        method: request.method,
-        headers,
-        body: ['GET','HEAD','OPTIONS'].includes(request.method) ? undefined : body || undefined,
-      });
-      const resBody = await res.text();
+      const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
+        await invoke('http_request', {
+          payload: {
+            method: request.method,
+            url,
+            headers,
+            body: ['GET','HEAD','OPTIONS'].includes(request.method) ? null : body || null,
+          },
+        });
 
       const elapsed = performance.now() - startTime;
-      const resHeaders: Record<string, string> = {};
-      res.headers.forEach((v: string, k: string) => { resHeaders[k] = v; });
 
       const response: HttpResponse = {
-        status: res.status, statusText: res.statusText,
-        headers: resHeaders, body: resBody,
-        time: Math.round(elapsed), size: new Blob([resBody]).size,
+        status: res.status,
+        statusText: res.status_text,
+        headers: res.headers,
+        body: res.body,
+        time: Math.round(elapsed),
+        size: new Blob([res.body]).size,
       };
       currentResponse.set(response);
 
@@ -297,6 +312,14 @@
     if (!file) return;
     const req = file.requests[requestIndex];
     if (!req) return;
+    // Remove old name from namedResults if it changed or was cleared
+    if (req.varName && req.varName !== varName) {
+      namedResults.update(nr => {
+        const updated = { ...nr };
+        delete updated[req.varName!];
+        return updated;
+      });
+    }
     updateRequestInTree(filePath, requestIndex, { ...req, varName: varName || null });
   }
 </script>

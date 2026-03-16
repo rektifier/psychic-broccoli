@@ -148,7 +148,7 @@
 
       {#if responseGroups.length === 0}
         <div class="group-header">Response references</div>
-        <div class="empty-hint">Send a named request first (right-click a request → "Name this request")</div>
+        <div class="empty-hint">Send a request with a response alias first (right-click a request to set one)</div>
       {/if}
     </div>
   </div>

@@ -128,7 +128,7 @@
               bind:value={namingValue}
               on:keydown={(e) => { if (e.key === 'Enter') confirmNaming(node.path); if (e.key === 'Escape') { namingIndex = -1; } }}
               on:blur={() => confirmNaming(node.path)}
-              placeholder="requestName"
+              placeholder="responseAlias"
               spellcheck="false"
               autofocus
             />
