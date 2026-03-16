@@ -34,8 +34,9 @@
     lastEditingEnv = editingEnv;
   }
 
-  // Environments list (excluding $shared)
+  // Environments list: $shared first, then the rest
   $: envNames = Object.keys(envFile || {}).filter(k => k !== '$shared');
+  $: allTabs = envFile?.['$shared'] !== undefined ? ['$shared', ...envNames] : envNames;
 
   // Editing state
   let renaming = false;
@@ -127,6 +128,8 @@
           on:blur={confirmRename}
           autofocus
         />
+      {:else if editingEnv === '$shared'}
+        <span class="env-name-static">{editingEnv}</span>
       {:else}
         <button class="env-name" on:click={startRename} title="Click to rename">{editingEnv}</button>
       {/if}
@@ -142,10 +145,11 @@
 
   <!-- Env tabs -->
   <div class="env-tabs">
-    {#each envNames as env}
+    {#each allTabs as env}
       <button
         class="env-tab"
         class:active={env === editingEnv}
+        class:shared-tab={env === '$shared'}
         on:click={() => { editingEnv = env; confirmingDelete = false; }}
       >{env}{env === activeEnv ? ' ✓' : ''}</button>
     {/each}
@@ -195,7 +199,7 @@
   <!-- Footer -->
   <div class="editor-footer">
     <div class="footer-left">
-      {#if envNames.length > 1}
+      {#if envNames.length > 1 && editingEnv !== '$shared'}
         {#if confirmingDelete}
           <span class="confirm-text">Delete "{editingEnv}"?</span>
           <button class="btn-confirm-delete" on:click={() => { deleteEnvironment(); confirmingDelete = false; }}>Yes, delete</button>
@@ -253,6 +257,12 @@
   }
   .env-name:hover {
     border-bottom-color: #D4900A;
+  }
+  .env-name-static {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1A1A2E;
+    font-style: italic;
   }
   .rename-input {
     font-size: 18px;
@@ -327,6 +337,14 @@
   .env-tab.active {
     color: #3D8B45;
     border-bottom-color: #3D8B45;
+  }
+  .env-tab.shared-tab {
+    font-style: italic;
+    color: #888;
+  }
+  .env-tab.shared-tab.active {
+    color: #9A7520;
+    border-bottom-color: #9A7520;
   }
 
   /* Column headers */

@@ -189,3 +189,25 @@ export const resolvedEnvVars = derived(
 
 export const namedResults = writable<Record<string, NamedRequestResult>>({});
 export const dotenvVariables = writable<Record<string, string>>({});
+
+// ─── Error / Toast Notifications ────────────────────────────────────────────
+
+export interface Toast {
+  id: number;
+  message: string;
+  type: 'error' | 'warning' | 'info';
+}
+
+let nextToastId = 0;
+
+export const toasts = writable<Toast[]>([]);
+
+export function addToast(message: string, type: Toast['type'] = 'error', durationMs = 6000) {
+  const id = nextToastId++;
+  toasts.update(t => [...t, { id, message, type }]);
+  setTimeout(() => dismissToast(id), durationMs);
+}
+
+export function dismissToast(id: number) {
+  toasts.update(t => t.filter(toast => toast.id !== id));
+}

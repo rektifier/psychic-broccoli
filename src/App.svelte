@@ -3,13 +3,15 @@
   import RequestEditor from './components/RequestEditor.svelte';
   import ResponseViewer from './components/ResponseViewer.svelte';
   import EnvironmentEditor from './components/EnvironmentEditor.svelte';
+  import ToastContainer from './components/ToastContainer.svelte';
+  import HelpModal from './components/HelpModal.svelte';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
     activeFile, activeRequest, activeFileVariables,
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
     resolvedEnvVars, namedResults, dotenvVariables,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
-    toggleFolder, markFileSaved,
+    toggleFolder, markFileSaved, addToast,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
@@ -22,11 +24,13 @@
   import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
   import { join, basename } from '@tauri-apps/api/path';
+  import { onDestroy } from 'svelte';
 
   let showEnvEditor = false;
 
   /** The raw request that was actually sent (resolved URLs, headers, body). */
   let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
+  let showHelp = false;
 
   // ─── Resizable Panes ───
 
@@ -54,6 +58,11 @@
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
   }
+
+  onDestroy(() => {
+    document.removeEventListener('mousemove', onDividerMove);
+    document.removeEventListener('mouseup', onDividerUp);
+  });
 
   // ─── Substitution Context ───
 
@@ -108,8 +117,8 @@
 
       // Auto-discover env files from workspace root
       await tryLoadEnvFiles(rootPath as string);
-    } catch (e) {
-      console.error('Failed to open folder:', e);
+    } catch (e: any) {
+      addToast(`Failed to open folder: ${e.message || e}`, 'error');
     }
   }
 
@@ -173,8 +182,8 @@
       const content = serializeHttpFile(file.requests, file.variables);
       await writeTextFile(file.path, content);
       markFileSaved(file.path);
-    } catch (e) {
-      console.error(`Failed to save:`, e);
+    } catch (e: any) {
+      addToast(`Failed to save file: ${e.message || e}`, 'error');
     }
   }
 
@@ -186,8 +195,8 @@
     try {
       const envPath = await join(rootPath, 'http-client.env.json');
       await writeTextFile(envPath, JSON.stringify(data, null, 2));
-    } catch (e) {
-      console.error('Failed to save env file:', e);
+    } catch (e: any) {
+      addToast(`Failed to save environment file: ${e.message || e}`, 'error');
     }
   }
 
@@ -231,7 +240,7 @@
         headers: res.headers,
         body: res.body,
         time: Math.round(elapsed),
-        size: new Blob([res.body]).size,
+        size: new TextEncoder().encode(res.body).length,
       };
       currentResponse.set(response);
 
@@ -324,12 +333,12 @@
   }
 </script>
 
+<ToastContainer />
+<HelpModal visible={showHelp} on:close={() => showHelp = false} />
+
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
-    <div class="titlebar-left">
-      <span class="app-icon">🥦</span>
-      <span class="app-name">Psychic Broccoli</span>
-    </div>
+    <button class="help-btn" on:click={() => showHelp = true}>?</button>
   </div>
 
   <div class="layout">
@@ -388,8 +397,7 @@
         </div>
       {:else}
         <div class="no-selection">
-          <span class="no-sel-icon">↗</span>
-          <span class="no-sel-text">Select a request from the sidebar</span>
+          <img class="no-sel-logo" src="/src/assets/logo.png" alt="Psychic Broccoli" />
         </div>
       {/if}
     </div>
@@ -413,13 +421,26 @@
 
   .titlebar {
     display: flex; justify-content: space-between; align-items: center;
-    height: 44px; padding: 0 16px;
+    height: 28px;
     background: #F0F0F4; border-bottom: 1px solid #DCDCE2;
     -webkit-app-region: drag; user-select: none; flex-shrink: 0;
   }
-  .titlebar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .app-icon { font-size: 16px; }
-  .app-name { font-weight: 700; font-size: 14px; color: #D4900A; letter-spacing: -0.3px; }
+  .help-btn {
+    -webkit-app-region: no-drag;
+    width: 20px; height: 20px;
+    margin-left: auto;
+    margin-right: 8px;
+    border: 1px solid #D4D4D8;
+    border-radius: 50%;
+    background: transparent;
+    color: #999;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .help-btn:hover { background: #E4E4EA; color: #555; border-color: #BBB; }
   .layout { display: flex; flex: 1; overflow: hidden; }
 
   .sidebar-container {
@@ -447,9 +468,8 @@
   .env-editor-pane { flex: 1; overflow: auto; }
 
   .no-selection {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 12px;
+    flex: 1; display: flex;
+    align-items: center; justify-content: center;
   }
-  .no-sel-icon { font-size: 48px; opacity: 0.15; }
-  .no-sel-text { font-size: 14px; color: #AAA; }
+  .no-sel-logo { width: 360px; height: 360px; object-fit: contain; opacity: 0.12; }
 </style>

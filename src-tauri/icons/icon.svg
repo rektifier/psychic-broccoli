@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1A2332"/>
+      <stop offset="100%" stop-color="#0F1923"/>
+    </linearGradient>
+    <linearGradient id="stalk" x1="0.5" y1="1" x2="0.5" y2="0">
+      <stop offset="0%" stop-color="#1B4332"/>
+      <stop offset="100%" stop-color="#2D6A4F"/>
+    </linearGradient>
+    <linearGradient id="arc1" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#40916C"/>
+      <stop offset="100%" stop-color="#52B788"/>
+    </linearGradient>
+    <linearGradient id="arc2" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#52B788"/>
+      <stop offset="100%" stop-color="#74C69D"/>
+    </linearGradient>
+    <linearGradient id="arc3" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#74C69D"/>
+      <stop offset="100%" stop-color="#95D5B2"/>
+    </linearGradient>
+    <linearGradient id="dot" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#B7E4C7"/>
+      <stop offset="100%" stop-color="#52B788"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background squircle -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bg)"/>
+
+  <!-- Stalk -->
+  <path d="M238 390 L238 310 Q238 290 248 278 L256 268 L264 278 Q274 290 274 310 L274 390 Z"
+        fill="url(#stalk)" stroke="#2D6A4F" stroke-width="2"/>
+
+  <!-- Floret crown - layered bumps for broccoli texture -->
+  <!-- Bottom row (widest) -->
+  <circle cx="220" cy="272" r="22" fill="#1B4332"/>
+  <circle cx="256" cy="278" r="20" fill="#1B4332"/>
+  <circle cx="292" cy="272" r="22" fill="#1B4332"/>
+
+  <!-- Middle row -->
+  <circle cx="224" cy="252" r="24" fill="#2D6A4F"/>
+  <circle cx="256" cy="258" r="22" fill="#2D6A4F"/>
+  <circle cx="288" cy="252" r="24" fill="#2D6A4F"/>
+
+  <!-- Upper-middle row -->
+  <circle cx="234" cy="232" r="22" fill="#40916C"/>
+  <circle cx="278" cy="232" r="22" fill="#40916C"/>
+  <circle cx="256" cy="236" r="20" fill="#40916C"/>
+
+  <!-- Top bumps (smallest, brightest) -->
+  <circle cx="244" cy="216" r="18" fill="#52B788"/>
+  <circle cx="268" cy="216" r="18" fill="#52B788"/>
+  <circle cx="256" cy="208" r="16" fill="#74C69D"/>
+
+  <!-- Signal arc 1 (innermost) -->
+  <path d="M200 192 A78 78 0 0 1 312 192"
+        fill="none" stroke="url(#arc1)" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- Signal arc 2 (middle) -->
+  <path d="M164 160 A118 118 0 0 1 348 160"
+        fill="none" stroke="url(#arc2)" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- Signal arc 3 (outermost) -->
+  <path d="M128 128 A158 158 0 0 1 384 128"
+        fill="none" stroke="url(#arc3)" stroke-width="20" stroke-linecap="round"/>
+</svg>
