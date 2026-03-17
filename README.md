@@ -1,67 +1,71 @@
 # Psychic Broccoli
 
-A lightweight desktop HTTP client built with **Tauri v2 + Svelte + TypeScript + Rust**.
-Reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client.
+[![Release](https://img.shields.io/github/v/release/rektifier/psychic-broccoli?style=flat-square)](https://github.com/rektifier/psychic-broccoli/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
+
+A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Svelte**, **TypeScript**, and **Rust**. Psychic Broccoli reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client — giving you a fast, native alternative to browser-based API tools.
+
+> **No CORS. No Electron. No bloat.** HTTP requests are dispatched from Rust via `reqwest`, so you never hit browser sandbox restrictions.
+
+<!-- Uncomment when a screenshot is available
+![App Screenshot](docs/screenshot.png)
+-->
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Download](#download)
+- [`.http` File Syntax](#http-file-syntax)
+- [Environment System](#environment-system)
+- [Request Chaining](#request-chaining)
+- [Dynamic Variables](#dynamic-variables)
+- [Project Structure](#project-structure)
+- [License](#license)
+
+---
 
 ## Features
 
-- **Workspace browser** - open a folder and discover all `.http`/`.rest` files automatically
-- **Full .http spec** - comments, separators, variables, body, all 9 HTTP methods
-- **Environment system** - `http-client.env.json` + `.user` overrides + `$shared`
-- **Inline environment editor** - add, rename, delete environments and variables
-- **Variable substitution** - file variables, environment variables, chained references
-- **Request chaining** - name a request with `@name`, reference its response in other requests
-- **Variable picker** - insert variables from environment, dynamic values, or response data
-- **Dynamic variables** - `$randomInt`, `$datetime`, `$timestamp`, `$localDatetime`
-- **Resolved URL preview** - see the fully substituted URL before sending
-- **Header autocomplete** - common HTTP headers suggested when adding headers
-- **Resizable panes** - draggable divider between request editor and response viewer
-- **Raw request view** - inspect the exact request that was sent (method, URL, headers, body)
-- **No CORS issues** - HTTP requests are made from Rust via `reqwest`, not the browser
-- **Keyboard shortcut** - Ctrl+Enter to send
-- **Cross-platform** - builds for Windows, macOS, and Linux
+**Workspace & Files**
+- Open a folder and automatically discover all `.http` / `.rest` files.
+- Full `.http` spec support — comments, separators, variables, body, and all nine HTTP methods.
 
-## Project structure
+**Environments & Variables**
+- `http-client.env.json` with `$shared` defaults, per-environment overrides, and `.user` file support.
+- Inline environment editor for adding, renaming, and deleting environments and variables.
+- Variable substitution with file-level, environment, and chained references.
+- Dynamic variables: `$randomInt`, `$datetime`, `$timestamp`, `$localDatetime`.
 
-```
-src/
-  App.svelte                    Main app layout, request execution, file I/O
-  main.ts                       Svelte entry point
-  lib/
-    types.ts                    TypeScript interfaces
-    parser.ts                   .http parser, serializer, variable substitution engine
-    stores.ts                   Svelte stores (workspace, env, named results)
-  components/
-    TreeSidebar.svelte          Sidebar with folder picker, env selector, file tree
-    TreeNode.svelte             Recursive tree item (folder/file/request)
-    RequestEditor.svelte        URL bar, headers, body editor
-    ResponseViewer.svelte       Response body, headers, raw request tabs
-    EnvironmentEditor.svelte    Environment variable editor
-    DependencyBar.svelte        Shows request dependencies (chained requests)
-    VariablePicker.svelte       Modal for inserting variables
+**Request Workflow**
+- Request chaining — name a request with `@name` and reference its response in subsequent requests.
+- Variable picker modal for inserting environment, dynamic, or response-data variables.
+- Resolved URL preview showing the fully substituted URL before sending.
+- Header autocomplete for common HTTP headers.
 
-src-tauri/
-  src/lib.rs                    Rust HTTP client (reqwest) exposed via Tauri invoke
-  src/main.rs                   Tauri window entry point
-  capabilities/default.json     Plugin permissions (fs, dialog, http)
-  Cargo.toml                    Rust dependencies
+**Interface**
+- Resizable panes with a draggable divider between the request editor and response viewer.
+- Raw request view to inspect the exact method, URL, headers, and body that were sent.
+- Keyboard shortcut: <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send.
 
-.github/workflows/
-  release.yml                   GitHub Actions workflow for building releases
-```
+---
 
 ## Download
 
-Grab the latest installer for your platform from [GitHub Releases](../../releases).
+Grab the latest installer from [**GitHub Releases**](https://github.com/rektifier/psychic-broccoli/releases).
 
-| Platform | Format |
-| --- | --- |
-| Windows | `.msi` / `.exe` |
-| macOS (Apple Silicon) | `.dmg` |
-| macOS (Intel) | `.dmg` |
-| Linux | `.deb` / `.AppImage` |
+| Platform             | Format              |
+| -------------------- | ------------------- |
+| Windows              | `.msi` / `.exe`     |
+| macOS (Apple Silicon) | `.dmg`             |
+| macOS (Intel)        | `.dmg`              |
+| Linux                | `.deb` / `.AppImage` |
 
-## .http file syntax
+---
+
+## `.http` File Syntax
 
 ### Requests
 
@@ -69,43 +73,29 @@ Grab the latest installer for your platform from [GitHub Releases](../../release
 GET https://api.example.com/users
 ```
 
-Full format: `METHOD URL [HTTP/version]`.
-Supported methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE, CONNECT.
+Full format: `METHOD URL [HTTP/version]`
+Supported methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `TRACE`, `CONNECT`.
 
-### Request separators
+### Separators & Comments
 
 ```http
 ### Get all users
 GET https://api.example.com/users
 
-### Get all posts
-GET https://api.example.com/posts
-```
-
-### Comments
-
-```http
+### Create a user
 # This is a comment
 // This is also a comment
+POST https://api.example.com/users
 ```
 
-### Headers
+### Headers & Body
 
-Headers go immediately after the request line (no blank line):
-
-```http
-GET https://api.example.com/users
-Authorization: Bearer my-token
-Accept: application/json
-```
-
-### Request body
-
-A blank line separates headers from body:
+Headers follow the request line with no blank line. A blank line separates headers from the body.
 
 ```http
 POST https://api.example.com/users
 Content-Type: application/json
+Authorization: Bearer my-token
 
 {
   "name": "Jane",
@@ -113,7 +103,7 @@ Content-Type: application/json
 }
 ```
 
-### File-level variables
+### File-Level Variables
 
 ```http
 @hostname = localhost
@@ -123,13 +113,15 @@ Content-Type: application/json
 GET https://{{host}}/api/users
 ```
 
-Variables can reference other variables, including environment variables.
+Variables can reference other variables, including those from the environment system.
 
-## Environment system
+---
 
-### http-client.env.json
+## Environment System
 
-Place in the workspace root alongside your `.http` files:
+### `http-client.env.json`
+
+Place this file in the workspace root alongside your `.http` files:
 
 ```json
 {
@@ -149,9 +141,9 @@ Place in the workspace root alongside your `.http` files:
 
 `$shared` variables are available to all environments as defaults.
 
-### http-client.env.json.user
+### `http-client.env.json.user`
 
-User-specific overrides (should be gitignored):
+User-specific overrides that should be added to `.gitignore`:
 
 ```json
 {
@@ -161,19 +153,21 @@ User-specific overrides (should be gitignored):
 }
 ```
 
-### Variable resolution priority
+### Resolution Priority
 
 | Priority | Source |
-|----------|--------|
-| 1 | File-level `@variable` in the `.http` file |
-| 2 | `.user` file, environment-specific |
-| 3 | env file, environment-specific |
-| 4 | `.user` file, `$shared` |
-| 5 | env file, `$shared` |
+| :------: | ------ |
+| 1        | File-level `@variable` in the `.http` file |
+| 2        | `.user` file — environment-specific |
+| 3        | `env` file — environment-specific |
+| 4        | `.user` file — `$shared` |
+| 5        | `env` file — `$shared` |
 
-## Request chaining
+---
 
-Name a request with `# @name` or `// @name`, then reference its response:
+## Request Chaining
+
+Name a request with `# @name` or `// @name`, then reference its response downstream:
 
 ```http
 // @name login
@@ -191,16 +185,18 @@ GET https://api.example.com/protected
 Authorization: Bearer {{login.response.body.$.token}}
 ```
 
-### Reference syntax
+### Reference Syntax
 
-```
-{{name.response.body.*}}              - entire body
-{{name.response.body.$.token}}        - JSON path
-{{name.response.body.$.data[0].id}}   - JSON path with array index
-{{name.response.headers.Location}}    - response header
-```
+| Pattern | Description |
+| ------- | ----------- |
+| `{{name.response.body.*}}` | Entire response body |
+| `{{name.response.body.$.token}}` | JSON path |
+| `{{name.response.body.$.data[0].id}}` | JSON path with array index |
+| `{{name.response.headers.Location}}` | Response header value |
 
-## Dynamic variables
+---
+
+## Dynamic Variables
 
 ```http
 GET https://api.example.com/posts/{{$randomInt 1 100}}
@@ -211,15 +207,48 @@ X-Local: {{$localDatetime iso8601}}
 ```
 
 | Variable | Description |
-| --- | --- |
-| `$randomInt [min max]` | Random integer (default 0-1000) |
+| -------- | ----------- |
+| `$randomInt [min max]` | Random integer (default 0–1000) |
 | `$timestamp [offset]` | Unix epoch seconds (UTC) |
 | `$datetime format [offset]` | UTC datetime string |
 | `$localDatetime format [offset]` | Local timezone datetime |
-| `$processEnv NAME` | OS environment variable (placeholder) |
-| `$dotenv NAME` | `.env` file variable (placeholder) |
+| `$processEnv NAME` | OS environment variable *(placeholder)* |
+| `$dotenv NAME` | `.env` file variable *(placeholder)* |
 
 Offset units: `ms`, `s`, `m`, `h`, `d`, `w`, `M`, `y`.
+
+---
+
+## Project Structure
+
+```
+src/
+├── App.svelte                  Main layout, request execution, file I/O
+├── main.ts                     Svelte entry point
+├── lib/
+│   ├── types.ts                TypeScript interfaces
+│   ├── parser.ts               .http parser, serializer, variable engine
+│   └── stores.ts               Svelte stores (workspace, env, results)
+└── components/
+    ├── TreeSidebar.svelte      Folder picker, env selector, file tree
+    ├── TreeNode.svelte         Recursive tree item (folder / file / request)
+    ├── RequestEditor.svelte    URL bar, headers, body editor
+    ├── ResponseViewer.svelte   Response body, headers, raw request tabs
+    ├── EnvironmentEditor.svelte  Environment variable editor
+    ├── DependencyBar.svelte    Request dependency indicators
+    └── VariablePicker.svelte   Variable insertion modal
+
+src-tauri/
+├── src/lib.rs                  Rust HTTP client (reqwest) via Tauri invoke
+├── src/main.rs                 Tauri window entry point
+├── capabilities/default.json   Plugin permissions (fs, dialog, http)
+└── Cargo.toml                  Rust dependencies
+
+.github/workflows/
+└── release.yml                 CI workflow for multi-platform builds
+```
+
+---
 
 ## Contributing
 
@@ -228,9 +257,9 @@ Offset units: `ms`, `s`, `m`, `h`, `d`, `w`, `M`, `y`.
 - [Node.js](https://nodejs.org/) 20+
 - [pnpm](https://pnpm.io/)
 - [Rust](https://rustup.rs/)
-- Tauri v2 system dependencies for your platform - see the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/)
+- Tauri v2 system dependencies — see the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/)
 
-### Development setup
+### Getting Started
 
 ```bash
 git clone -b develop https://github.com/rektifier/psychic-broccoli.git
@@ -239,35 +268,19 @@ pnpm install
 pnpm tauri dev
 ```
 
-This starts the Vite dev server on port 1420 and opens the Tauri window with hot-reload.
+This starts the Vite dev server on port 1420 and opens the Tauri window with hot reload.
 
-### Useful commands
+### Useful Commands
 
-```bash
-pnpm dev              # Vite dev server only (no Tauri window)
-pnpm build            # Production frontend build
-pnpm check            # TypeScript / Svelte type checking
-pnpm tauri build      # Full production desktop build
-```
+| Command | Description |
+| ------- | ----------- |
+| `pnpm dev` | Vite dev server only (no Tauri window) |
+| `pnpm build` | Production frontend build |
+| `pnpm check` | TypeScript / Svelte type checking |
+| `pnpm tauri build` | Full production desktop build |
 
-### Releasing
-
-The project uses a `develop` / `main` branch workflow. Day-to-day work happens on `develop`. When ready to release:
-
-```bash
-git checkout main
-git merge develop
-git tag v0.1.0
-git push origin main --tags
-```
-
-Pushing a `v*` tag triggers the GitHub Actions release workflow, which builds installers for all platforms and creates a draft release with the assets attached.
-
-The version is defined in two places - update both before tagging:
-
-- `src-tauri/tauri.conf.json` - `version` field
-- `src-tauri/Cargo.toml` - `version` field
+---
 
 ## License
 
-MIT
+This project is licensed under the [MIT License](LICENSE).
