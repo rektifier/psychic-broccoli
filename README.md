@@ -9,10 +9,9 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 > **No CORS. No Electron. No bloat.** HTTP requests are dispatched from Rust via `reqwest`, so you never hit browser sandbox restrictions.
 
 
-
-
-![App Screenshot](https://github.com/user-attachments/assets/fb2fe3b7-d464-4099-bd57-c2f39d2c2949)
-
+![App Screenshot](https://github.com/user-attachments/assets/f6d7ef96-3fe2-450a-8f07-7008599053c3)
+![App Screenshot](https://github.com/user-attachments/assets/f5253b75-ae2b-4637-94ac-2ac42c8461d5)
+![App Screenshot](https://github.com/user-attachments/assets/e7bd9aac-3884-4559-91ed-42641fe678d1)
 
 ---
 
