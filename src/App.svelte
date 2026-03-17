@@ -59,9 +59,37 @@
     document.removeEventListener('mouseup', onDividerUp);
   }
 
+  // ─── Resizable Sidebar ───
+
+  let sidebarWidth = 260;
+  let sidebarDragging = false;
+  let layoutEl: HTMLDivElement;
+
+  function onSidebarDividerDown(e: MouseEvent) {
+    e.preventDefault();
+    sidebarDragging = true;
+    document.addEventListener('mousemove', onSidebarDividerMove);
+    document.addEventListener('mouseup', onSidebarDividerUp);
+  }
+
+  function onSidebarDividerMove(e: MouseEvent) {
+    if (!sidebarDragging || !layoutEl) return;
+    const rect = layoutEl.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    sidebarWidth = Math.max(160, Math.min(500, x));
+  }
+
+  function onSidebarDividerUp() {
+    sidebarDragging = false;
+    document.removeEventListener('mousemove', onSidebarDividerMove);
+    document.removeEventListener('mouseup', onSidebarDividerUp);
+  }
+
   onDestroy(() => {
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
+    document.removeEventListener('mousemove', onSidebarDividerMove);
+    document.removeEventListener('mouseup', onSidebarDividerUp);
   });
 
   // ─── Substitution Context ───
@@ -341,8 +369,8 @@
     <button class="help-btn" on:click={() => showHelp = true}>?</button>
   </div>
 
-  <div class="layout">
-    <div class="sidebar-container">
+  <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
+    <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
       <TreeSidebar
         tree={$workspace.tree}
         selected={$selectedLocation}
@@ -360,6 +388,7 @@
         on:nameRequest={handleNameRequest}
       />
     </div>
+    <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
 
     <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
       {#if showEnvEditor && $envFile && $activeEnvironment}
@@ -445,10 +474,21 @@
 
   .sidebar-container {
     display: flex; flex-direction: column;
-    width: 260px; min-width: 260px;
-    background: #F0F0F4; border-right: 1px solid #DCDCE2;
+    background: #F0F0F4;
     flex-shrink: 0; overflow: hidden;
   }
+
+  .sidebar-divider {
+    width: 3px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    background: #DCDCE2;
+    transition: background 0.15s;
+  }
+  .sidebar-divider:hover, .sidebar-dragging .sidebar-divider {
+    background: #D4900A;
+  }
+  .sidebar-dragging { cursor: col-resize; user-select: none; }
 
   .main-panels { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
   .main-panels.dragging { cursor: col-resize; user-select: none; }
@@ -456,7 +496,7 @@
   .response-pane { flex: 1; overflow: auto; min-width: 0; }
 
   .divider {
-    width: 5px;
+    width: 3px;
     flex-shrink: 0;
     cursor: col-resize;
     background: #DCDCE2;
