@@ -13,6 +13,8 @@
   const DEP_RE = /\{\{(\w+)\.(?:request|response)\./g;
 
   $: dependencies = extractDeps(requestText);
+  // Force re-evaluation of statuses when namedResults changes
+  $: statuses = buildStatuses(dependencies, namedResults);
 
   function extractDeps(text: string): string[] {
     const names = new Set<string>();
@@ -24,10 +26,18 @@
     return Array.from(names);
   }
 
-  function getStatus(name: string): { sent: boolean; status?: number; statusText?: string } {
-    const result = namedResults[name];
-    if (!result) return { sent: false };
-    return { sent: true, status: result.response.status, statusText: result.response.statusText };
+  function buildStatuses(
+    deps: string[],
+    results: Record<string, NamedRequestResult>,
+  ): Record<string, { sent: boolean; status?: number; statusText?: string }> {
+    const map: Record<string, { sent: boolean; status?: number; statusText?: string }> = {};
+    for (const name of deps) {
+      const result = results[name];
+      map[name] = result
+        ? { sent: true, status: result.response.status, statusText: result.response.statusText }
+        : { sent: false };
+    }
+    return map;
   }
 
   function runAll() {
@@ -39,12 +49,11 @@
   <div class="dep-bar">
     <span class="dep-label">Depends on</span>
     {#each dependencies as dep}
-      {@const info = getStatus(dep)}
-      <span class="dep-pill" class:sent={info.sent} class:unsent={!info.sent}>
+      <span class="dep-pill" class:sent={statuses[dep]?.sent} class:unsent={!statuses[dep]?.sent}>
         <span class="dep-dot"></span>
         <span class="dep-name">{dep}</span>
-        {#if info.sent}
-          <span class="dep-status">{info.status}</span>
+        {#if statuses[dep]?.sent}
+          <span class="dep-status">{statuses[dep].status}</span>
         {:else}
           <span class="dep-status">not sent</span>
         {/if}

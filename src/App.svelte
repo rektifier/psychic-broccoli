@@ -5,6 +5,8 @@
   import EnvironmentEditor from './components/EnvironmentEditor.svelte';
   import ToastContainer from './components/ToastContainer.svelte';
   import HelpModal from './components/HelpModal.svelte';
+  import ImportEnvModal from './components/ImportEnvModal.svelte';
+  import TabBar from './components/TabBar.svelte';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -13,18 +15,22 @@
     resolvedEnvVars, namedResults, dotenvVariables,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
+    tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
+    cacheCurrentTabResponse,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
     buildWorkspaceTree, createFileNode, getAllFileNodes,
   } from './lib/parser';
-  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode } from './lib/types';
+  import { importPostmanCollection } from './lib/postman';
+  import { importInsomniaExport } from './lib/insomnia';
+  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode, ImportResult } from './lib/types';
   import type { DiscoveredFile } from './lib/parser';
 
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
-  import { join, basename } from '@tauri-apps/api/path';
+  import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
 
   let showEnvEditor = false;
@@ -32,6 +38,55 @@
   /** The raw request that was actually sent (resolved URLs, headers, body). */
   let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
   let showHelp = false;
+
+  // ─── Import Environment Modal ───
+  let showImportEnvModal = false;
+  let pendingImportVars: import('./lib/types').Variable[] = [];
+
+  async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
+    showImportEnvModal = false;
+    const envName = e.detail.target;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath || pendingImportVars.length === 0) return;
+
+    try {
+      // Load or create the env file
+      let currentEnv: EnvironmentFile = $envFile ?? {};
+
+      // Ensure the target environment exists
+      if (!currentEnv[envName]) {
+        currentEnv[envName] = {};
+      }
+
+      // Add discovered variables with their values (only if not already present)
+      for (const v of pendingImportVars) {
+        if (!(v.key in currentEnv[envName])) {
+          (currentEnv[envName] as Record<string, string>)[v.key] = v.value;
+        }
+      }
+
+      // Write the env file
+      const envPath = await join(rootPath, 'http-client.env.json');
+      await writeTextFile(envPath, JSON.stringify(currentEnv, null, 2));
+
+      // Update stores
+      envFile.set(currentEnv);
+      if (!$activeEnvironment) {
+        activeEnvironment.set(envName);
+      }
+
+      addToast(`Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`, 'info');
+    } catch (e: any) {
+      addToast(`Failed to update environment file: ${e.message || e}`, 'error');
+    }
+
+    pendingImportVars = [];
+  }
+
+  function handleImportEnvSkip() {
+    showImportEnvModal = false;
+    pendingImportVars = [];
+  }
 
   // ─── Resizable Panes ───
 
@@ -143,6 +198,13 @@
       selectedLocation.set(null);
       currentResponse.set(null);
       namedResults.set({});
+      tabs.set([]);
+      sentRequest = null;
+
+      // Reset environment state before loading new env files
+      envFile.set(null);
+      userEnvFile.set(null);
+      activeEnvironment.set(null);
 
       // Auto-discover env files from workspace root
       await tryLoadEnvFiles(rootPath as string);
@@ -191,6 +253,91 @@
       const parsed = parseEnvironmentFile(content);
       if (parsed) userEnvFile.set(parsed);
     } catch { /* file doesn't exist */ }
+  }
+
+  // ─── Import Collections ───
+
+  async function writeImportedFiles(result: ImportResult): Promise<number> {
+    const rootPath = $workspace.rootPath!;
+    const { mkdir } = await import('@tauri-apps/plugin-fs');
+    let written = 0;
+    for (const file of result.files) {
+      // Split relative path into segments and join individually to handle
+      // forward slashes correctly on Windows
+      const segments = file.relativePath.split('/');
+      let outPath = rootPath;
+      for (const seg of segments) {
+        outPath = await join(outPath, seg);
+      }
+      const parentDir = await dirname(outPath);
+      try {
+        await mkdir(parentDir, { recursive: true });
+      } catch { /* already exists */ }
+      await writeTextFile(outPath, file.content);
+      written++;
+    }
+
+    // Refresh workspace tree
+    const discovered = await scanForHttpFiles(rootPath, rootPath);
+    const tree = buildWorkspaceTree(discovered);
+    const rootName = await basename(rootPath);
+    workspace.set({ rootPath, rootName, tree });
+
+    return written;
+  }
+
+  /** After writing files, show the env modal if there are discovered variables. */
+  function showEnvModalIfNeeded(result: ImportResult) {
+    if (result.discoveredVariables.length > 0) {
+      pendingImportVars = result.discoveredVariables;
+      showImportEnvModal = true;
+    }
+  }
+
+  async function importPostman() {
+    try {
+      const filePath = await open({
+        title: 'Import Postman Collection',
+        filters: [{ name: 'Postman Collection', extensions: ['json'] }],
+      });
+      if (!filePath) return;
+
+      if (!$workspace.rootPath) {
+        addToast('Open a workspace folder first before importing.', 'error');
+        return;
+      }
+
+      const jsonString = await readTextFile(filePath as string);
+      const result = importPostmanCollection(jsonString);
+      const written = await writeImportedFiles(result);
+      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
+      showEnvModalIfNeeded(result);
+    } catch (e: any) {
+      addToast(`Import failed: ${e.message || e}`, 'error');
+    }
+  }
+
+  async function importInsomnia() {
+    try {
+      const filePath = await open({
+        title: 'Import Insomnia Export',
+        filters: [{ name: 'Insomnia Export', extensions: ['json', 'yaml', 'yml'] }],
+      });
+      if (!filePath) return;
+
+      if (!$workspace.rootPath) {
+        addToast('Open a workspace folder first before importing.', 'error');
+        return;
+      }
+
+      const jsonString = await readTextFile(filePath as string);
+      const result = importInsomniaExport(jsonString);
+      const written = await writeImportedFiles(result);
+      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
+      showEnvModalIfNeeded(result);
+    } catch (e: any) {
+      addToast(`Import failed: ${e.message || e}`, 'error');
+    }
   }
 
   // ─── Save File ───
@@ -285,10 +432,11 @@
     } catch (e: any) {
       currentResponse.set({
         status: 0, statusText: 'Error', headers: {},
-        body: e.message || 'Request failed.', time: Math.round(performance.now() - startTime), size: 0,
+        body: (typeof e === 'string' ? e : e.message) || 'Request failed.', time: Math.round(performance.now() - startTime), size: 0,
       });
     } finally {
       isLoading.set(false);
+      cacheCurrentTabResponse(sentRequest);
     }
   }
 
@@ -299,8 +447,30 @@
       saveEnvFile($envFile);
       showEnvEditor = false;
     }
-    selectedLocation.set(e.detail);
-    currentResponse.set(null);
+    previewRequest(e.detail);
+  }
+
+  function handlePinRequest(e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>) {
+    if (showEnvEditor && $envFile) {
+      saveEnvFile($envFile);
+      showEnvEditor = false;
+    }
+    pinTab(
+      { filePath: e.detail.filePath, requestIndex: e.detail.requestIndex },
+      e.detail.label,
+    );
+  }
+
+  function handleTabActivate(e: CustomEvent<RequestLocation>) {
+    if (showEnvEditor && $envFile) {
+      saveEnvFile($envFile);
+      showEnvEditor = false;
+    }
+    activateTab(e.detail);
+  }
+
+  function handleTabClose(e: CustomEvent<RequestLocation>) {
+    closeTab(e.detail);
   }
 
   function handleUpdateRequest(e: CustomEvent<HttpRequest>) {
@@ -329,18 +499,47 @@
     activeEnvironment.set(name);
   }
 
+  /** Resolve the full dependency chain in topological order, then run each unsent request. */
   async function handleRunAll(e: CustomEvent<string[]>) {
-    const depNames = e.detail;
     const allFiles = getAllFileNodes($workspace.tree);
-    for (const name of depNames) {
-      if ($namedResults[name]) continue;
-      for (const file of allFiles) {
-        const req = file.requests.find(r => r.varName === name);
-        if (req) {
-          await sendRequest(req);
-          break;
-        }
+    const depRe = /\{\{(\w+)\.(?:request|response)\./g;
+
+    // Build a lookup: varName -> HttpRequest
+    const requestByName = new Map<string, HttpRequest>();
+    for (const file of allFiles) {
+      for (const req of file.requests) {
+        if (req.varName) requestByName.set(req.varName, req);
       }
+    }
+
+    // Collect transitive dependencies in execution order (deepest first)
+    const ordered: string[] = [];
+    const visited = new Set<string>();
+
+    function resolve(name: string) {
+      if (visited.has(name)) return;
+      visited.add(name);
+      const req = requestByName.get(name);
+      if (!req) return;
+      // Find this request's own dependencies
+      const text = `${req.url} ${req.headers.map(h => h.value).join(' ')} ${req.body}`;
+      let match;
+      const re = new RegExp(depRe.source, 'g');
+      while ((match = re.exec(text)) !== null) {
+        resolve(match[1]);
+      }
+      ordered.push(name);
+    }
+
+    for (const name of e.detail) {
+      resolve(name);
+    }
+
+    // Execute in order, skipping already-sent requests
+    for (const name of ordered) {
+      if ($namedResults[name]) continue;
+      const req = requestByName.get(name);
+      if (req) await sendRequest(req);
     }
   }
 
@@ -364,6 +563,14 @@
 
 <ToastContainer />
 <HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<ImportEnvModal
+  visible={showImportEnvModal}
+  variables={pendingImportVars}
+  existingEnvironments={$availableEnvironments}
+  hasEnvFile={$envFile !== null}
+  on:confirm={handleImportEnvConfirm}
+  on:skip={handleImportEnvSkip}
+/>
 
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
@@ -379,7 +586,10 @@
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
         on:openFolder={openFolder}
+        on:importPostman={importPostman}
+        on:importInsomnia={importInsomnia}
         on:select={handleSelect}
+        on:pinRequest={handlePinRequest}
         on:toggleFolder={handleToggleFolder}
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
@@ -391,45 +601,55 @@
     </div>
     <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
 
-    <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
-      {#if showEnvEditor && $envFile && $activeEnvironment}
-        <div class="env-editor-pane">
-          <EnvironmentEditor
-            envFile={$envFile}
-            activeEnv={$activeEnvironment}
-            on:update={(e) => {
-              envFile.set(e.detail);
-              saveEnvFile(e.detail);
-            }}
-            on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-            on:close={() => showEnvEditor = false}
-          />
-        </div>
-      {:else if $activeRequest && $selectedLocation}
-        <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
-          <RequestEditor
-            request={$activeRequest}
-            loading={$isLoading}
-            dirty={$activeFile?.dirty ?? false}
-            resolvedUrl={computedResolvedUrl}
-            fileVariables={$activeFileVariables}
-            envVariables={$resolvedEnvVars}
-            namedResults={$namedResults}
-            on:update={handleUpdateRequest}
-            on:send={(e) => sendRequest(e.detail)}
-            on:save={saveActiveFile}
-            on:runAll={handleRunAll}
-          />
-        </div>
-        <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
-        <div class="response-pane">
-          <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} />
-        </div>
-      {:else}
-        <div class="no-selection">
-          <img class="no-sel-logo" src={logoUrl} alt="Psychic Broccoli" />
-        </div>
-      {/if}
+    <div class="main-area">
+      <TabBar
+        tabs={$tabs}
+        activeLocation={$selectedLocation}
+        isPreview={$isPreview}
+        previewLabel={$activeRequest?.name ?? ''}
+        on:activate={handleTabActivate}
+        on:close={handleTabClose}
+      />
+      <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
+        {#if showEnvEditor && $envFile && $activeEnvironment}
+          <div class="env-editor-pane">
+            <EnvironmentEditor
+              envFile={$envFile}
+              activeEnv={$activeEnvironment}
+              on:update={(e) => {
+                envFile.set(e.detail);
+                saveEnvFile(e.detail);
+              }}
+              on:changeEnv={(e) => activeEnvironment.set(e.detail)}
+              on:close={() => showEnvEditor = false}
+            />
+          </div>
+        {:else if $activeRequest && $selectedLocation}
+          <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
+            <RequestEditor
+              request={$activeRequest}
+              loading={$isLoading}
+              dirty={$activeFile?.dirty ?? false}
+              resolvedUrl={computedResolvedUrl}
+              fileVariables={$activeFileVariables}
+              envVariables={$resolvedEnvVars}
+              namedResults={$namedResults}
+              on:update={handleUpdateRequest}
+              on:send={(e) => sendRequest(e.detail)}
+              on:save={saveActiveFile}
+              on:runAll={handleRunAll}
+            />
+          </div>
+          <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
+          <div class="response-pane">
+            <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} />
+          </div>
+        {:else}
+          <div class="no-selection">
+            <img class="no-sel-logo" src={logoUrl} alt="Psychic Broccoli" />
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 </main>
@@ -491,6 +711,7 @@
   }
   .sidebar-dragging { cursor: col-resize; user-select: none; }
 
+  .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .main-panels { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
   .main-panels.dragging { cursor: col-resize; user-select: none; }
   .editor-pane { overflow: auto; min-width: 0; }
@@ -512,5 +733,5 @@
     flex: 1; display: flex;
     align-items: center; justify-content: center;
   }
-  .no-sel-logo { width: 360px; height: 360px; object-fit: contain; opacity: 0.12; }
+  .no-sel-logo { width: 360px; height: 360px; object-fit: contain; opacity: 0.45; }
 </style>
