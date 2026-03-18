@@ -144,6 +144,7 @@
           depth={0}
           on:toggleFolder
           on:select
+          on:pinRequest
           on:addRequest
           on:deleteRequest
           on:nameRequest

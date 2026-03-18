@@ -24,6 +24,117 @@ export const currentResponse = writable<HttpResponse | null>(null);
 /** Loading state. */
 export const isLoading = writable<boolean>(false);
 
+// ─── Tabs ────────────────────────────────────────────────────────────────────
+
+export interface Tab {
+  location: RequestLocation;
+  /** Display label for the tab */
+  label: string;
+  /** Cached response for this tab */
+  response: HttpResponse | null;
+  /** The raw sent request for the Request tab in ResponseViewer */
+  sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null;
+}
+
+function tabKey(loc: RequestLocation): string {
+  return `${loc.filePath}::${loc.requestIndex}`;
+}
+
+/** Ordered list of pinned tabs. */
+export const tabs = writable<Tab[]>([]);
+
+/** Key of the currently active tab (null = preview mode, no pinned tab active). */
+export const activeTabKey = writable<string | null>(null);
+
+/** Whether the current selection is a preview (not pinned). */
+export const isPreview = derived(
+  [selectedLocation, tabs],
+  ([$loc, $tabs]) => {
+    if (!$loc) return false;
+    return !$tabs.some(t => tabKey(t.location) === tabKey($loc));
+  }
+);
+
+/** Pin a request as a tab. If already pinned, just activate it. */
+export function pinTab(loc: RequestLocation, label: string) {
+  const key = tabKey(loc);
+  tabs.update(ts => {
+    if (ts.some(t => tabKey(t.location) === key)) return ts;
+    return [...ts, { location: loc, label, response: null, sentRequest: null }];
+  });
+  selectedLocation.set(loc);
+  activeTabKey.set(key);
+  // Restore cached response for this tab
+  const tab = get(tabs).find(t => tabKey(t.location) === key);
+  currentResponse.set(tab?.response ?? null);
+}
+
+/** Activate an existing tab. */
+export function activateTab(loc: RequestLocation) {
+  const key = tabKey(loc);
+  const tab = get(tabs).find(t => tabKey(t.location) === key);
+  if (!tab) return;
+  // Save current tab's response before switching
+  cacheCurrentTabResponse();
+  selectedLocation.set(loc);
+  activeTabKey.set(key);
+  currentResponse.set(tab.response);
+}
+
+/** Close a tab. If it was active, activate an adjacent tab or clear selection. */
+export function closeTab(loc: RequestLocation) {
+  const key = tabKey(loc);
+  const currentTabs = get(tabs);
+  const idx = currentTabs.findIndex(t => tabKey(t.location) === key);
+  if (idx === -1) return;
+
+  const wasActive = get(activeTabKey) === key;
+  tabs.update(ts => ts.filter(t => tabKey(t.location) !== key));
+
+  if (wasActive) {
+    const remaining = get(tabs);
+    if (remaining.length > 0) {
+      const nextIdx = Math.min(idx, remaining.length - 1);
+      activateTab(remaining[nextIdx].location);
+    } else {
+      selectedLocation.set(null);
+      activeTabKey.set(null);
+      currentResponse.set(null);
+    }
+  }
+}
+
+/** Save the current response into the active tab's cache. */
+export function cacheCurrentTabResponse(
+  sentReq?: { method: string; url: string; headers: Record<string, string>; body: string } | null,
+) {
+  const key = get(activeTabKey);
+  if (!key) return;
+  const resp = get(currentResponse);
+  tabs.update(ts => ts.map(t =>
+    tabKey(t.location) === key
+      ? { ...t, response: resp, sentRequest: sentReq !== undefined ? sentReq : t.sentRequest }
+      : t
+  ));
+}
+
+/** Preview a request (single-click). Replaces any existing preview but doesn't create a tab. */
+export function previewRequest(loc: RequestLocation) {
+  // Save current tab's response before switching away
+  cacheCurrentTabResponse();
+  selectedLocation.set(loc);
+  activeTabKey.set(null);
+  currentResponse.set(null);
+}
+
+/** Update tab label when a request is renamed. */
+export function updateTabLabel(loc: RequestLocation, label: string) {
+  const key = tabKey(loc);
+  tabs.update(ts => ts.map(t =>
+    tabKey(t.location) === key ? { ...t, label } : t
+  ));
+}
+
 // ─── Derived: Active File & Request ─────────────────────────────────────────
 
 /** Find a FileNode by path in the workspace tree. */

@@ -78,6 +78,7 @@
           depth={depth + 1}
           on:toggleFolder
           on:select
+          on:pinRequest
           on:addRequest
           on:deleteRequest
           on:nameRequest
@@ -139,6 +140,7 @@
             class:active={isSel(node.path, i)}
             style="padding-left: {28 + depth * 16}px"
             on:click={() => dispatch('select', { filePath: node.path, requestIndex: i })}
+            on:dblclick={() => dispatch('pinRequest', { filePath: node.path, requestIndex: i, label: req.name })}
             on:contextmenu|preventDefault={(e) => startNaming(i, req.varName)}
             role="button"
             tabindex="0"

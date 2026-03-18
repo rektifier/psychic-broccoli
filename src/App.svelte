@@ -6,6 +6,7 @@
   import ToastContainer from './components/ToastContainer.svelte';
   import HelpModal from './components/HelpModal.svelte';
   import ImportEnvModal from './components/ImportEnvModal.svelte';
+  import TabBar from './components/TabBar.svelte';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -14,6 +15,8 @@
     resolvedEnvVars, namedResults, dotenvVariables,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
+    tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
+    cacheCurrentTabResponse,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
@@ -195,6 +198,7 @@
       selectedLocation.set(null);
       currentResponse.set(null);
       namedResults.set({});
+      tabs.set([]);
       sentRequest = null;
 
       // Reset environment state before loading new env files
@@ -432,6 +436,7 @@
       });
     } finally {
       isLoading.set(false);
+      cacheCurrentTabResponse(sentRequest);
     }
   }
 
@@ -442,8 +447,30 @@
       saveEnvFile($envFile);
       showEnvEditor = false;
     }
-    selectedLocation.set(e.detail);
-    currentResponse.set(null);
+    previewRequest(e.detail);
+  }
+
+  function handlePinRequest(e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>) {
+    if (showEnvEditor && $envFile) {
+      saveEnvFile($envFile);
+      showEnvEditor = false;
+    }
+    pinTab(
+      { filePath: e.detail.filePath, requestIndex: e.detail.requestIndex },
+      e.detail.label,
+    );
+  }
+
+  function handleTabActivate(e: CustomEvent<RequestLocation>) {
+    if (showEnvEditor && $envFile) {
+      saveEnvFile($envFile);
+      showEnvEditor = false;
+    }
+    activateTab(e.detail);
+  }
+
+  function handleTabClose(e: CustomEvent<RequestLocation>) {
+    closeTab(e.detail);
   }
 
   function handleUpdateRequest(e: CustomEvent<HttpRequest>) {
@@ -472,18 +499,47 @@
     activeEnvironment.set(name);
   }
 
+  /** Resolve the full dependency chain in topological order, then run each unsent request. */
   async function handleRunAll(e: CustomEvent<string[]>) {
-    const depNames = e.detail;
     const allFiles = getAllFileNodes($workspace.tree);
-    for (const name of depNames) {
-      if ($namedResults[name]) continue;
-      for (const file of allFiles) {
-        const req = file.requests.find(r => r.varName === name);
-        if (req) {
-          await sendRequest(req);
-          break;
-        }
+    const depRe = /\{\{(\w+)\.(?:request|response)\./g;
+
+    // Build a lookup: varName -> HttpRequest
+    const requestByName = new Map<string, HttpRequest>();
+    for (const file of allFiles) {
+      for (const req of file.requests) {
+        if (req.varName) requestByName.set(req.varName, req);
       }
+    }
+
+    // Collect transitive dependencies in execution order (deepest first)
+    const ordered: string[] = [];
+    const visited = new Set<string>();
+
+    function resolve(name: string) {
+      if (visited.has(name)) return;
+      visited.add(name);
+      const req = requestByName.get(name);
+      if (!req) return;
+      // Find this request's own dependencies
+      const text = `${req.url} ${req.headers.map(h => h.value).join(' ')} ${req.body}`;
+      let match;
+      const re = new RegExp(depRe.source, 'g');
+      while ((match = re.exec(text)) !== null) {
+        resolve(match[1]);
+      }
+      ordered.push(name);
+    }
+
+    for (const name of e.detail) {
+      resolve(name);
+    }
+
+    // Execute in order, skipping already-sent requests
+    for (const name of ordered) {
+      if ($namedResults[name]) continue;
+      const req = requestByName.get(name);
+      if (req) await sendRequest(req);
     }
   }
 
@@ -533,6 +589,7 @@
         on:importPostman={importPostman}
         on:importInsomnia={importInsomnia}
         on:select={handleSelect}
+        on:pinRequest={handlePinRequest}
         on:toggleFolder={handleToggleFolder}
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
@@ -544,45 +601,55 @@
     </div>
     <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
 
-    <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
-      {#if showEnvEditor && $envFile && $activeEnvironment}
-        <div class="env-editor-pane">
-          <EnvironmentEditor
-            envFile={$envFile}
-            activeEnv={$activeEnvironment}
-            on:update={(e) => {
-              envFile.set(e.detail);
-              saveEnvFile(e.detail);
-            }}
-            on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-            on:close={() => showEnvEditor = false}
-          />
-        </div>
-      {:else if $activeRequest && $selectedLocation}
-        <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
-          <RequestEditor
-            request={$activeRequest}
-            loading={$isLoading}
-            dirty={$activeFile?.dirty ?? false}
-            resolvedUrl={computedResolvedUrl}
-            fileVariables={$activeFileVariables}
-            envVariables={$resolvedEnvVars}
-            namedResults={$namedResults}
-            on:update={handleUpdateRequest}
-            on:send={(e) => sendRequest(e.detail)}
-            on:save={saveActiveFile}
-            on:runAll={handleRunAll}
-          />
-        </div>
-        <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
-        <div class="response-pane">
-          <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} />
-        </div>
-      {:else}
-        <div class="no-selection">
-          <img class="no-sel-logo" src={logoUrl} alt="Psychic Broccoli" />
-        </div>
-      {/if}
+    <div class="main-area">
+      <TabBar
+        tabs={$tabs}
+        activeLocation={$selectedLocation}
+        isPreview={$isPreview}
+        previewLabel={$activeRequest?.name ?? ''}
+        on:activate={handleTabActivate}
+        on:close={handleTabClose}
+      />
+      <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
+        {#if showEnvEditor && $envFile && $activeEnvironment}
+          <div class="env-editor-pane">
+            <EnvironmentEditor
+              envFile={$envFile}
+              activeEnv={$activeEnvironment}
+              on:update={(e) => {
+                envFile.set(e.detail);
+                saveEnvFile(e.detail);
+              }}
+              on:changeEnv={(e) => activeEnvironment.set(e.detail)}
+              on:close={() => showEnvEditor = false}
+            />
+          </div>
+        {:else if $activeRequest && $selectedLocation}
+          <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
+            <RequestEditor
+              request={$activeRequest}
+              loading={$isLoading}
+              dirty={$activeFile?.dirty ?? false}
+              resolvedUrl={computedResolvedUrl}
+              fileVariables={$activeFileVariables}
+              envVariables={$resolvedEnvVars}
+              namedResults={$namedResults}
+              on:update={handleUpdateRequest}
+              on:send={(e) => sendRequest(e.detail)}
+              on:save={saveActiveFile}
+              on:runAll={handleRunAll}
+            />
+          </div>
+          <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
+          <div class="response-pane">
+            <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} />
+          </div>
+        {:else}
+          <div class="no-selection">
+            <img class="no-sel-logo" src={logoUrl} alt="Psychic Broccoli" />
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 </main>
@@ -644,6 +711,7 @@
   }
   .sidebar-dragging { cursor: col-resize; user-select: none; }
 
+  .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .main-panels { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
   .main-panels.dragging { cursor: col-resize; user-select: none; }
   .editor-pane { overflow: auto; min-width: 0; }
