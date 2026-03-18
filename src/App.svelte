@@ -5,6 +5,7 @@
   import EnvironmentEditor from './components/EnvironmentEditor.svelte';
   import ToastContainer from './components/ToastContainer.svelte';
   import HelpModal from './components/HelpModal.svelte';
+  import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
     activeFile, activeRequest, activeFileVariables,
@@ -426,7 +427,7 @@
         </div>
       {:else}
         <div class="no-selection">
-          <img class="no-sel-logo" src="/src/assets/logo.png" alt="Psychic Broccoli" />
+          <img class="no-sel-logo" src={logoUrl} alt="Psychic Broccoli" />
         </div>
       {/if}
     </div>
