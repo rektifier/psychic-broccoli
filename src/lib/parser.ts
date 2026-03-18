@@ -778,3 +778,36 @@ export function createEmptyFileNode(absolutePath: string, fileName: string): Fil
     savedContent: '',
   };
 }
+
+// ─── Import Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Scan generated .http file content for {{variableName}} references.
+ * Returns a deduplicated, sorted list of variables. Known variables
+ * (from the source collection) carry their original values; unknown
+ * ones get an empty value so the user can fill them in.
+ */
+export function extractVariableRefs(
+  files: { content: string }[],
+  knownVars: Variable[],
+): Variable[] {
+  const knownMap = new Map(knownVars.map(v => [v.key, v.value]));
+  const found = new Set<string>();
+  const re = /\{\{([^${}][^{}]*?)\}\}/g;
+
+  for (const file of files) {
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(file.content)) !== null) {
+      const name = match[1].trim();
+      // Skip dynamic vars and request variable refs (contain dots)
+      if (!name.includes('.')) {
+        found.add(name);
+      }
+    }
+  }
+
+  return Array.from(found).sort().map(name => ({
+    key: name,
+    value: knownMap.get(name) ?? '',
+  }));
+}

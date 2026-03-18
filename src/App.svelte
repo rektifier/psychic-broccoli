@@ -5,6 +5,7 @@
   import EnvironmentEditor from './components/EnvironmentEditor.svelte';
   import ToastContainer from './components/ToastContainer.svelte';
   import HelpModal from './components/HelpModal.svelte';
+  import ImportEnvModal from './components/ImportEnvModal.svelte';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -18,13 +19,15 @@
     serializeHttpFile, substituteAll, parseEnvironmentFile,
     buildWorkspaceTree, createFileNode, getAllFileNodes,
   } from './lib/parser';
-  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode } from './lib/types';
+  import { importPostmanCollection } from './lib/postman';
+  import { importInsomniaExport } from './lib/insomnia';
+  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode, ImportResult } from './lib/types';
   import type { DiscoveredFile } from './lib/parser';
 
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
-  import { join, basename } from '@tauri-apps/api/path';
+  import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
 
   let showEnvEditor = false;
@@ -32,6 +35,55 @@
   /** The raw request that was actually sent (resolved URLs, headers, body). */
   let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
   let showHelp = false;
+
+  // ─── Import Environment Modal ───
+  let showImportEnvModal = false;
+  let pendingImportVars: import('./lib/types').Variable[] = [];
+
+  async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
+    showImportEnvModal = false;
+    const envName = e.detail.target;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath || pendingImportVars.length === 0) return;
+
+    try {
+      // Load or create the env file
+      let currentEnv: EnvironmentFile = $envFile ?? {};
+
+      // Ensure the target environment exists
+      if (!currentEnv[envName]) {
+        currentEnv[envName] = {};
+      }
+
+      // Add discovered variables with their values (only if not already present)
+      for (const v of pendingImportVars) {
+        if (!(v.key in currentEnv[envName])) {
+          (currentEnv[envName] as Record<string, string>)[v.key] = v.value;
+        }
+      }
+
+      // Write the env file
+      const envPath = await join(rootPath, 'http-client.env.json');
+      await writeTextFile(envPath, JSON.stringify(currentEnv, null, 2));
+
+      // Update stores
+      envFile.set(currentEnv);
+      if (!$activeEnvironment) {
+        activeEnvironment.set(envName);
+      }
+
+      addToast(`Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`, 'info');
+    } catch (e: any) {
+      addToast(`Failed to update environment file: ${e.message || e}`, 'error');
+    }
+
+    pendingImportVars = [];
+  }
+
+  function handleImportEnvSkip() {
+    showImportEnvModal = false;
+    pendingImportVars = [];
+  }
 
   // ─── Resizable Panes ───
 
@@ -143,6 +195,12 @@
       selectedLocation.set(null);
       currentResponse.set(null);
       namedResults.set({});
+      sentRequest = null;
+
+      // Reset environment state before loading new env files
+      envFile.set(null);
+      userEnvFile.set(null);
+      activeEnvironment.set(null);
 
       // Auto-discover env files from workspace root
       await tryLoadEnvFiles(rootPath as string);
@@ -191,6 +249,91 @@
       const parsed = parseEnvironmentFile(content);
       if (parsed) userEnvFile.set(parsed);
     } catch { /* file doesn't exist */ }
+  }
+
+  // ─── Import Collections ───
+
+  async function writeImportedFiles(result: ImportResult): Promise<number> {
+    const rootPath = $workspace.rootPath!;
+    const { mkdir } = await import('@tauri-apps/plugin-fs');
+    let written = 0;
+    for (const file of result.files) {
+      // Split relative path into segments and join individually to handle
+      // forward slashes correctly on Windows
+      const segments = file.relativePath.split('/');
+      let outPath = rootPath;
+      for (const seg of segments) {
+        outPath = await join(outPath, seg);
+      }
+      const parentDir = await dirname(outPath);
+      try {
+        await mkdir(parentDir, { recursive: true });
+      } catch { /* already exists */ }
+      await writeTextFile(outPath, file.content);
+      written++;
+    }
+
+    // Refresh workspace tree
+    const discovered = await scanForHttpFiles(rootPath, rootPath);
+    const tree = buildWorkspaceTree(discovered);
+    const rootName = await basename(rootPath);
+    workspace.set({ rootPath, rootName, tree });
+
+    return written;
+  }
+
+  /** After writing files, show the env modal if there are discovered variables. */
+  function showEnvModalIfNeeded(result: ImportResult) {
+    if (result.discoveredVariables.length > 0) {
+      pendingImportVars = result.discoveredVariables;
+      showImportEnvModal = true;
+    }
+  }
+
+  async function importPostman() {
+    try {
+      const filePath = await open({
+        title: 'Import Postman Collection',
+        filters: [{ name: 'Postman Collection', extensions: ['json'] }],
+      });
+      if (!filePath) return;
+
+      if (!$workspace.rootPath) {
+        addToast('Open a workspace folder first before importing.', 'error');
+        return;
+      }
+
+      const jsonString = await readTextFile(filePath as string);
+      const result = importPostmanCollection(jsonString);
+      const written = await writeImportedFiles(result);
+      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
+      showEnvModalIfNeeded(result);
+    } catch (e: any) {
+      addToast(`Import failed: ${e.message || e}`, 'error');
+    }
+  }
+
+  async function importInsomnia() {
+    try {
+      const filePath = await open({
+        title: 'Import Insomnia Export',
+        filters: [{ name: 'Insomnia Export', extensions: ['json', 'yaml', 'yml'] }],
+      });
+      if (!filePath) return;
+
+      if (!$workspace.rootPath) {
+        addToast('Open a workspace folder first before importing.', 'error');
+        return;
+      }
+
+      const jsonString = await readTextFile(filePath as string);
+      const result = importInsomniaExport(jsonString);
+      const written = await writeImportedFiles(result);
+      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
+      showEnvModalIfNeeded(result);
+    } catch (e: any) {
+      addToast(`Import failed: ${e.message || e}`, 'error');
+    }
   }
 
   // ─── Save File ───
@@ -285,7 +428,7 @@
     } catch (e: any) {
       currentResponse.set({
         status: 0, statusText: 'Error', headers: {},
-        body: e.message || 'Request failed.', time: Math.round(performance.now() - startTime), size: 0,
+        body: (typeof e === 'string' ? e : e.message) || 'Request failed.', time: Math.round(performance.now() - startTime), size: 0,
       });
     } finally {
       isLoading.set(false);
@@ -364,6 +507,14 @@
 
 <ToastContainer />
 <HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<ImportEnvModal
+  visible={showImportEnvModal}
+  variables={pendingImportVars}
+  existingEnvironments={$availableEnvironments}
+  hasEnvFile={$envFile !== null}
+  on:confirm={handleImportEnvConfirm}
+  on:skip={handleImportEnvSkip}
+/>
 
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
@@ -379,6 +530,8 @@
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
         on:openFolder={openFolder}
+        on:importPostman={importPostman}
+        on:importInsomnia={importInsomnia}
         on:select={handleSelect}
         on:toggleFolder={handleToggleFolder}
         on:addRequest={handleAddRequest}
@@ -512,5 +665,5 @@
     flex: 1; display: flex;
     align-items: center; justify-content: center;
   }
-  .no-sel-logo { width: 360px; height: 360px; object-fit: contain; opacity: 0.12; }
+  .no-sel-logo { width: 360px; height: 360px; object-fit: contain; opacity: 0.45; }
 </style>

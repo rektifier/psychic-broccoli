@@ -115,6 +115,29 @@ export interface EnvironmentState {
   availableEnvironments: string[];
 }
 
+// ─── Import / Conversion ────────────────────────────────────────────────────
+
+/** A single converted .http file produced by an importer (Postman, Insomnia, etc.). */
+export interface ConvertedFile {
+  /** Suggested file path relative to output folder (e.g. "Users/Get Users.http") */
+  relativePath: string;
+  /** .http file content */
+  content: string;
+}
+
+/** Result returned by collection importers. */
+export interface ImportResult {
+  files: ConvertedFile[];
+  collectionName: string;
+  /** Collection-level variables (defined explicitly in the source collection) */
+  variables: Variable[];
+  /**
+   * All {{variable}} references found across requests, for environment file population.
+   * Includes both collection-defined variables (with values) and undefined ones (empty value).
+   */
+  discoveredVariables: Variable[];
+}
+
 // ─── Request Variable References ────────────────────────────────────────────
 
 /** Stored response for a named request, enabling request variable chaining. */
