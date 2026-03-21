@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import type { HttpMethod, HttpHeader, Variable, ConvertedFile, ImportResult } from './types';
+import type { HttpMethod, HttpHeader, HttpRequest, Variable, ConvertedFile, ImportResult } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
 
 // ─── Shared Types ──────────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ function collectV5Files(
 function convertV5Request(
   item: V5Item,
   nameById: Map<string, string>,
-): { id: string; name: string; varName: null; method: HttpMethod; url: string; headers: HttpHeader[]; body: string } {
+): HttpRequest {
   const method = normalizeMethod(item.method ?? 'GET');
 
   // Build URL: replace :param with pathParameter values, then append query params
@@ -230,6 +230,7 @@ function convertV5Request(
     url,
     headers,
     body,
+    directives: [],
   };
 }
 
@@ -330,7 +331,7 @@ function collectV4Files(
 function convertV4Request(
   resource: V4Resource,
   nameById: Map<string, string>,
-): { id: string; name: string; varName: null; method: HttpMethod; url: string; headers: HttpHeader[]; body: string } {
+): HttpRequest {
   const method = normalizeMethod(resource.method ?? 'GET');
   const rawUrl = appendQueryParams(resource.url || 'https://', resource.parameters);
   const url = convertTemplateVars(rawUrl, nameById);
@@ -346,6 +347,7 @@ function convertV4Request(
     url,
     headers,
     body,
+    directives: [],
   };
 }
 
