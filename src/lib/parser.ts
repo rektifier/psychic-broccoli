@@ -642,6 +642,7 @@ interface PbEvalContext {
   response: HttpResponse;
   request: { url: string; method: string; headers: Record<string, string>; body: string };
   variables: Record<string, string>;
+  namedResults: Record<string, NamedRequestResult>;
 }
 
 /**
@@ -657,7 +658,16 @@ interface PbEvalContext {
  *   pb.response.body.$.items.length > 0
  */
 export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown {
-  const trimmed = expr.trim();
+  // Resolve {{variable}} references inline before evaluation
+  let trimmed = expr.trim();
+  // Named request refs: {{name.response.body.$.path}}, {{name.response.headers.X}}
+  trimmed = trimmed.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
+    return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
+  });
+  // Simple variables: {{varName}}
+  trimmed = trimmed.replace(/\{\{(.+?)\}\}/g, (_, name) => {
+    return ctx.variables[name] ?? `{{${name}}}`;
+  });
 
   // ── Comparison operators ──
   const compOps = ['==', '!=', '>=', '<=', '>', '<', ' contains ', ' startsWith ', ' endsWith '] as const;
@@ -786,8 +796,9 @@ export function executePbDirectives(
   response: HttpResponse,
   request: { url: string; method: string; headers: Record<string, string>; body: string },
   variables: Record<string, string>,
+  namedResults: Record<string, NamedRequestResult> = {},
 ): PbExecutionResult {
-  const ctx: PbEvalContext = { response, request, variables };
+  const ctx: PbEvalContext = { response, request, variables, namedResults };
   const result: PbExecutionResult = { testResults: [], setVars: {}, globalVars: {} };
 
   for (const d of directives) {
@@ -809,7 +820,17 @@ export function executePbDirectives(
       }
       case 'test': {
         const value = evaluatePbExpression(d.expr, ctx);
-        result.testResults.push({ label: d.label, passed: !!value });
+        let label = d.label;
+        // Resolve {{pb.response.*}} and {{pb.request.*}} in labels
+        label = label.replace(/\{\{(pb\.(?:response|request)\..+?)\}\}/g, (_, expr) => {
+          const resolved = evaluatePbExpression(expr, ctx);
+          return resolved == null ? '' : String(resolved);
+        });
+        label = label.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
+          return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
+        });
+        label = label.replace(/\{\{(.+?)\}\}/g, (_, name) => ctx.variables[name] ?? `{{${name}}}`);
+        result.testResults.push({ label, passed: !!value });
         break;
       }
     }

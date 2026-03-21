@@ -442,6 +442,7 @@
           request.directives, response,
           { url, method: request.method, headers, body },
           mergedVars,
+          $namedResults,
         );
 
         pbTestResults.set(pbResult.testResults);
