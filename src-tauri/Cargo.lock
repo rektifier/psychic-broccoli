@@ -2989,7 +2989,7 @@ checksum = "33cb294fe86a74cbcf50d4445b37da762029549ebeea341421c7c70370f86cac"
 
 [[package]]
 name = "psychic-broccoli"
-version = "0.1.0"
+version = "0.1.4"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
