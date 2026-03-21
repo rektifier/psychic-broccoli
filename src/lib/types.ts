@@ -23,6 +23,8 @@ export interface HttpRequest {
   url: string;
   headers: HttpHeader[];
   body: string;
+  /** Pb script directives (`# @pb.set(...)`, `# @pb.test(...)`, etc.) */
+  directives: PbDirective[];
 }
 
 export interface HttpResponse {
@@ -136,6 +138,20 @@ export interface ImportResult {
    * Includes both collection-defined variables (with values) and undefined ones (empty value).
    */
   discoveredVariables: Variable[];
+}
+
+// ─── Pb Script Directives ───────────────────────────────────────────────────
+
+/** A parsed `# @pb.*` directive attached to a request. */
+export type PbDirective =
+  | { type: 'set'; key: string; expr: string }
+  | { type: 'global'; key: string; expr: string }
+  | { type: 'test'; expr: string; label: string };
+
+/** Result of a single pb.test() assertion. */
+export interface PbTestResult {
+  label: string;
+  passed: boolean;
 }
 
 // ─── Request Variable References ────────────────────────────────────────────

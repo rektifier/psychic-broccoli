@@ -1,4 +1,4 @@
-import type { HttpMethod, HttpHeader, ConvertedFile, ImportResult } from './types';
+import type { HttpMethod, HttpHeader, HttpRequest, ConvertedFile, ImportResult } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
 
 // ─── Postman Collection v2.1 Types ─────────────────────────────────────────
@@ -177,7 +177,7 @@ function convertItemsToHttp(
 function convertRequest(
   item: PostmanItem,
   collectionAuth?: PostmanAuth,
-): { id: string; name: string; varName: null; method: HttpMethod; url: string; headers: HttpHeader[]; body: string } {
+): HttpRequest {
   const req = item.request!;
   const method = normalizeMethod(req.method);
   const url = buildUrl(req.url);
@@ -192,6 +192,7 @@ function convertRequest(
     url,
     headers,
     body,
+    directives: [],
   };
 }
 
