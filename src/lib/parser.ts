@@ -1,7 +1,8 @@
 import type {
   HttpRequest, HttpMethod, HttpHeader, Variable,
   EnvironmentFile, EnvironmentVariables, ProviderVariable,
-  NamedRequestResult,
+  NamedRequestResult, PbDirective, PbTestResult,
+  HttpResponse,
   TreeNode, FileNode, FolderNode,
 } from './types';
 
@@ -35,6 +36,9 @@ const COMMENT_RE = /^(#(?!##)|\/\/)/;
 
 /** Request variable name: # @name foo  or  // @name foo */
 const NAME_DIRECTIVE_RE = /^(?:#|\/\/)\s*@name\s+(\S+)\s*$/;
+
+/** Pb directive: # @pb.set("key", expr) or # @pb.global("key", expr) or # @pb.test(expr, "label") */
+const PB_DIRECTIVE_RE = /^(?:#|\/\/)\s*@pb\.(\w+)\((.+)\)\s*$/;
 
 /** Dynamic variable: {{$something ...}} */
 const DYNAMIC_VAR_RE = /\{\{\$(\w+)(?:\s+(.+?))?\}\}/g;
@@ -85,6 +89,7 @@ export function parseHttpFile(content: string): ParseResult {
   let currentUrl = '';
   let currentHeaders: HttpHeader[] = [];
   let currentBody: string[] = [];
+  let currentDirectives: PbDirective[] = [];
   let inBody = false;
   let hasRequest = false;
 
@@ -98,6 +103,7 @@ export function parseHttpFile(content: string): ParseResult {
         url: currentUrl,
         headers: currentHeaders,
         body: currentBody.join('\n').trim(),
+        directives: currentDirectives,
       });
     }
     currentName = '';
@@ -106,6 +112,7 @@ export function parseHttpFile(content: string): ParseResult {
     currentUrl = '';
     currentHeaders = [];
     currentBody = [];
+    currentDirectives = [];
     inBody = false;
     hasRequest = false;
   }
@@ -131,6 +138,14 @@ export function parseHttpFile(content: string): ParseResult {
       if (!currentName) {
         currentName = nameMatch[1]; // Use varName as display name fallback
       }
+      continue;
+    }
+
+    // ── Pb directives: # @pb.set(...), # @pb.test(...), # @pb.global(...) ──
+    const pbMatch = line.match(PB_DIRECTIVE_RE);
+    if (pbMatch) {
+      const directive = parsePbDirective(pbMatch[1], pbMatch[2]);
+      if (directive) currentDirectives.push(directive);
       continue;
     }
 
@@ -247,6 +262,24 @@ export function serializeHttpFile(requests: HttpRequest[], variables: Variable[]
     if (req.body.trim()) {
       parts.push('');
       parts.push(req.body);
+    }
+
+    // Pb directives
+    if (req.directives && req.directives.length > 0) {
+      parts.push('');
+      for (const d of req.directives) {
+        switch (d.type) {
+          case 'set':
+            parts.push(`# @pb.set("${d.key}", ${d.expr})`);
+            break;
+          case 'global':
+            parts.push(`# @pb.global("${d.key}", ${d.expr})`);
+            break;
+          case 'test':
+            parts.push(`# @pb.test(${d.expr}, "${d.label}")`);
+            break;
+        }
+      }
     }
   }
 
@@ -575,6 +608,237 @@ function getByPath(obj: any, path: string): any {
   return current;
 }
 
+// ─── Pb Directive Parsing ────────────────────────────────────────────────────
+
+/**
+ * Parse a raw directive call like `set("key", pb.response.body.$.token)` into
+ * a typed PbDirective. Returns null if the syntax is unrecognized.
+ */
+function parsePbDirective(action: string, argsRaw: string): PbDirective | null {
+  const args = argsRaw.trim();
+
+  if (action === 'set' || action === 'global') {
+    // pb.set("key", expr)  or  pb.global("key", expr)
+    const m = args.match(/^(["'])(.+?)\1\s*,\s*(.+)$/);
+    if (!m) return null;
+    return { type: action, key: m[2], expr: m[3].trim() };
+  }
+
+  if (action === 'test') {
+    // pb.test(expr, "label")
+    // Find the last quoted string as the label
+    const labelMatch = args.match(/,\s*(["'])(.+?)\1\s*$/);
+    if (!labelMatch) return null;
+    const expr = args.slice(0, args.lastIndexOf(labelMatch[0])).trim();
+    return { type: 'test', expr, label: labelMatch[2] };
+  }
+
+  return null;
+}
+
+// ─── Pb Expression Evaluator ────────────────────────────────────────────────
+
+interface PbEvalContext {
+  response: HttpResponse;
+  request: { url: string; method: string; headers: Record<string, string>; body: string };
+  variables: Record<string, string>;
+  namedResults: Record<string, NamedRequestResult>;
+}
+
+/**
+ * Evaluate a pb expression like:
+ *   pb.response.status
+ *   pb.response.body.$.token
+ *   pb.response.headers.Content-Type
+ *   "some string"
+ *   123
+ *   null
+ *   pb.response.status == 200
+ *   pb.response.body.$.name != null
+ *   pb.response.body.$.items.length > 0
+ */
+export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown {
+  // Resolve {{variable}} references inline before evaluation
+  let trimmed = expr.trim();
+  // Named request refs: {{name.response.body.$.path}}, {{name.response.headers.X}}
+  trimmed = trimmed.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
+    return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
+  });
+  // Simple variables: {{varName}}
+  trimmed = trimmed.replace(/\{\{(.+?)\}\}/g, (_, name) => {
+    return ctx.variables[name] ?? `{{${name}}}`;
+  });
+
+  // ── Comparison operators ──
+  const compOps = ['==', '!=', '>=', '<=', '>', '<', ' contains ', ' startsWith ', ' endsWith '] as const;
+  for (const op of compOps) {
+    const idx = trimmed.indexOf(op);
+    if (idx !== -1) {
+      const left = evaluatePbExpression(trimmed.slice(0, idx), ctx);
+      const right = evaluatePbExpression(trimmed.slice(idx + op.length), ctx);
+      const leftStr = String(left);
+      const rightStr = String(right);
+      switch (op.trim()) {
+        case '==': return left == right || leftStr === rightStr;
+        case '!=': return left != right && leftStr !== rightStr;
+        case '>':  return Number(left) > Number(right);
+        case '<':  return Number(left) < Number(right);
+        case '>=': return Number(left) >= Number(right);
+        case '<=': return Number(left) <= Number(right);
+        case 'contains': return leftStr.includes(rightStr);
+        case 'startsWith': return leftStr.startsWith(rightStr);
+        case 'endsWith': return leftStr.endsWith(rightStr);
+      }
+    }
+  }
+
+  // ── Logical operators (&&, ||) ──
+  const andIdx = trimmed.indexOf('&&');
+  if (andIdx !== -1) {
+    return evaluatePbExpression(trimmed.slice(0, andIdx), ctx) &&
+           evaluatePbExpression(trimmed.slice(andIdx + 2), ctx);
+  }
+  const orIdx = trimmed.indexOf('||');
+  if (orIdx !== -1) {
+    return evaluatePbExpression(trimmed.slice(0, orIdx), ctx) ||
+           evaluatePbExpression(trimmed.slice(orIdx + 2), ctx);
+  }
+
+  // ── Negation ──
+  if (trimmed.startsWith('!')) {
+    return !evaluatePbExpression(trimmed.slice(1), ctx);
+  }
+
+  // ── Literals ──
+  if (trimmed === 'null') return null;
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+
+  // ── pb.response.* access ──
+  if (trimmed.startsWith('pb.response.')) {
+    const path = trimmed.slice('pb.response.'.length);
+    return resolvePbResponsePath(path, ctx.response);
+  }
+
+  // ── pb.request.* access ──
+  if (trimmed.startsWith('pb.request.')) {
+    const path = trimmed.slice('pb.request.'.length);
+    if (path === 'url') return ctx.request.url;
+    if (path === 'method') return ctx.request.method;
+    if (path === 'body') return ctx.request.body;
+    if (path.startsWith('headers.')) {
+      const hdrName = path.slice('headers.'.length);
+      const entry = Object.entries(ctx.request.headers).find(
+        ([k]) => k.toLowerCase() === hdrName.toLowerCase()
+      );
+      return entry ? entry[1] : null;
+    }
+    return null;
+  }
+
+  // ── Variable reference: {{varName}} ──
+  const varMatch = trimmed.match(/^\{\{(.+?)\}\}$/);
+  if (varMatch) {
+    return ctx.variables[varMatch[1]] ?? null;
+  }
+
+  // ── Fallback: treat as unresolved ──
+  return trimmed;
+}
+
+/** Resolve a path like "status", "body.$.token", "headers.Content-Type" against an HttpResponse. */
+function resolvePbResponsePath(path: string, response: HttpResponse): unknown {
+  if (path === 'status') return response.status;
+  if (path === 'statusText') return response.statusText;
+  if (path === 'body') return response.body;
+  if (path === 'time') return response.time;
+  if (path === 'size') return response.size;
+
+  if (path.startsWith('headers.')) {
+    const hdrName = path.slice('headers.'.length).toLowerCase();
+    const entry = Object.entries(response.headers).find(
+      ([k]) => k.toLowerCase() === hdrName
+    );
+    return entry ? entry[1] : null;
+  }
+
+  if (path.startsWith('body.$.')) {
+    const jsonPath = path.slice('body.$.'.length);
+    try {
+      const parsed = JSON.parse(response.body);
+      return getByPath(parsed, jsonPath) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+// ─── Pb Directive Executor ──────────────────────────────────────────────────
+
+export interface PbExecutionResult {
+  testResults: PbTestResult[];
+  setVars: Record<string, string>;
+  globalVars: Record<string, string>;
+}
+
+/**
+ * Execute all pb directives for a request after its response has been received.
+ */
+export function executePbDirectives(
+  directives: PbDirective[],
+  response: HttpResponse,
+  request: { url: string; method: string; headers: Record<string, string>; body: string },
+  variables: Record<string, string>,
+  namedResults: Record<string, NamedRequestResult> = {},
+): PbExecutionResult {
+  const ctx: PbEvalContext = { response, request, variables, namedResults };
+  const result: PbExecutionResult = { testResults: [], setVars: {}, globalVars: {} };
+
+  for (const d of directives) {
+    switch (d.type) {
+      case 'set': {
+        const value = evaluatePbExpression(d.expr, ctx);
+        const strValue = value == null ? '' : String(value);
+        result.setVars[d.key] = strValue;
+        // Make immediately available to subsequent directives
+        ctx.variables[d.key] = strValue;
+        break;
+      }
+      case 'global': {
+        const value = evaluatePbExpression(d.expr, ctx);
+        const strValue = value == null ? '' : String(value);
+        result.globalVars[d.key] = strValue;
+        ctx.variables[d.key] = strValue;
+        break;
+      }
+      case 'test': {
+        const value = evaluatePbExpression(d.expr, ctx);
+        let label = d.label;
+        // Resolve {{pb.response.*}} and {{pb.request.*}} in labels
+        label = label.replace(/\{\{(pb\.(?:response|request)\..+?)\}\}/g, (_, expr) => {
+          const resolved = evaluatePbExpression(expr, ctx);
+          return resolved == null ? '' : String(resolved);
+        });
+        label = label.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
+          return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
+        });
+        label = label.replace(/\{\{(.+?)\}\}/g, (_, name) => ctx.variables[name] ?? `{{${name}}}`);
+        result.testResults.push({ label, passed: !!value });
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
 // ─── Environment File Handling ──────────────────────────────────────────────
 
 /**
@@ -666,6 +930,7 @@ export function createEmptyRequest(name?: string): HttpRequest {
     url: 'https://',
     headers: [],
     body: '',
+    directives: [],
   };
 }
 

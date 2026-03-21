@@ -78,6 +78,79 @@ Authorization: Bearer &#123;&#123;login.response.body.$.token&#125;&#125;</pre>
       </div>
 
       <div class="section">
+        <div class="section-title">Tests</div>
+        <p>Add assertions in the <strong>Tests</strong> tab. One test per line, with expression and label separated by <code> | </code>.</p>
+        <pre class="code-block">expression | Label text
+expression without a label</pre>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Test - Data access</div>
+        <pre class="code-block">pb.response.status             HTTP status code
+pb.response.statusText         Status text ("OK")
+pb.response.body               Raw response body
+pb.response.body.$.path        JSONPath into body
+pb.response.body.$.items.length Array length
+pb.response.headers.Name       Response header
+pb.response.time               Response time (ms)
+pb.response.size               Response size (bytes)
+pb.request.url                 Request URL
+pb.request.method              Request method
+pb.request.body                Request body
+pb.request.headers.Name        Request header
+&#123;&#123;variableName&#125;&#125;               Environment/file variable</pre>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Test - Operators</div>
+        <pre class="code-block"><strong>Comparison</strong>
+pb.response.status == 200           | Equals
+pb.response.status != 404           | Not equals
+pb.response.body.$.count > 0        | Greater than
+pb.response.body.$.count >= 1       | Greater or equal
+pb.response.body.$.count &lt; 100      | Less than
+pb.response.time &lt;= 500             | Less or equal
+
+<strong>String matching</strong>
+pb.response.body.$.name startsWith "John" | Starts with
+pb.response.body.$.url endsWith ".pdf"    | Ends with
+pb.response.headers.Content-Type contains "json" | Contains
+
+<strong>Null checks</strong>
+pb.response.body.$.token != null    | Value exists
+pb.response.body.$.error == null    | Value is absent
+
+<strong>Boolean</strong>
+pb.response.body.$.active == true   | Is true
+pb.response.body.$.deleted == false | Is false
+
+<strong>Logic</strong>
+pb.response.status == 200 &amp;&amp; pb.response.body.$.id != null
+pb.response.status == 200 || pb.response.status == 201
+!pb.response.body.$.error           | Negation</pre>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Test - Examples</div>
+        <pre class="code-block">pb.response.status == 200 | OK
+pb.response.body.$.items.length > 0 | Has items
+pb.response.headers.Content-Type contains "json" | JSON response
+pb.response.body.$.email endsWith "@example.com" | Valid domain
+pb.response.time &lt; 1000 | Fast response
+pb.response.body.$.name startsWith "J" | Name starts with J
+pb.response.status == &#123;&#123;expectedStatus&#125;&#125; | Variable comparison</pre>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Test - Set &amp; Global directives</div>
+        <p>In <code>.http</code> files, you can also store values for use in later requests:</p>
+        <pre class="code-block"># @pb.set("token", pb.response.body.$.token)
+# @pb.global("sessionId", pb.response.body.$.id)
+# @pb.test(pb.response.status == 200, "OK")</pre>
+        <p><code>set</code> stores a file-level variable. <code>global</code> persists across files.</p>
+      </div>
+
+      <div class="section">
         <div class="section-title">Shortcuts</div>
         <div class="shortcut-row"><kbd>Ctrl+Enter</kbd> <span>Send request</span></div>
         <div class="shortcut-row"><kbd>Right-click</kbd> <span>Set response alias on a request</span></div>

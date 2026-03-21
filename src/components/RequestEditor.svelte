@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { HttpRequest, HttpMethod, HttpHeader, Variable, NamedRequestResult } from '../lib/types';
+  import type { HttpRequest, HttpMethod, HttpHeader, Variable, NamedRequestResult, PbDirective } from '../lib/types';
   import DependencyBar from './DependencyBar.svelte';
   import VariablePicker from './VariablePicker.svelte';
 
@@ -28,8 +28,10 @@
   };
 
   let headersOpen = true;
+  let testsOpen = true;
+  let bottomTab: 'body' | 'tests' = 'body';
   let showPicker = false;
-  let pickerTarget: 'url' | 'headerKey' | 'headerValue' | 'body' | null = null;
+  let pickerTarget: 'url' | 'headerKey' | 'headerValue' | 'body' | 'tests' | null = null;
   let pickerHeaderIndex: number = -1;
 
   function update(changes: Partial<HttpRequest>) {
@@ -129,6 +131,47 @@
     }
   }
 
+  // ── Test directive helpers ──
+  $: testDirectives = (request.directives ?? []).filter(
+    (d): d is { type: 'test'; expr: string; label: string } => d.type === 'test'
+  );
+
+  let testsTextInternal = '';
+  let lastRequestId = '';
+
+  function directivesToText(directives: PbDirective[]): string {
+    return directives
+      .filter((d): d is { type: 'test'; expr: string; label: string } => d.type === 'test')
+      .map(d => d.label ? `${d.expr} | ${d.label}` : d.expr)
+      .join('\n');
+  }
+
+  // Only sync from directives when switching to a different request
+  $: {
+    const id = `${request.name}::${request.method}::${request.url}`;
+    if (id !== lastRequestId) {
+      lastRequestId = id;
+      testsTextInternal = directivesToText(request.directives ?? []);
+    }
+  }
+
+  function onTestsTextInput(e: Event) {
+    const text = (e.target as HTMLTextAreaElement).value;
+    testsTextInternal = text;
+    const nonTestDirectives = (request.directives ?? []).filter(d => d.type !== 'test');
+    const newTests: PbDirective[] = text
+      .split('\n')
+      .filter(line => line.trim() !== '')
+      .map(line => {
+        const pipeIndex = line.indexOf(' | ');
+        if (pipeIndex >= 0) {
+          return { type: 'test' as const, expr: line.slice(0, pipeIndex), label: line.slice(pipeIndex + 3) };
+        }
+        return { type: 'test' as const, expr: line, label: '' };
+      });
+    update({ directives: [...nonTestDirectives, ...newTests] });
+  }
+
   // Combine all request text for dependency scanning
   $: requestText = [
     request.url,
@@ -136,7 +179,7 @@
     request.body,
   ].join('\n');
 
-  function openPicker(target: 'url' | 'body', headerIndex?: number) {
+  function openPicker(target: 'url' | 'body' | 'tests', headerIndex?: number) {
     pickerTarget = target;
     pickerHeaderIndex = headerIndex ?? -1;
     showPicker = true;
@@ -149,6 +192,21 @@
       update({ url: request.url + value });
     } else if (pickerTarget === 'body') {
       update({ body: request.body + value });
+    } else if (pickerTarget === 'tests') {
+      testsTextInternal = testsTextInternal + value;
+      // Re-parse the updated text into directives
+      const nonTestDirectives = (request.directives ?? []).filter(d => d.type !== 'test');
+      const newTests: PbDirective[] = testsTextInternal
+        .split('\n')
+        .filter(line => line.trim() !== '')
+        .map(line => {
+          const pipeIndex = line.indexOf(' | ');
+          if (pipeIndex >= 0) {
+            return { type: 'test' as const, expr: line.slice(0, pipeIndex), label: line.slice(pipeIndex + 3) };
+          }
+          return { type: 'test' as const, expr: line, label: '' };
+        });
+      update({ directives: [...nonTestDirectives, ...newTests] });
     } else if (pickerTarget === 'headerValue' && pickerHeaderIndex >= 0) {
       const headers = [...request.headers];
       headers[pickerHeaderIndex] = { ...headers[pickerHeaderIndex], value: headers[pickerHeaderIndex].value + value };
@@ -290,23 +348,45 @@
     {/if}
   </div>
 
-  <!-- Body -->
-  <div class="section body-grow">
-    <div class="section-row">
-      <span class="section-label">Body</span>
-      <button class="btn-insert" on:click={() => openPicker('body')} title="Insert variable">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-        </svg>
+  <!-- Bottom tabbed panel -->
+  <div class="bottom-panel">
+    <div class="bottom-tabs">
+      <button class="bottom-tab" class:active={bottomTab === 'body'} on:click={() => bottomTab = 'body'}>
+        Body
       </button>
+      <button class="bottom-tab" class:active={bottomTab === 'tests'} on:click={() => bottomTab = 'tests'}>
+        Tests
+        {#if testDirectives.length > 0}
+          <span class="section-count">{testDirectives.length}</span>
+        {/if}
+      </button>
+      <div class="bottom-tab-actions">
+        <button class="btn-insert" on:click={() => openPicker(bottomTab === 'tests' ? 'tests' : 'body')} title="Insert variable">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
     </div>
-    <textarea
-      class="body-editor"
-      value={request.body}
-      on:input={(e) => update({ body: e.currentTarget.value })}
-      placeholder={'{"key": "value"}'}
-      spellcheck="false"
-    ></textarea>
+    <div class="bottom-content">
+      {#if bottomTab === 'body'}
+        <textarea
+          class="body-editor"
+          value={request.body}
+          on:input={(e) => update({ body: e.currentTarget.value })}
+          placeholder={'{"key": "value"}'}
+          spellcheck="false"
+        ></textarea>
+      {:else if bottomTab === 'tests'}
+        <textarea
+          class="body-editor"
+          value={testsTextInternal}
+          on:input={onTestsTextInput}
+          placeholder={"# One test per line:\n# pb.response.status == 200 | Should return 200\n# pb.response.body.$.name != null | Name should exist"}
+          spellcheck="false"
+        ></textarea>
+      {/if}
+    </div>
   </div>
 
   <div class="keyboard-hint">
@@ -523,18 +603,6 @@
     padding: 1px 6px;
     border-radius: 10px;
   }
-  .section-label {
-    display: block;
-    font-size: 12px;
-    font-weight: 500;
-    color: #666;
-    padding: 8px 0 6px;
-  }
-  .section-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
   .btn-insert {
     display: flex;
     align-items: center;
@@ -554,12 +622,49 @@
     color: #9A7520;
     background: #9A752010;
   }
-  .body-grow {
+  /* Bottom tabbed panel */
+  .bottom-panel {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
     border-top: 1px solid #DCDCE2;
+  }
+  .bottom-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding-top: 4px;
+  }
+  .bottom-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 16px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #999;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .bottom-tab:hover { color: #666; }
+  .bottom-tab.active {
+    color: #1A1A2E;
+    border-bottom-color: #D4900A;
+  }
+  .bottom-tab-actions {
+    margin-left: auto;
+  }
+  .bottom-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-top: 6px;
   }
 
   /* Headers */

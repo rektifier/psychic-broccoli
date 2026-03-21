@@ -13,6 +13,7 @@
     activeFile, activeRequest, activeFileVariables,
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
     resolvedEnvVars, namedResults, dotenvVariables,
+    pbTestResults, pbGlobals,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
@@ -21,10 +22,11 @@
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
     buildWorkspaceTree, createFileNode, getAllFileNodes,
+    executePbDirectives,
   } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
-  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode, ImportResult } from './lib/types';
+  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbTestResult } from './lib/types';
   import type { DiscoveredFile } from './lib/parser';
 
   import { open } from '@tauri-apps/plugin-dialog';
@@ -381,6 +383,7 @@
   async function sendRequest(request: HttpRequest) {
     isLoading.set(true);
     currentResponse.set(null);
+    pbTestResults.set([]);
     sentRequest = null;
 
     const ctx = getSubstitutionContext();
@@ -428,6 +431,45 @@
             response,
           },
         }));
+      }
+
+      // ── Execute pb directives ──
+      if (request.directives && request.directives.length > 0) {
+        const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
+        for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
+
+        const pbResult = executePbDirectives(
+          request.directives, response,
+          { url, method: request.method, headers, body },
+          mergedVars,
+          $namedResults,
+        );
+
+        pbTestResults.set(pbResult.testResults);
+
+        // Apply set vars as named results so {{key}} resolves in later requests
+        if (Object.keys(pbResult.setVars).length > 0) {
+          namedResults.update(nr => {
+            const updated = { ...nr };
+            for (const [key, value] of Object.entries(pbResult.setVars)) {
+              // Store as a pseudo named result so substituteAll can pick it up.
+              // We also inject into env vars for simpler resolution.
+              updated[`__pb_${key}`] = {
+                request: { url, method: request.method, headers, body },
+                response,
+              };
+            }
+            return updated;
+          });
+          // Inject set vars into the environment so {{key}} works directly
+          resolvedEnvVars.update(ev => ({ ...ev, ...pbResult.setVars }));
+        }
+
+        // Apply global vars
+        if (Object.keys(pbResult.globalVars).length > 0) {
+          pbGlobals.update(g => ({ ...g, ...pbResult.globalVars }));
+          resolvedEnvVars.update(ev => ({ ...ev, ...pbResult.globalVars }));
+        }
       }
     } catch (e: any) {
       currentResponse.set({
@@ -642,7 +684,7 @@
           </div>
           <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
-            <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} />
+            <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} testResults={$pbTestResults} />
           </div>
         {:else}
           <div class="no-selection">
