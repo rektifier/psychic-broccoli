@@ -1,5 +1,6 @@
 # Psychic Broccoli
 
+[![CI](https://img.shields.io/github/actions/workflow/status/rektifier/psychic-broccoli/ci.yml?branch=develop&style=flat-square&label=CI)](https://github.com/rektifier/psychic-broccoli/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/rektifier/psychic-broccoli?style=flat-square)](https://github.com/rektifier/psychic-broccoli/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
@@ -9,9 +10,9 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 > **No CORS. No Electron. No bloat.** HTTP requests are dispatched from Rust via `reqwest`, so you never hit browser sandbox restrictions.
 
 
-![App Screenshot](https://github.com/user-attachments/assets/f6d7ef96-3fe2-450a-8f07-7008599053c3)
-![App Screenshot](https://github.com/user-attachments/assets/f5253b75-ae2b-4637-94ac-2ac42c8461d5)
-![App Screenshot](https://github.com/user-attachments/assets/e7bd9aac-3884-4559-91ed-42641fe678d1)
+![File tree and request editor](https://github.com/user-attachments/assets/f6d7ef96-3fe2-450a-8f07-7008599053c3)
+![Response viewer with headers and body](https://github.com/user-attachments/assets/f5253b75-ae2b-4637-94ac-2ac42c8461d5)
+![Environment editor and variable picker](https://github.com/user-attachments/assets/e7bd9aac-3884-4559-91ed-42641fe678d1)
 
 ---
 
@@ -23,7 +24,12 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 - [Environment System](#environment-system)
 - [Request Chaining](#request-chaining)
 - [Dynamic Variables](#dynamic-variables)
+- [Pb Script Engine](#pb-script-engine)
+- [Architecture](#architecture)
 - [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [Code of Conduct](#code-of-conduct)
+- [Acknowledgments](#acknowledgments)
 - [License](#license)
 
 ---
@@ -220,6 +226,47 @@ Offset units: `ms`, `s`, `m`, `h`, `d`, `w`, `M`, `y`.
 
 ---
 
+## Pb Script Engine
+
+Psychic Broccoli includes a built-in scripting system using `# @pb.*` comment directives in `.http` files. Directives are attached to requests and executed after the response is received.
+
+### Directive types
+
+| Directive | Description |
+| --------- | ----------- |
+| `# @pb.assert(expr, "label")` | Assert a condition; result is pass/fail with the given label |
+| `# @pb.set("key", expr)` | Store a value as a file-level variable for subsequent requests |
+| `# @pb.global("key", expr)` | Store a value as a global variable (persists across files) |
+
+### Expression syntax
+
+Expressions can reference:
+
+- `pb.response.status` - HTTP status code
+- `pb.response.body.$.path` - JSONPath into response body
+- `pb.response.headers.Header-Name` - Response header value
+- `pb.request.url`, `pb.request.method`, `pb.request.body` - Request properties
+- Comparison operators: `==`, `!=`, `>`, `<`, `>=`, `<=`
+
+### Example
+
+```http
+GET {{baseUrl}}/api/users/1
+Authorization: {{token}}
+
+# @pb.assert(pb.response.status == 200, "Should return 200")
+# @pb.assert(pb.response.body.$.name != null, "Name should exist")
+# @pb.set("userId", pb.response.body.$.id)
+```
+
+---
+
+## Architecture
+
+All `.http` parsing, variable resolution, and scripting happens on the frontend in TypeScript. The Tauri/Rust backend is intentionally thin - it serves only as an HTTP proxy (via `reqwest`) to bypass CORS and browser sandbox restrictions. This means the frontend contains the core logic, and the backend requires minimal changes for most feature work.
+
+---
+
 ## Project Structure
 
 ```
@@ -253,14 +300,9 @@ src-tauri/
 
 ## Contributing
 
-### Prerequisites
+Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) for details on the development setup, branching strategy, commit conventions, and how to submit pull requests.
 
-- [Node.js](https://nodejs.org/) 20+
-- [pnpm](https://pnpm.io/)
-- [Rust](https://rustup.rs/)
-- Tauri v2 system dependencies — see the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/)
-
-### Getting Started
+### Quick start
 
 ```bash
 git clone -b develop https://github.com/rektifier/psychic-broccoli.git
@@ -269,9 +311,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-This starts the Vite dev server on port 1420 and opens the Tauri window with hot reload.
-
-### Useful Commands
+### Useful commands
 
 | Command | Description |
 | ------- | ----------- |
@@ -279,6 +319,21 @@ This starts the Vite dev server on port 1420 and opens the Tauri window with hot
 | `pnpm build` | Production frontend build |
 | `pnpm check` | TypeScript / Svelte type checking |
 | `pnpm tauri build` | Full production desktop build |
+
+---
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+
+---
+
+## Acknowledgments
+
+- [Tauri](https://tauri.app/) - Desktop framework
+- [Svelte](https://svelte.dev/) - Frontend framework
+- [reqwest](https://github.com/seanmonstar/reqwest) - Rust HTTP client
+- [SignPath Foundation](https://signpath.org/) - Code signing for open source
 
 ---
 
