@@ -179,7 +179,7 @@
     request.body,
   ].join('\n');
 
-  function openPicker(target: 'url' | 'body' | 'assertions', headerIndex?: number) {
+  function openPicker(target: 'url' | 'body' | 'assertions' | 'headerValue', headerIndex?: number) {
     pickerTarget = target;
     pickerHeaderIndex = headerIndex ?? -1;
     showPicker = true;
@@ -215,6 +215,7 @@
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="editor" on:keydown={handleKeydown}>
   <!-- Request Name -->
   <div class="name-row">

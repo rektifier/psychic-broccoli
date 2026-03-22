@@ -42,7 +42,8 @@
 </script>
 
 {#if visible}
-  <div class="overlay" on:click|self={skip}>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="overlay" on:click|self={skip} role="dialog" tabindex="-1">
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Import variables to environment</span>
@@ -64,7 +65,7 @@
 
         <div class="target-section">
           {#if hasEnvFile && existingEnvironments.length > 0}
-            <label class="target-label">Add to environment</label>
+            <span class="target-label">Add to environment</span>
             {#each existingEnvironments as env}
               <label class="radio-row">
                 <input type="radio" bind:group={selectedTarget} value={env} />
@@ -76,7 +77,7 @@
               <span class="radio-label">Create new environment</span>
             </label>
           {:else}
-            <label class="target-label">No environment file found</label>
+            <span class="target-label">No environment file found</span>
             <p class="hint">A new <code>http-client.env.json</code> will be created.</p>
             <input type="hidden" bind:value={selectedTarget} />
           {/if}

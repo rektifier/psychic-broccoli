@@ -288,11 +288,14 @@ export const availableEnvironments = derived(
   }
 );
 
+/** Overrides injected by pb.set / pb.global directives at runtime. */
+export const pbEnvOverrides = writable<Record<string, string>>({});
+
 export const resolvedEnvVars = derived(
-  [activeEnvironment, envFile, userEnvFile],
-  ([$active, $envFile, $userEnvFile]) => {
-    if (!$active) return {};
-    return resolveEnvironmentVariables($active, $envFile, $userEnvFile);
+  [activeEnvironment, envFile, userEnvFile, pbEnvOverrides],
+  ([$active, $envFile, $userEnvFile, $overrides]) => {
+    const base = $active ? resolveEnvironmentVariables($active, $envFile, $userEnvFile) : {};
+    return { ...base, ...$overrides };
   }
 );
 

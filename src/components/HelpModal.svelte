@@ -11,7 +11,8 @@
 </script>
 
 {#if visible}
-  <div class="overlay" on:click|self={close}>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="overlay" on:click|self={close} role="dialog" tabindex="-1">
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Quick guide</span>

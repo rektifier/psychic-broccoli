@@ -12,7 +12,7 @@
     workspace, selectedLocation, currentResponse, isLoading,
     activeFile, activeRequest, activeFileVariables,
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
-    resolvedEnvVars, namedResults, dotenvVariables,
+    resolvedEnvVars, pbEnvOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
@@ -24,9 +24,10 @@
     buildWorkspaceTree, createFileNode, getAllFileNodes,
     executePbDirectives,
   } from './lib/parser';
+  import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
-  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
+  import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { DiscoveredFile } from './lib/parser';
 
   import { open } from '@tauri-apps/plugin-dialog';
@@ -462,13 +463,13 @@
             return updated;
           });
           // Inject set vars into the environment so {{key}} works directly
-          resolvedEnvVars.update(ev => ({ ...ev, ...pbResult.setVars }));
+          pbEnvOverrides.update(ev => ({ ...ev, ...pbResult.setVars }));
         }
 
         // Apply global vars
         if (Object.keys(pbResult.globalVars).length > 0) {
           pbGlobals.update(g => ({ ...g, ...pbResult.globalVars }));
-          resolvedEnvVars.update(ev => ({ ...ev, ...pbResult.globalVars }));
+          pbEnvOverrides.update(ev => ({ ...ev, ...pbResult.globalVars }));
         }
       }
     } catch (e: any) {
@@ -641,6 +642,7 @@
         on:nameRequest={handleNameRequest}
       />
     </div>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
 
     <div class="main-area">
@@ -682,6 +684,7 @@
               on:runAll={handleRunAll}
             />
           </div>
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
             <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} assertionResults={$pbAssertionResults} />

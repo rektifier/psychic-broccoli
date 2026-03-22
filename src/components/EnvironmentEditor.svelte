@@ -121,6 +121,7 @@
     <div class="header-left">
       <span class="env-dot" class:active-dot={editingEnv === activeEnv}></span>
       {#if renaming}
+        <!-- svelte-ignore a11y_autofocus -->
         <input
           class="rename-input"
           bind:value={renameValue}
