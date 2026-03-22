@@ -31,6 +31,7 @@
         class="tab"
         class:active={isActive(tab) && !isPreview}
         on:click={() => dispatch('activate', tab.location)}
+        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('activate', tab.location); } }}
         role="tab"
         tabindex="0"
       >

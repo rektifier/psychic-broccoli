@@ -23,7 +23,7 @@ export interface HttpRequest {
   url: string;
   headers: HttpHeader[];
   body: string;
-  /** Pb script directives (`# @pb.set(...)`, `# @pb.test(...)`, etc.) */
+  /** Pb script directives (`# @pb.set(...)`, `# @pb.assert(...)`, etc.) */
   directives: PbDirective[];
 }
 
@@ -146,10 +146,10 @@ export interface ImportResult {
 export type PbDirective =
   | { type: 'set'; key: string; expr: string }
   | { type: 'global'; key: string; expr: string }
-  | { type: 'test'; expr: string; label: string };
+  | { type: 'assert'; expr: string; label: string };
 
-/** Result of a single pb.test() assertion. */
-export interface PbTestResult {
+/** Result of a single pb.assert() assertion. */
+export interface PbAssertionResult {
   label: string;
   passed: boolean;
 }

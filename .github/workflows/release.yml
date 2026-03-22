@@ -56,6 +56,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Extract version from tag
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -65,6 +66,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Update version in project files
+        shell: bash
         run: |
           echo "Setting version to $VERSION"
 

@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type {
   HttpFile, HttpRequest, HttpResponse, Variable,
-  EnvironmentFile, NamedRequestResult, PbTestResult,
+  EnvironmentFile, NamedRequestResult, PbAssertionResult,
   Workspace, TreeNode, FileNode, FolderNode, RequestLocation,
 } from './types';
 import { createEmptyRequest, resolveEnvironmentVariables, getEnvironmentNames, serializeHttpFile } from './parser';
@@ -288,11 +288,14 @@ export const availableEnvironments = derived(
   }
 );
 
+/** Overrides injected by pb.set / pb.global directives at runtime. */
+export const pbEnvOverrides = writable<Record<string, string>>({});
+
 export const resolvedEnvVars = derived(
-  [activeEnvironment, envFile, userEnvFile],
-  ([$active, $envFile, $userEnvFile]) => {
-    if (!$active) return {};
-    return resolveEnvironmentVariables($active, $envFile, $userEnvFile);
+  [activeEnvironment, envFile, userEnvFile, pbEnvOverrides],
+  ([$active, $envFile, $userEnvFile, $overrides]) => {
+    const base = $active ? resolveEnvironmentVariables($active, $envFile, $userEnvFile) : {};
+    return { ...base, ...$overrides };
   }
 );
 
@@ -303,8 +306,8 @@ export const dotenvVariables = writable<Record<string, string>>({});
 
 // ─── Pb Script State ─────────────────────────────────────────────────────────
 
-/** Test results from the most recent request's pb directives. */
-export const pbTestResults = writable<PbTestResult[]>([]);
+/** Assertion results from the most recent request's pb directives. */
+export const pbAssertionResults = writable<PbAssertionResult[]>([]);
 
 /** Workspace-global variables set via `# @pb.global(...)`. Persist across requests and files. */
 export const pbGlobals = writable<Record<string, string>>({});

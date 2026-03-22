@@ -77,7 +77,8 @@
 </script>
 
 {#if visible}
-  <div class="picker-overlay" on:click|self={close}>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="picker-overlay" on:click|self={close} role="dialog" tabindex="-1">
     <div class="picker">
       <div class="picker-header">
         <span class="picker-title">Insert variable</span>

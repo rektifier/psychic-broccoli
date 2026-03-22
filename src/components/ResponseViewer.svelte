@@ -1,15 +1,15 @@
 <script lang="ts">
-  import type { HttpResponse, PbTestResult } from '../lib/types';
+  import type { HttpResponse, PbAssertionResult } from '../lib/types';
 
   export let response: HttpResponse | null = null;
   export let loading: boolean = false;
   export let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
-  export let testResults: PbTestResult[] = [];
+  export let assertionResults: PbAssertionResult[] = [];
 
-  let activeTab: 'body' | 'headers' | 'request' | 'tests' = 'body';
+  let activeTab: 'body' | 'headers' | 'request' | 'assertions' = 'body';
 
-  $: passedCount = testResults.filter(t => t.passed).length;
-  $: failedCount = testResults.filter(t => !t.passed).length;
+  $: passedCount = assertionResults.filter(t => t.passed).length;
+  $: failedCount = assertionResults.filter(t => !t.passed).length;
 
   function getStatusClass(status: number): string {
     if (status >= 200 && status < 300) return 'status-success';
@@ -130,15 +130,15 @@
           Request
         </button>
       {/if}
-      {#if testResults.length > 0}
+      {#if assertionResults.length > 0}
         <button
           class="tab"
-          class:active={activeTab === 'tests'}
-          on:click={() => activeTab = 'tests'}
+          class:active={activeTab === 'assertions'}
+          on:click={() => activeTab = 'assertions'}
         >
-          Tests
-          <span class="tab-count test-count" class:all-pass={failedCount === 0} class:has-fail={failedCount > 0}>
-            {passedCount}/{testResults.length}
+          Assertions
+          <span class="tab-count assertion-count" class:all-pass={failedCount === 0} class:has-fail={failedCount > 0}>
+            {passedCount}/{assertionResults.length}
           </span>
         </button>
       {/if}
@@ -162,12 +162,12 @@
         </div>
       {:else if activeTab === 'request' && sentRequest}
         <pre class="body-output">{formatRawRequest(sentRequest)}</pre>
-      {:else if activeTab === 'tests'}
-        <div class="test-results">
-          {#each testResults as result}
-            <div class="test-entry" class:pass={result.passed} class:fail={!result.passed}>
-              <span class="test-icon">{result.passed ? '\u2713' : '\u2717'}</span>
-              <span class="test-label">{result.label}</span>
+      {:else if activeTab === 'assertions'}
+        <div class="assertion-results">
+          {#each assertionResults as result}
+            <div class="assertion-entry" class:pass={result.passed} class:fail={!result.passed}>
+              <span class="assertion-icon">{result.passed ? '\u2713' : '\u2717'}</span>
+              <span class="assertion-label">{result.label}</span>
             </div>
           {/each}
         </div>
@@ -405,11 +405,11 @@
     background: #FFFFFF;
   }
 
-  /* Test Results */
-  .test-count.all-pass { background: #3D8B4520; color: #3D8B45; }
-  .test-count.has-fail { background: #CC445520; color: #CC4455; }
+  /* Assertion Results */
+  .assertion-count.all-pass { background: #3D8B4520; color: #3D8B45; }
+  .assertion-count.has-fail { background: #CC445520; color: #CC4455; }
 
-  .test-results {
+  .assertion-results {
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -417,7 +417,7 @@
     border-radius: 8px;
     overflow: hidden;
   }
-  .test-entry {
+  .assertion-entry {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -425,14 +425,14 @@
     background: #FFFFFF;
     font-size: 12px;
   }
-  .test-icon {
+  .assertion-icon {
     font-weight: 700;
     font-size: 14px;
     width: 18px;
     text-align: center;
   }
-  .test-entry.pass .test-icon { color: #3D8B45; }
-  .test-entry.fail .test-icon { color: #CC4455; }
-  .test-entry.pass .test-label { color: #4A4A58; }
-  .test-entry.fail .test-label { color: #CC4455; font-weight: 500; }
+  .assertion-entry.pass .assertion-icon { color: #3D8B45; }
+  .assertion-entry.fail .assertion-icon { color: #CC4455; }
+  .assertion-entry.pass .assertion-label { color: #4A4A58; }
+  .assertion-entry.fail .assertion-label { color: #CC4455; font-weight: 500; }
 </style>

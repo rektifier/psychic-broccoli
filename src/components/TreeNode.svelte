@@ -94,6 +94,7 @@
     class:dirty={node.dirty}
     style="padding-left: {12 + depth * 16}px"
     on:click={() => fileExpanded = !fileExpanded}
+    on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileExpanded = !fileExpanded; } }}
     role="button"
     tabindex="0"
   >
@@ -124,6 +125,7 @@
         {#if namingIndex === i}
           <div class="tree-row naming-row" style="padding-left: {28 + depth * 16}px">
             <span class="naming-label">@name</span>
+            <!-- svelte-ignore a11y_autofocus -->
             <input
               class="naming-input"
               bind:value={namingValue}
@@ -142,6 +144,7 @@
             on:click={() => dispatch('select', { filePath: node.path, requestIndex: i })}
             on:dblclick={() => dispatch('pinRequest', { filePath: node.path, requestIndex: i, label: req.name })}
             on:contextmenu|preventDefault={(e) => startNaming(i, req.varName)}
+            on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('select', { filePath: node.path, requestIndex: i }); } }}
             role="button"
             tabindex="0"
           >
@@ -154,7 +157,8 @@
             {/if}
             {#if node.requests.length > 1}
               {#if confirmDeleteIndex === i}
-                <div class="confirm-delete-popup" on:click|stopPropagation>
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <div class="confirm-delete-popup" on:click|stopPropagation on:keydown|stopPropagation role="alert">
                   <span class="confirm-delete-text">Delete?</span>
                   <button class="confirm-delete-yes" on:click|stopPropagation={() => { dispatch('deleteRequest', { filePath: node.path, requestIndex: i }); confirmDeleteIndex = -1; }}>Yes</button>
                   <button class="confirm-delete-no" on:click|stopPropagation={() => confirmDeleteIndex = -1}>No</button>
@@ -224,7 +228,7 @@
   }
 
   .children {
-    /* no extra indent - handled by padding-left on rows */
+    display: contents;
   }
 
   /* Folder */
