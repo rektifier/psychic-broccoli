@@ -27,9 +27,10 @@
     CONNECT: '#CC4455',
   };
 
+  export let bottomTab: 'body' | 'assertions' = 'body';
+
   let headersOpen = true;
   let assertionsOpen = true;
-  let bottomTab: 'body' | 'assertions' = 'body';
   let showPicker = false;
   let pickerTarget: 'url' | 'headerKey' | 'headerValue' | 'body' | 'assertions' | null = null;
   let pickerHeaderIndex: number = -1;
@@ -352,10 +353,10 @@
   <!-- Bottom tabbed panel -->
   <div class="bottom-panel">
     <div class="bottom-tabs">
-      <button class="bottom-tab" class:active={bottomTab === 'body'} on:click={() => bottomTab = 'body'}>
+      <button class="bottom-tab" class:active={bottomTab === 'body'} on:click={() => { bottomTab = 'body'; dispatch('bottomTabChange', bottomTab); }}>
         Body
       </button>
-      <button class="bottom-tab" class:active={bottomTab === 'assertions'} on:click={() => bottomTab = 'assertions'}>
+      <button class="bottom-tab" class:active={bottomTab === 'assertions'} on:click={() => { bottomTab = 'assertions'; dispatch('bottomTabChange', bottomTab); }}>
         Assertions
         {#if assertionDirectives.length > 0}
           <span class="section-count">{assertionDirectives.length}</span>

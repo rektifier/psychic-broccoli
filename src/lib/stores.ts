@@ -21,10 +21,16 @@ export const selectedLocation = writable<RequestLocation | null>(null);
 /** The active response (from the last executed request). */
 export const currentResponse = writable<HttpResponse | null>(null);
 
+/** The resolved request that produced the current response. */
+export const currentSentRequest = writable<{ method: string; url: string; headers: Record<string, string>; body: string } | null>(null);
+
 /** Loading state. */
 export const isLoading = writable<boolean>(false);
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
+
+export type BottomTab = 'body' | 'assertions';
+export type ResponseTab = 'body' | 'headers' | 'request' | 'assertions';
 
 export interface Tab {
   location: RequestLocation;
@@ -34,6 +40,10 @@ export interface Tab {
   response: HttpResponse | null;
   /** The raw sent request for the Request tab in ResponseViewer */
   sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null;
+  /** Last active section tab (Body/Assertions) */
+  bottomTab: BottomTab;
+  /** Last active response tab (Body/Headers/Request/Assertions) */
+  responseTab: ResponseTab;
 }
 
 function tabKey(loc: RequestLocation): string {
@@ -60,13 +70,14 @@ export function pinTab(loc: RequestLocation, label: string) {
   const key = tabKey(loc);
   tabs.update(ts => {
     if (ts.some(t => tabKey(t.location) === key)) return ts;
-    return [...ts, { location: loc, label, response: null, sentRequest: null }];
+    return [...ts, { location: loc, label, response: null, sentRequest: null, bottomTab: 'body', responseTab: 'body' }];
   });
   selectedLocation.set(loc);
   activeTabKey.set(key);
   // Restore cached response for this tab
   const tab = get(tabs).find(t => tabKey(t.location) === key);
   currentResponse.set(tab?.response ?? null);
+  currentSentRequest.set(tab?.sentRequest ?? null);
 }
 
 /** Activate an existing tab. */
@@ -79,6 +90,7 @@ export function activateTab(loc: RequestLocation) {
   selectedLocation.set(loc);
   activeTabKey.set(key);
   currentResponse.set(tab.response);
+  currentSentRequest.set(tab.sentRequest);
 }
 
 /** Close a tab. If it was active, activate an adjacent tab or clear selection. */
@@ -100,6 +112,7 @@ export function closeTab(loc: RequestLocation) {
       selectedLocation.set(null);
       activeTabKey.set(null);
       currentResponse.set(null);
+      currentSentRequest.set(null);
     }
   }
 }
@@ -125,6 +138,7 @@ export function previewRequest(loc: RequestLocation) {
   selectedLocation.set(loc);
   activeTabKey.set(null);
   currentResponse.set(null);
+  currentSentRequest.set(null);
 }
 
 /** Update tab label when a request is renamed. */
@@ -132,6 +146,22 @@ export function updateTabLabel(loc: RequestLocation, label: string) {
   const key = tabKey(loc);
   tabs.update(ts => ts.map(t =>
     tabKey(t.location) === key ? { ...t, label } : t
+  ));
+}
+
+/** Update the active section tab (Body/Assertions) for a pinned tab. */
+export function setTabBottomTab(loc: RequestLocation, bottomTab: BottomTab) {
+  const key = tabKey(loc);
+  tabs.update(ts => ts.map(t =>
+    tabKey(t.location) === key ? { ...t, bottomTab } : t
+  ));
+}
+
+/** Update the active response tab (Body/Headers/Request/Assertions) for a pinned tab. */
+export function setTabResponseTab(loc: RequestLocation, responseTab: ResponseTab) {
+  const key = tabKey(loc);
+  tabs.update(ts => ts.map(t =>
+    tabKey(t.location) === key ? { ...t, responseTab } : t
   ));
 }
 

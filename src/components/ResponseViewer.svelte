@@ -1,12 +1,20 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import type { HttpResponse, PbAssertionResult } from '../lib/types';
+  import type { ResponseTab } from '../lib/stores';
 
   export let response: HttpResponse | null = null;
   export let loading: boolean = false;
   export let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
   export let assertionResults: PbAssertionResult[] = [];
+  export let activeTab: ResponseTab = 'body';
 
-  let activeTab: 'body' | 'headers' | 'request' | 'assertions' = 'body';
+  const dispatch = createEventDispatcher<{ tabChange: ResponseTab }>();
+
+  function setTab(tab: ResponseTab) {
+    activeTab = tab;
+    dispatch('tabChange', tab);
+  }
 
   $: passedCount = assertionResults.filter(t => t.passed).length;
   $: failedCount = assertionResults.filter(t => !t.passed).length;
@@ -106,7 +114,7 @@
       <button
         class="tab"
         class:active={activeTab === 'body'}
-        on:click={() => activeTab = 'body'}
+        on:click={() => setTab('body')}
       >
         Body
         {#if isJson(response.body)}
@@ -116,7 +124,7 @@
       <button
         class="tab"
         class:active={activeTab === 'headers'}
-        on:click={() => activeTab = 'headers'}
+        on:click={() => setTab('headers')}
       >
         Headers
         <span class="tab-count">{Object.keys(response.headers).length}</span>
@@ -125,7 +133,7 @@
         <button
           class="tab"
           class:active={activeTab === 'request'}
-          on:click={() => activeTab = 'request'}
+          on:click={() => setTab('request')}
         >
           Request
         </button>
@@ -134,7 +142,7 @@
         <button
           class="tab"
           class:active={activeTab === 'assertions'}
-          on:click={() => activeTab = 'assertions'}
+          on:click={() => setTab('assertions')}
         >
           Assertions
           <span class="tab-count assertion-count" class:all-pass={failedCount === 0} class:has-fail={failedCount > 0}>

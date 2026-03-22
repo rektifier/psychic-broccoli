@@ -17,7 +17,7 @@
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
-    cacheCurrentTabResponse,
+    cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
@@ -28,6 +28,7 @@
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
+  import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
 
   import { open } from '@tauri-apps/plugin-dialog';
@@ -38,8 +39,6 @@
 
   let showEnvEditor = false;
 
-  /** The raw request that was actually sent (resolved URLs, headers, body). */
-  let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
   let showHelp = false;
 
   // ─── Import Environment Modal ───
@@ -168,9 +167,41 @@
     if (lastEnv !== null) {
       namedResults.set({});
       currentResponse.set(null);
-      sentRequest = null;
+      currentSentRequest.set(null);
     }
     lastEnv = $activeEnvironment;
+  }
+
+  // Active tab's section tab (Body/Assertions) for pinned tabs
+  $: activeBottomTab = (() => {
+    const key = $tabs.length > 0 && $selectedLocation
+      ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
+      : null;
+    if (!key) return 'body' as BottomTab;
+    const tab = $tabs.find(t => `${t.location.filePath}::${t.location.requestIndex}` === key);
+    return tab?.bottomTab ?? 'body' as BottomTab;
+  })();
+
+  function handleBottomTabChange(e: CustomEvent<BottomTab>) {
+    if ($selectedLocation) {
+      setTabBottomTab($selectedLocation, e.detail);
+    }
+  }
+
+  // Active response tab (Body/Headers/Request/Assertions) for pinned tabs
+  $: activeResponseTab = (() => {
+    const key = $tabs.length > 0 && $selectedLocation
+      ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
+      : null;
+    if (!key) return 'body' as ResponseTab;
+    const tab = $tabs.find(t => `${t.location.filePath}::${t.location.requestIndex}` === key);
+    return tab?.responseTab ?? 'body' as ResponseTab;
+  })();
+
+  function handleResponseTabChange(e: CustomEvent<ResponseTab>) {
+    if ($selectedLocation) {
+      setTabResponseTab($selectedLocation, e.detail);
+    }
   }
 
   // Reactive resolved URL - all store dependencies are explicit so Svelte tracks them
@@ -202,7 +233,7 @@
       currentResponse.set(null);
       namedResults.set({});
       tabs.set([]);
-      sentRequest = null;
+      currentSentRequest.set(null);
 
       // Reset environment state before loading new env files
       envFile.set(null);
@@ -385,7 +416,7 @@
     isLoading.set(true);
     currentResponse.set(null);
     pbAssertionResults.set([]);
-    sentRequest = null;
+    currentSentRequest.set(null);
 
     const ctx = getSubstitutionContext();
     const startTime = performance.now();
@@ -400,7 +431,7 @@
         }
       }
 
-      sentRequest = { method: request.method, url, headers, body };
+      currentSentRequest.set({ method: request.method, url, headers, body });
 
       const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
         await invoke('http_request', {
@@ -479,7 +510,7 @@
       });
     } finally {
       isLoading.set(false);
-      cacheCurrentTabResponse(sentRequest);
+      cacheCurrentTabResponse($currentSentRequest);
     }
   }
 
@@ -678,16 +709,18 @@
               fileVariables={$activeFileVariables}
               envVariables={$resolvedEnvVars}
               namedResults={$namedResults}
+              bottomTab={activeBottomTab}
               on:update={handleUpdateRequest}
               on:send={(e) => sendRequest(e.detail)}
               on:save={saveActiveFile}
               on:runAll={handleRunAll}
+              on:bottomTabChange={handleBottomTabChange}
             />
           </div>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
-            <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} assertionResults={$pbAssertionResults} />
+            <ResponseViewer response={$currentResponse} loading={$isLoading} sentRequest={$currentSentRequest} assertionResults={$pbAssertionResults} activeTab={activeResponseTab} on:tabChange={handleResponseTabChange} />
           </div>
         {:else}
           <div class="no-selection">
