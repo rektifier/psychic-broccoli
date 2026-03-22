@@ -13,7 +13,7 @@
     activeFile, activeRequest, activeFileVariables,
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
     resolvedEnvVars, namedResults, dotenvVariables,
-    pbTestResults, pbGlobals,
+    pbAssertionResults, pbGlobals,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
@@ -26,7 +26,7 @@
   } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
-  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbTestResult } from './lib/types';
+  import type { HttpRequest, HttpResponse, SubstitutionContext, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { DiscoveredFile } from './lib/parser';
 
   import { open } from '@tauri-apps/plugin-dialog';
@@ -383,7 +383,7 @@
   async function sendRequest(request: HttpRequest) {
     isLoading.set(true);
     currentResponse.set(null);
-    pbTestResults.set([]);
+    pbAssertionResults.set([]);
     sentRequest = null;
 
     const ctx = getSubstitutionContext();
@@ -445,7 +445,7 @@
           $namedResults,
         );
 
-        pbTestResults.set(pbResult.testResults);
+        pbAssertionResults.set(pbResult.assertionResults);
 
         // Apply set vars as named results so {{key}} resolves in later requests
         if (Object.keys(pbResult.setVars).length > 0) {
@@ -684,7 +684,7 @@
           </div>
           <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
-            <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} testResults={$pbTestResults} />
+            <ResponseViewer response={$currentResponse} loading={$isLoading} {sentRequest} assertionResults={$pbAssertionResults} />
           </div>
         {:else}
           <div class="no-selection">

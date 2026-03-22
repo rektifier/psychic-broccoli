@@ -1,7 +1,7 @@
 import type {
   HttpRequest, HttpMethod, HttpHeader, Variable,
   EnvironmentFile, EnvironmentVariables, ProviderVariable,
-  NamedRequestResult, PbDirective, PbTestResult,
+  NamedRequestResult, PbDirective, PbAssertionResult,
   HttpResponse,
   TreeNode, FileNode, FolderNode,
 } from './types';
@@ -37,7 +37,7 @@ const COMMENT_RE = /^(#(?!##)|\/\/)/;
 /** Request variable name: # @name foo  or  // @name foo */
 const NAME_DIRECTIVE_RE = /^(?:#|\/\/)\s*@name\s+(\S+)\s*$/;
 
-/** Pb directive: # @pb.set("key", expr) or # @pb.global("key", expr) or # @pb.test(expr, "label") */
+/** Pb directive: # @pb.set("key", expr) or # @pb.global("key", expr) or # @pb.assert(expr, "label") */
 const PB_DIRECTIVE_RE = /^(?:#|\/\/)\s*@pb\.(\w+)\((.+)\)\s*$/;
 
 /** Dynamic variable: {{$something ...}} */
@@ -141,7 +141,7 @@ export function parseHttpFile(content: string): ParseResult {
       continue;
     }
 
-    // ── Pb directives: # @pb.set(...), # @pb.test(...), # @pb.global(...) ──
+    // ── Pb directives: # @pb.set(...), # @pb.assert(...), # @pb.global(...) ──
     const pbMatch = line.match(PB_DIRECTIVE_RE);
     if (pbMatch) {
       const directive = parsePbDirective(pbMatch[1], pbMatch[2]);
@@ -275,8 +275,8 @@ export function serializeHttpFile(requests: HttpRequest[], variables: Variable[]
           case 'global':
             parts.push(`# @pb.global("${d.key}", ${d.expr})`);
             break;
-          case 'test':
-            parts.push(`# @pb.test(${d.expr}, "${d.label}")`);
+          case 'assert':
+            parts.push(`# @pb.assert(${d.expr}, "${d.label}")`);
             break;
         }
       }
@@ -624,13 +624,13 @@ function parsePbDirective(action: string, argsRaw: string): PbDirective | null {
     return { type: action, key: m[2], expr: m[3].trim() };
   }
 
-  if (action === 'test') {
-    // pb.test(expr, "label")
+  if (action === 'assert') {
+    // pb.assert(expr, "label")
     // Find the last quoted string as the label
     const labelMatch = args.match(/,\s*(["'])(.+?)\1\s*$/);
     if (!labelMatch) return null;
     const expr = args.slice(0, args.lastIndexOf(labelMatch[0])).trim();
-    return { type: 'test', expr, label: labelMatch[2] };
+    return { type: 'assert', expr, label: labelMatch[2] };
   }
 
   return null;
@@ -783,7 +783,7 @@ function resolvePbResponsePath(path: string, response: HttpResponse): unknown {
 // ─── Pb Directive Executor ──────────────────────────────────────────────────
 
 export interface PbExecutionResult {
-  testResults: PbTestResult[];
+  assertionResults: PbAssertionResult[];
   setVars: Record<string, string>;
   globalVars: Record<string, string>;
 }
@@ -799,7 +799,7 @@ export function executePbDirectives(
   namedResults: Record<string, NamedRequestResult> = {},
 ): PbExecutionResult {
   const ctx: PbEvalContext = { response, request, variables, namedResults };
-  const result: PbExecutionResult = { testResults: [], setVars: {}, globalVars: {} };
+  const result: PbExecutionResult = { assertionResults: [], setVars: {}, globalVars: {} };
 
   for (const d of directives) {
     switch (d.type) {
@@ -818,7 +818,7 @@ export function executePbDirectives(
         ctx.variables[d.key] = strValue;
         break;
       }
-      case 'test': {
+      case 'assert': {
         const value = evaluatePbExpression(d.expr, ctx);
         let label = d.label;
         // Resolve {{pb.response.*}} and {{pb.request.*}} in labels
@@ -830,7 +830,7 @@ export function executePbDirectives(
           return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
         });
         label = label.replace(/\{\{(.+?)\}\}/g, (_, name) => ctx.variables[name] ?? `{{${name}}}`);
-        result.testResults.push({ label, passed: !!value });
+        result.assertionResults.push({ label, passed: !!value });
         break;
       }
     }

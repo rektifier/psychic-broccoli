@@ -78,14 +78,14 @@ Authorization: Bearer &#123;&#123;login.response.body.$.token&#125;&#125;</pre>
       </div>
 
       <div class="section">
-        <div class="section-title">Tests</div>
-        <p>Add assertions in the <strong>Tests</strong> tab. One test per line, with expression and label separated by <code> | </code>.</p>
+        <div class="section-title">Assertions</div>
+        <p>Add assertions in the <strong>Assertions</strong> tab. One assertion per line, with expression and label separated by <code> | </code>.</p>
         <pre class="code-block">expression | Label text
 expression without a label</pre>
       </div>
 
       <div class="section">
-        <div class="section-title">Test - Data access</div>
+        <div class="section-title">Assertion - Data access</div>
         <pre class="code-block">pb.response.status             HTTP status code
 pb.response.statusText         Status text ("OK")
 pb.response.body               Raw response body
@@ -102,7 +102,7 @@ pb.request.headers.Name        Request header
       </div>
 
       <div class="section">
-        <div class="section-title">Test - Operators</div>
+        <div class="section-title">Assertion - Operators</div>
         <pre class="code-block"><strong>Comparison</strong>
 pb.response.status == 200           | Equals
 pb.response.status != 404           | Not equals
@@ -131,7 +131,7 @@ pb.response.status == 200 || pb.response.status == 201
       </div>
 
       <div class="section">
-        <div class="section-title">Test - Examples</div>
+        <div class="section-title">Assertion - Examples</div>
         <pre class="code-block">pb.response.status == 200 | OK
 pb.response.body.$.items.length > 0 | Has items
 pb.response.headers.Content-Type contains "json" | JSON response
@@ -142,11 +142,11 @@ pb.response.status == &#123;&#123;expectedStatus&#125;&#125; | Variable comparis
       </div>
 
       <div class="section">
-        <div class="section-title">Test - Set &amp; Global directives</div>
+        <div class="section-title">Assertion - Set &amp; Global directives</div>
         <p>In <code>.http</code> files, you can also store values for use in later requests:</p>
         <pre class="code-block"># @pb.set("token", pb.response.body.$.token)
 # @pb.global("sessionId", pb.response.body.$.id)
-# @pb.test(pb.response.status == 200, "OK")</pre>
+# @pb.assert(pb.response.status == 200, "OK")</pre>
         <p><code>set</code> stores a file-level variable. <code>global</code> persists across files.</p>
       </div>
 
