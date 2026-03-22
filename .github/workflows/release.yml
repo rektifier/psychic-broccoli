@@ -85,7 +85,7 @@ jobs:
           perl -i -pe "s/^(version\s*=\s*)\"[^\"]*\"/\$1\"$VERSION\"/" src-tauri/Cargo.toml
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 9
 
