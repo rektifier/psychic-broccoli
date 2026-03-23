@@ -5,6 +5,7 @@
   export let node: TNode;
   export let selected: RequestLocation | null = null;
   export let depth: number = 0;
+  export let displayMode: 'name' | 'url' = 'name';
 
   const dispatch = createEventDispatcher();
 
@@ -16,6 +17,26 @@
 
   let fileExpanded = false;
   let namingIndex: number = -1;
+
+  /** Compute unique URL suffixes for requests in a file node */
+  function computeUrlSuffixes(requests: { url: string }[]): string[] {
+    if (requests.length === 0) return [];
+    if (requests.length === 1) return [requests[0].url];
+    const split = requests.map(r => r.url.split('/'));
+    const minLen = Math.min(...split.map(s => s.length));
+    let common = 0;
+    for (let i = 0; i < minLen; i++) {
+      if (split.every(s => s[i] === split[0][i])) common = i + 1;
+      else break;
+    }
+    if (common === 0) return requests.map(r => r.url);
+    return split.map(s => {
+      const unique = s.slice(common);
+      return '/' + unique.join('/');
+    });
+  }
+
+  $: urlSuffixes = node.type === 'file' ? computeUrlSuffixes(node.requests) : [];
   let namingValue: string = '';
   let confirmDeleteIndex: number = -1;
 
@@ -76,6 +97,7 @@
           node={child}
           {selected}
           depth={depth + 1}
+          {displayMode}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -151,7 +173,7 @@
             <span class="method-badge" style="color: {MC[req.method] || '#888'}">
               {req.method.slice(0, 3)}
             </span>
-            <span class="req-name">{req.name}</span>
+            <span class="req-name" title={displayMode === 'url' ? req.name : req.url}>{displayMode === 'url' ? urlSuffixes[i] : req.name}</span>
             {#if req.varName}
               <span class="varname-tag">{req.varName}</span>
             {/if}
