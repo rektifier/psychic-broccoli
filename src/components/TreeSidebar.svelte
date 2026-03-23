@@ -13,6 +13,7 @@
 
   const dispatch = createEventDispatcher();
 
+  let displayMode: 'name' | 'url' = 'name';
   let showAddEnv = false;
   let showImportMenu = false;
   let newEnvName = '';
@@ -129,6 +130,24 @@
   </div>
 
   <!-- Tree -->
+  <div class="tree-toolbar">
+    <button
+      class="btn-display-mode"
+      on:click={() => displayMode = displayMode === 'name' ? 'url' : 'name'}
+      title={displayMode === 'name' ? 'Show URL paths' : 'Show request names'}
+    >
+      {#if displayMode === 'name'}
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      {:else}
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <path d="M5 3l6 0M3 7h10M7 11h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M1.5 3h1M1.5 7h1M1.5 11h1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      {/if}
+    </button>
+  </div>
   <div class="tree-scroll">
     {#if tree.length === 0}
       <div class="empty-tree">
@@ -142,6 +161,7 @@
           {node}
           {selected}
           depth={0}
+          {displayMode}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -348,6 +368,30 @@
   }
 
   /* Tree */
+  .tree-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 12px 0;
+    flex-shrink: 0;
+  }
+  .btn-display-mode {
+    width: 24px; height: 24px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: all 0.15s;
+  }
+  .btn-display-mode:hover {
+    border-color: #D4D4D8;
+    color: #666;
+    background: #F0F0F4;
+  }
   .tree-scroll { flex: 1; overflow-y: auto; padding: 4px 0; }
 
   .empty-tree {
