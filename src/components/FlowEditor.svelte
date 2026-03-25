@@ -1,13 +1,16 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import FlowStepPicker from './FlowStepPicker.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunStatus, TreeNode as TNode } from '../lib/types';
+  import FlowResults from './FlowResults.svelte';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, TreeNode as TNode } from '../lib/types';
 
   export let flow: FlowDefinition;
   export let flowPath: string;
   export let tree: TNode[] = [];
   export let rootPath: string = '';
   export let runState: { status: FlowRunStatus; stepResults: FlowStepResult[] } | null = null;
+  export let lastRunRecord: FlowRunRecord | null = null;
+  export let runHistory: FlowRunRecord[] = [];
 
   const dispatch = createEventDispatcher<{
     save: { flowPath: string; flow: FlowDefinition };
@@ -207,6 +210,18 @@
       </div>
     {/if}
   </div>
+
+  <!-- Results -->
+  {#if runState || lastRunRecord}
+    <div class="flow-results-section">
+      <span class="results-section-title">Results</span>
+      <FlowResults
+        runRecord={lastRunRecord}
+        history={runHistory}
+        flowFilePath={flowPath}
+      />
+    </div>
+  {/if}
 </div>
 
 {#if showPicker}
@@ -549,5 +564,19 @@
   .step-duration {
     font-size: 10px;
     color: #AAA;
+  }
+
+  /* Results section */
+  .flow-results-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid #EDEDF0;
+    padding-top: 20px;
+  }
+  .results-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #333340;
   }
 </style>

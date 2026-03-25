@@ -691,6 +691,7 @@
   }
 
   let flowAbortController: AbortController | null = null;
+  let lastFlowRunRecord: FlowRunRecord | null = null;
 
   async function handleRunFlow() {
     const flow = $activeFlow;
@@ -732,6 +733,7 @@
     );
 
     record.flowFilePath = flowPathVal;
+    lastFlowRunRecord = record;
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
 
     // Persist and update history
@@ -871,6 +873,8 @@
             tree={$workspace.tree}
             rootPath={$workspace.rootPath ?? ''}
             runState={$flowRunState}
+            lastRunRecord={lastFlowRunRecord}
+            runHistory={$flowRunHistory}
             on:save={handleSaveFlow}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
