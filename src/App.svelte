@@ -18,6 +18,7 @@
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
+    flows, flowRunHistory, flowTabs, activeFlowTabPath,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
@@ -30,6 +31,7 @@
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
+  import { scanForFlowFiles, loadFlowHistory } from './lib/flowIO';
 
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
@@ -242,6 +244,25 @@
 
       // Auto-discover env files from workspace root
       await tryLoadEnvFiles(rootPath as string);
+
+      // Discover test flows and load run history
+      try {
+        const discoveredFlows = await scanForFlowFiles(rootPath as string, rootPath as string);
+        const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
+        for (const df of discoveredFlows) {
+          flowMap[df.relativePath] = df.flow;
+        }
+        flows.set(flowMap);
+      } catch { /* no flows yet */ }
+
+      try {
+        const history = await loadFlowHistory(rootPath as string);
+        flowRunHistory.set(history);
+      } catch { /* no history yet */ }
+
+      // Reset flow tabs
+      flowTabs.set([]);
+      activeFlowTabPath.set(null);
     } catch (e: any) {
       addToast(`Failed to open folder: ${e.message || e}`, 'error');
     }
