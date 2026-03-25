@@ -14,6 +14,7 @@
   const dispatch = createEventDispatcher();
 
   let displayMode: 'name' | 'url' = 'name';
+  let sortByUrl = false;
   let showAddEnv = false;
   let showImportMenu = false;
   let newEnvName = '';
@@ -133,6 +134,18 @@
   <div class="tree-toolbar">
     <button
       class="btn-display-mode"
+      class:active={sortByUrl}
+      on:click={() => sortByUrl = !sortByUrl}
+      title={sortByUrl ? 'Show original order' : 'Sort by URL'}
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+        <text x="0" y="7" font-size="6" font-weight="700" fill="currentColor" font-family="system-ui">A</text>
+        <text x="0" y="14" font-size="6" font-weight="700" fill="currentColor" font-family="system-ui">Z</text>
+        <path d="M10 3v10M8 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button
+      class="btn-display-mode"
       on:click={() => displayMode = displayMode === 'name' ? 'url' : 'name'}
       title={displayMode === 'name' ? 'Show URL paths' : 'Show request names'}
     >
@@ -162,6 +175,7 @@
           {selected}
           depth={0}
           {displayMode}
+          {sortByUrl}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -391,6 +405,11 @@
     border-color: #D4D4D8;
     color: #666;
     background: #F0F0F4;
+  }
+  .btn-display-mode.active {
+    border-color: #D4900A;
+    color: #D4900A;
+    background: #D4900A10;
   }
   .tree-scroll { flex: 1; overflow-y: auto; padding: 4px 0; }
 
