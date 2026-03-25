@@ -1,16 +1,25 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import FlowStepPicker from './FlowStepPicker.svelte';
-  import type { FlowDefinition, FlowStep, TreeNode as TNode } from '../lib/types';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunStatus, TreeNode as TNode } from '../lib/types';
 
   export let flow: FlowDefinition;
   export let flowPath: string;
   export let tree: TNode[] = [];
   export let rootPath: string = '';
+  export let runState: { status: FlowRunStatus; stepResults: FlowStepResult[] } | null = null;
 
   const dispatch = createEventDispatcher<{
     save: { flowPath: string; flow: FlowDefinition };
+    run: void;
+    abort: void;
   }>();
+
+  $: isRunning = runState?.status === 'running';
+
+  function getStepStatus(stepId: string): FlowStepResult | undefined {
+    return runState?.stepResults.find(r => r.stepId === stepId);
+  }
 
   let editingName = false;
   let nameInputEl: HTMLInputElement;
@@ -118,6 +127,13 @@
       <span class="steps-title">Steps</span>
       <span class="steps-count">{flow.steps.length}</span>
       <button class="btn-add-step" on:click={() => showPicker = true}>+ Add step</button>
+      {#if flow.steps.length > 0}
+        {#if isRunning}
+          <button class="btn-run-flow stopping" on:click={() => dispatch('abort')}>Stop</button>
+        {:else}
+          <button class="btn-run-flow" on:click={() => dispatch('run')}>Run flow</button>
+        {/if}
+      {/if}
     </div>
 
     {#if flow.steps.length === 0}
@@ -128,7 +144,8 @@
     {:else}
       <div class="steps-list">
         {#each flow.steps as step, i}
-          <div class="step-card">
+          {@const sr = getStepStatus(step.id)}
+          <div class="step-card" class:step-passed={sr?.status === 'passed'} class:step-failed={sr?.status === 'failed'} class:step-running={sr?.status === 'running'} class:step-skipped={sr?.status === 'skipped'}>
             <div class="step-reorder">
               <button
                 class="btn-move"
@@ -165,6 +182,25 @@
             >
               {step.continueOnFailure ? 'skip' : 'stop'}
             </button>
+            {#if sr}
+              <span class="step-status-info">
+                {#if sr.status === 'running'}
+                  <span class="step-status-icon running">...</span>
+                {:else if sr.status === 'passed'}
+                  <span class="step-status-icon passed">&#10003;</span>
+                {:else if sr.status === 'failed'}
+                  <span class="step-status-icon failed">&#10005;</span>
+                {:else if sr.status === 'skipped'}
+                  <span class="step-status-icon skipped">-</span>
+                {/if}
+                {#if sr.response}
+                  <span class="step-http-status" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
+                {/if}
+                {#if sr.durationMs > 0}
+                  <span class="step-duration">{sr.durationMs}ms</span>
+                {/if}
+              </span>
+            {/if}
             <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step">&times;</button>
           </div>
         {/each}
@@ -446,5 +482,72 @@
   .btn-remove-step:hover {
     background: #CC445518;
     color: #CC4455;
+  }
+
+  /* Run button */
+  .btn-run-flow {
+    padding: 4px 14px;
+    border: 1px solid #3D8B4540;
+    border-radius: 5px;
+    background: #3D8B4510;
+    color: #3D8B45;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-run-flow:hover {
+    border-color: #3D8B45;
+    background: #3D8B4520;
+  }
+  .btn-run-flow.stopping {
+    border-color: #CC445540;
+    background: #CC445510;
+    color: #CC4455;
+  }
+  .btn-run-flow.stopping:hover {
+    border-color: #CC4455;
+    background: #CC445520;
+  }
+
+  /* Step status */
+  .step-card.step-passed { border-color: #3D8B4540; }
+  .step-card.step-failed { border-color: #CC445540; }
+  .step-card.step-running { border-color: #D4900A60; }
+  .step-card.step-skipped { opacity: 0.5; }
+
+  .step-status-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .step-status-icon {
+    font-size: 11px;
+    font-weight: 700;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .step-status-icon.passed { color: #3D8B45; background: #3D8B4515; }
+  .step-status-icon.failed { color: #CC4455; background: #CC445515; }
+  .step-status-icon.running { color: #D4900A; background: #D4900A15; }
+  .step-status-icon.skipped { color: #999; background: #F0F0F4; }
+  .step-http-status {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  .step-http-status.ok { color: #3D8B45; background: #3D8B4510; }
+  .step-http-status.err { color: #CC4455; background: #CC445510; }
+  .step-duration {
+    font-size: 10px;
+    color: #AAA;
   }
 </style>

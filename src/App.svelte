@@ -19,7 +19,7 @@
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
-    flows, flowRunHistory, flowTabs, activeFlowTabPath,
+    flows, flowRunHistory, flowRunState, flowTabs, activeFlowTabPath,
     openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
   } from './lib/stores';
   import {
@@ -33,7 +33,9 @@
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
-  import { scanForFlowFiles, loadFlowHistory } from './lib/flowIO';
+  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord } from './lib/flowIO';
+  import { runFlow } from './lib/flowRunner';
+  import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
@@ -688,6 +690,63 @@
     openFlowTab(relativePath, flow.name);
   }
 
+  let flowAbortController: AbortController | null = null;
+
+  async function handleRunFlow() {
+    const flow = $activeFlow;
+    const flowPathVal = $activeFlowTabPath;
+    const rootPath = $workspace.rootPath;
+    if (!flow || !flowPathVal || !rootPath) return;
+
+    // Abort any previous run
+    flowAbortController?.abort();
+    flowAbortController = new AbortController();
+
+    flowRunState.set({ status: 'running', stepResults: [] });
+
+    const record = await runFlow(
+      flow,
+      rootPath,
+      $workspace.tree,
+      $resolvedEnvVars,
+      $dotenvVariables,
+      $activeEnvironment,
+      {
+        onStepStart(stepId: string) {
+          flowRunState.update(s => s ? {
+            ...s,
+            stepResults: [...s.stepResults, {
+              stepId, status: 'running', response: null, sentRequest: null,
+              assertionResults: [], durationMs: 0, error: null,
+            }],
+          } : s);
+        },
+        onStepComplete(stepId: string, result: FlowStepResult) {
+          flowRunState.update(s => s ? {
+            ...s,
+            stepResults: s.stepResults.map(r => r.stepId === stepId ? result : r),
+          } : s);
+        },
+      },
+      flowAbortController.signal,
+    );
+
+    record.flowFilePath = flowPathVal;
+    flowRunState.set({ status: record.status, stepResults: record.stepResults });
+
+    // Persist and update history
+    try {
+      await saveFlowRunRecord(rootPath, record);
+      flowRunHistory.update(h => [record, ...h]);
+    } catch { /* save failed silently */ }
+
+    flowAbortController = null;
+  }
+
+  function handleAbortFlow() {
+    flowAbortController?.abort();
+  }
+
   async function handleSaveFlow(e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>) {
     const { flowPath, flow } = e.detail;
     const rootPath = $workspace.rootPath;
@@ -811,7 +870,10 @@
             flowPath={$activeFlowTabPath}
             tree={$workspace.tree}
             rootPath={$workspace.rootPath ?? ''}
+            runState={$flowRunState}
             on:save={handleSaveFlow}
+            on:run={handleRunFlow}
+            on:abort={handleAbortFlow}
           />
         {:else if $activeRequest && $selectedLocation}
           <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
