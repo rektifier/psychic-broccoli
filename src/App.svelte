@@ -809,6 +809,8 @@
           <FlowEditor
             flow={$activeFlow}
             flowPath={$activeFlowTabPath}
+            tree={$workspace.tree}
+            rootPath={$workspace.rootPath ?? ''}
             on:save={handleSaveFlow}
           />
         {:else if $activeRequest && $selectedLocation}
