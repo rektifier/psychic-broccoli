@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import TreeNode from './TreeNode.svelte';
-  import type { TreeNode as TNode, RequestLocation } from '../lib/types';
+  import type { TreeNode as TNode, RequestLocation, FlowDefinition } from '../lib/types';
 
   export let tree: TNode[] = [];
   export let selected: RequestLocation | null = null;
@@ -11,9 +11,18 @@
   export let environments: string[] = [];
   export let activeEnv: string | null = null;
 
+  // Flow props
+  export let flows: Record<string, FlowDefinition> = {};
+  export let activeFlowPath: string | null = null;
+
   const dispatch = createEventDispatcher();
 
   let displayMode: 'name' | 'url' = 'name';
+  let flowsExpanded = true;
+  let showNewFlow = false;
+  let newFlowName = '';
+  let newFlowInputEl: HTMLInputElement;
+  let confirmDeleteFlow: string | null = null;
   let showAddEnv = false;
   let showImportMenu = false;
   let newEnvName = '';
@@ -45,6 +54,22 @@
   }
 
   $: if (showAddEnv && inputEl) inputEl.focus();
+  $: if (showNewFlow && newFlowInputEl) newFlowInputEl.focus();
+
+  $: flowEntries = Object.entries(flows).sort(([, a], [, b]) => a.name.localeCompare(b.name));
+
+  function addFlow() {
+    const name = newFlowName.trim();
+    if (!name) return;
+    dispatch('createFlow', name);
+    newFlowName = '';
+    showNewFlow = false;
+  }
+
+  function handleFlowKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') addFlow();
+    if (e.key === 'Escape') showNewFlow = false;
+  }
 </script>
 
 <svelte:window on:click={handleWindowClick} />
@@ -128,6 +153,79 @@
       </div>
     {/if}
   </div>
+
+  <!-- Test Flows -->
+  {#if tree.length > 0}
+    <div class="section flow-section">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="flow-header" on:click={() => flowsExpanded = !flowsExpanded} on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flowsExpanded = !flowsExpanded; } }}>
+        <span class="chevron" class:open={flowsExpanded}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <svg class="flow-icon" width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.1"/>
+          <path d="M6 4.5h4M11.5 6v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <span class="flow-label">Test Flows</span>
+        <span class="flow-count">{flowEntries.length}</span>
+        <button
+          class="btn-new-flow"
+          on:click|stopPropagation={() => { showNewFlow = !showNewFlow; }}
+          title="New test flow"
+        >+</button>
+      </div>
+
+      {#if flowsExpanded}
+        {#if showNewFlow}
+          <div class="new-flow-form">
+            <input
+              bind:this={newFlowInputEl}
+              bind:value={newFlowName}
+              on:keydown={handleFlowKeydown}
+              placeholder="Flow name..."
+              class="new-flow-input"
+            />
+            <button class="btn-confirm-flow" on:click={addFlow}>Add</button>
+          </div>
+        {/if}
+
+        {#each flowEntries as [path, flow]}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="flow-item"
+            class:active={activeFlowPath === path}
+            on:click={() => dispatch('openFlow', path)}
+            on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('openFlow', path); } }}
+            role="button"
+            tabindex="0"
+            title={flow.description || flow.name}
+          >
+            <span class="flow-item-name">{flow.name}</span>
+            <span class="flow-item-steps">{flow.steps.length}</span>
+            {#if confirmDeleteFlow === path}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span class="flow-confirm-delete" on:click|stopPropagation on:keydown|stopPropagation>
+                <button class="flow-del-yes" on:click|stopPropagation={() => { dispatch('deleteFlow', path); confirmDeleteFlow = null; }}>Del</button>
+                <button class="flow-del-no" on:click|stopPropagation={() => confirmDeleteFlow = null}>No</button>
+              </span>
+            {:else}
+              <button
+                class="btn-del-flow"
+                on:click|stopPropagation={() => confirmDeleteFlow = path}
+                title="Delete flow"
+              >&times;</button>
+            {/if}
+          </div>
+        {/each}
+
+        {#if flowEntries.length === 0 && !showNewFlow}
+          <span class="flow-empty">No flows yet</span>
+        {/if}
+      {/if}
+    </div>
+  {/if}
 
   <!-- Tree -->
   <div class="tree-toolbar">
@@ -365,6 +463,211 @@
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
+  }
+
+  /* Test Flows */
+  .flow-section {
+    padding: 0;
+    border-bottom: 1px solid #DCDCE2;
+  }
+  .flow-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px 12px;
+    border: none;
+    background: transparent;
+    color: #555;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+  }
+  .flow-header:hover {
+    background: #F0F0F4;
+  }
+  .chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: #999;
+    transition: transform 0.15s;
+    transform: rotate(0deg);
+  }
+  .chevron.open {
+    transform: rotate(90deg);
+  }
+  .flow-icon {
+    color: #8040A8;
+    flex-shrink: 0;
+  }
+  .flow-label {
+    flex: 1;
+    min-width: 0;
+  }
+  .flow-count {
+    font-size: 10px;
+    color: #999;
+    font-weight: 400;
+    flex-shrink: 0;
+  }
+  .btn-new-flow {
+    width: 20px; height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #999;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.1s;
+  }
+  .btn-new-flow:hover {
+    background: #8040A818;
+    color: #8040A8;
+  }
+  .new-flow-form {
+    display: flex;
+    gap: 4px;
+    padding: 4px 12px 6px 32px;
+  }
+  .new-flow-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #D4D4D8;
+    border-radius: 4px;
+    background: #FFFFFF;
+    color: #333340;
+    font-family: inherit;
+    font-size: 11px;
+    outline: none;
+    min-width: 0;
+  }
+  .new-flow-input:focus {
+    border-color: #8040A8;
+  }
+  .btn-confirm-flow {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    background: #8040A818;
+    color: #8040A8;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .flow-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 5px 12px 5px 32px;
+    border: none;
+    background: transparent;
+    color: #666;
+    font-family: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s;
+    position: relative;
+  }
+  .flow-item:hover {
+    background: #E4E4EA;
+    color: #333;
+  }
+  .flow-item.active {
+    background: #E8E0F0;
+    color: #1A1A2E;
+  }
+  .flow-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 2px;
+    background: #8040A8;
+    border-radius: 0 2px 2px 0;
+  }
+  .flow-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .flow-item-steps {
+    font-size: 10px;
+    color: #999;
+    background: #F0F0F4;
+    padding: 1px 5px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .btn-del-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #999;
+    font-size: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+    visibility: hidden;
+  }
+  .flow-item:hover .btn-del-flow {
+    visibility: visible;
+  }
+  .btn-del-flow:hover {
+    background: #CC445518;
+    color: #CC4455;
+  }
+  .flow-confirm-delete {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .flow-del-yes {
+    padding: 1px 5px;
+    border: none;
+    border-radius: 3px;
+    background: #CC4455;
+    color: #FFFFFF;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .flow-del-no {
+    padding: 1px 5px;
+    border: 1px solid #DCDCE2;
+    border-radius: 3px;
+    background: transparent;
+    color: #777;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .flow-empty {
+    display: block;
+    padding: 4px 12px 8px 32px;
+    font-size: 11px;
+    color: #AAA;
   }
 
   /* Tree */

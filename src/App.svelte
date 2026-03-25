@@ -19,6 +19,7 @@
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
     flows, flowRunHistory, flowTabs, activeFlowTabPath,
+    openFlowTab, closeFlowTab,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
@@ -654,6 +655,54 @@
     }
     updateRequestInTree(filePath, requestIndex, { ...req, varName: varName || null });
   }
+
+  // ─── Flow Handlers ───
+
+  function handleOpenFlow(e: CustomEvent<string>) {
+    const path = e.detail;
+    const flow = $flows[path];
+    if (!flow) return;
+    openFlowTab(path, flow.name);
+  }
+
+  async function handleCreateFlow(e: CustomEvent<string>) {
+    const name = e.detail;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const { createEmptyFlow, writeFlowFile } = await import('./lib/flowIO');
+    const flow = createEmptyFlow(name);
+    const safeName = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
+    const absolutePath = await join(rootPath, `${safeName}.pb-flow.json`);
+    const relativePath = `${safeName}.pb-flow.json`;
+
+    await writeFlowFile(absolutePath, flow);
+    flows.update(f => ({ ...f, [relativePath]: flow }));
+    openFlowTab(relativePath, flow.name);
+  }
+
+  async function handleDeleteFlow(e: CustomEvent<string>) {
+    const path = e.detail;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    try {
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      const segments = path.split('/');
+      let absolutePath = rootPath;
+      for (const seg of segments) {
+        absolutePath = await join(absolutePath, seg);
+      }
+      await remove(absolutePath);
+    } catch { /* file may already be gone */ }
+
+    flows.update(f => {
+      const updated = { ...f };
+      delete updated[path];
+      return updated;
+    });
+    closeFlowTab(path);
+  }
 </script>
 
 <ToastContainer />
@@ -680,6 +729,8 @@
         rootName={$workspace.rootName}
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
+        flows={$flows}
+        activeFlowPath={$activeFlowTabPath}
         on:openFolder={openFolder}
         on:importPostman={importPostman}
         on:importInsomnia={importInsomnia}
@@ -692,6 +743,9 @@
         on:addEnv={handleAddEnv}
         on:editEnv={() => showEnvEditor = true}
         on:nameRequest={handleNameRequest}
+        on:openFlow={handleOpenFlow}
+        on:createFlow={handleCreateFlow}
+        on:deleteFlow={handleDeleteFlow}
       />
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
