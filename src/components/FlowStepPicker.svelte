@@ -14,6 +14,7 @@
   $: files = getAllFileNodes(tree);
 
   let filter = '';
+  let displayMode: 'name' | 'url' = 'name';
 
   $: filteredFiles = filter.trim()
     ? files.filter(f =>
@@ -60,6 +61,22 @@
   <div class="picker-panel">
     <div class="picker-header">
       <span class="picker-title">Add step</span>
+      <button
+        class="picker-display-toggle"
+        on:click={() => displayMode = displayMode === 'name' ? 'url' : 'name'}
+        title={displayMode === 'name' ? 'Show URL paths' : 'Show request names'}
+      >
+        {#if displayMode === 'name'}
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        {:else}
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M5 3l6 0M3 7h10M7 11h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M1.5 3h1M1.5 7h1M1.5 11h1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        {/if}
+      </button>
       <button class="picker-close" on:click={() => dispatch('close')}>&times;</button>
     </div>
     <div class="picker-filter">
@@ -83,9 +100,9 @@
             <span class="picker-file-name">{file.name.replace(/\.(http|rest)$/, '')}</span>
           </div>
           {#each file.requests as req, i}
-            <button class="picker-request" on:click={() => pickRequest(file, i)}>
+            <button class="picker-request" on:click={() => pickRequest(file, i)} title={displayMode === 'name' ? req.url : req.name}>
               <span class="picker-method" style="color: {MC[req.method] || '#888'}">{req.method.slice(0, 3)}</span>
-              <span class="picker-url">{req.url || req.name}</span>
+              <span class="picker-url">{displayMode === 'url' ? req.url : req.name}</span>
               {#if req.varName}
                 <span class="picker-varname">{req.varName}</span>
               {/if}
@@ -131,6 +148,25 @@
     font-size: 14px;
     font-weight: 700;
     color: #1A1A2E;
+  }
+  .picker-display-toggle {
+    width: 28px; height: 28px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin-left: auto;
+    transition: all 0.15s;
+  }
+  .picker-display-toggle:hover {
+    border-color: #D4D4D8;
+    color: #666;
+    background: #F0F0F4;
   }
   .picker-close {
     width: 24px; height: 24px;
