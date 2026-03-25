@@ -6,6 +6,7 @@
   export let selected: RequestLocation | null = null;
   export let depth: number = 0;
   export let displayMode: 'name' | 'url' = 'name';
+  export let sortByUrl: boolean = false;
 
   const dispatch = createEventDispatcher();
 
@@ -37,6 +38,12 @@
   }
 
   $: urlSuffixes = node.type === 'file' ? computeUrlSuffixes(node.requests) : [];
+  $: sortedIndices = node.type === 'file'
+    ? (sortByUrl
+        ? [...Array(node.requests.length).keys()].sort((a, b) =>
+            node.requests[a].url.localeCompare(node.requests[b].url))
+        : [...Array(node.requests.length).keys()])
+    : [];
   let namingValue: string = '';
   let confirmDeleteIndex: number = -1;
 
@@ -98,6 +105,7 @@
           {selected}
           depth={depth + 1}
           {displayMode}
+          {sortByUrl}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -143,7 +151,8 @@
 
   {#if fileExpanded}
     <div class="children">
-      {#each node.requests as req, i}
+      {#each sortedIndices as i}
+        {@const req = node.requests[i]}
         {#if namingIndex === i}
           <div class="tree-row naming-row" style="padding-left: {28 + depth * 16}px">
             <span class="naming-label">@name</span>
