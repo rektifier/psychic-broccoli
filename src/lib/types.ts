@@ -166,3 +166,79 @@ export interface NamedRequestResult {
   };
   response: HttpResponse;
 }
+
+// ─── Test Flows ──────────────────────────────────────────────────────────────
+
+/** A single step in a test flow, referencing a request in a .http file. */
+export interface FlowStep {
+  /** Unique identifier for this step within the flow */
+  id: string;
+  /** Relative path from workspace root to the .http file (forward slashes) */
+  filePath: string;
+  /** Index of the request within that file */
+  requestIndex: number;
+  /** @name alias from the request, used as fallback when indices shift */
+  varName: string | null;
+  /** Cached display label (e.g. "POST /api/login") */
+  label: string;
+  /** If true, the runner continues to the next step even if this step fails */
+  continueOnFailure: boolean;
+}
+
+/** A test flow definition stored as a .pb-flow.json file. */
+export interface FlowDefinition {
+  version: number;
+  name: string;
+  description: string;
+  steps: FlowStep[];
+}
+
+/** Execution status of a single flow step. */
+export type FlowStepStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
+
+/** Result of executing a single flow step. */
+export interface FlowStepResult {
+  stepId: string;
+  status: FlowStepStatus;
+  /** HTTP response if the step was executed */
+  response: HttpResponse | null;
+  /** Resolved request that was actually sent */
+  sentRequest: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: string;
+  } | null;
+  /** Assertion results from pb directives */
+  assertionResults: PbAssertionResult[];
+  /** Duration in milliseconds */
+  durationMs: number;
+  /** Error message if the request failed at the network level */
+  error: string | null;
+}
+
+/** Overall status of a flow run. */
+export type FlowRunStatus = 'idle' | 'running' | 'completed' | 'aborted';
+
+/** A persisted record of a single flow run. */
+export interface FlowRunRecord {
+  /** Unique run identifier */
+  id: string;
+  flowName: string;
+  /** Relative path to the .pb-flow.json file */
+  flowFilePath: string;
+  /** Environment used for this run (null if none) */
+  environment: string | null;
+  /** ISO 8601 timestamp when the run started */
+  startedAt: string;
+  /** ISO 8601 timestamp when the run completed (null if still running) */
+  completedAt: string | null;
+  status: FlowRunStatus;
+  stepResults: FlowStepResult[];
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+}
