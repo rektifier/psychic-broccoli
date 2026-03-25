@@ -769,6 +769,25 @@
     ));
   }
 
+  async function handleDuplicateFlow(e: CustomEvent<string>) {
+    const sourcePath = e.detail;
+    const sourceFlow = $flows[sourcePath];
+    if (!sourceFlow) return;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const { writeFlowFile } = await import('./lib/flowIO');
+    const newName = `${sourceFlow.name} (copy)`;
+    const newFlow = { ...sourceFlow, name: newName, steps: sourceFlow.steps.map(s => ({ ...s, id: crypto.randomUUID() })) };
+    const safeName = newName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
+    const absolutePath = await join(rootPath, `${safeName}.pb-flow.json`);
+    const relativePath = `${safeName}.pb-flow.json`;
+
+    await writeFlowFile(absolutePath, newFlow);
+    flows.update(f => ({ ...f, [relativePath]: newFlow }));
+    openFlowTab(relativePath, newFlow.name);
+  }
+
   async function handleDeleteFlow(e: CustomEvent<string>) {
     const path = e.detail;
     const rootPath = $workspace.rootPath;
@@ -833,6 +852,7 @@
         on:nameRequest={handleNameRequest}
         on:openFlow={handleOpenFlow}
         on:createFlow={handleCreateFlow}
+        on:duplicateFlow={handleDuplicateFlow}
         on:deleteFlow={handleDeleteFlow}
       />
     </div>

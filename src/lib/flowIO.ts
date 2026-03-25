@@ -1,4 +1,4 @@
-import { readTextFile, writeTextFile, readDir, mkdir } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps/plugin-fs';
 import { join, basename } from '@tauri-apps/api/path';
 import type { FlowDefinition, FlowRunRecord, FlowStep } from './types';
 
@@ -113,6 +113,29 @@ export async function saveFlowRunRecord(rootDir: string, record: FlowRunRecord):
   const timestamp = record.startedAt.replace(/[:.]/g, '-');
   const filePath = await join(resultsDir, `${timestamp}.json`);
   await writeTextFile(filePath, JSON.stringify(record, null, 2));
+
+  // Prune old records beyond the limit
+  await pruneFlowHistory(resultsDir);
+}
+
+/** Delete the oldest run records if the count exceeds MAX_HISTORY_PER_FLOW. */
+async function pruneFlowHistory(resultsDir: string): Promise<void> {
+  try {
+    const files = await readDir(resultsDir) as any[];
+    const jsonFiles = files
+      .filter((f: any) => !f.isDirectory && f.name.endsWith('.json'))
+      .sort((a: any, b: any) => b.name.localeCompare(a.name));
+
+    if (jsonFiles.length <= MAX_HISTORY_PER_FLOW) return;
+
+    const toDelete = jsonFiles.slice(MAX_HISTORY_PER_FLOW);
+    for (const file of toDelete) {
+      try {
+        const filePath = await join(resultsDir, file.name);
+        await remove(filePath);
+      } catch { /* best effort */ }
+    }
+  } catch { /* best effort */ }
 }
 
 /** Load all flow run history from .pb-flow-results/. Returns records sorted newest first. */

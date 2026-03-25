@@ -2,7 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, TreeNode as TNode } from '../lib/types';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode } from '../lib/types';
+  import { getAllFileNodes } from '../lib/parser';
 
   export let flow: FlowDefinition;
   export let flowPath: string;
@@ -19,6 +20,25 @@
   }>();
 
   $: isRunning = runState?.status === 'running';
+  $: allFiles = getAllFileNodes(tree);
+
+  /** Check if a step's target file and request still exist in the workspace. */
+  function isStepBroken(step: FlowStep): boolean {
+    const normalized = step.filePath.replaceAll('\\', '/');
+    const file = allFiles.find(f => {
+      const rel = f.path.substring(rootPath.length + 1).replaceAll('\\', '/');
+      return rel === normalized;
+    });
+    if (!file) return true;
+    // Check index
+    if (step.requestIndex >= 0 && step.requestIndex < file.requests.length) return false;
+    // Fallback: varName
+    if (step.varName && file.requests.some(r => r.varName === step.varName)) return false;
+    return true;
+  }
+
+  $: brokenCount = flow.steps.filter(isStepBroken).length;
+  $: hasAnyBroken = brokenCount > 0;
 
   function getStepStatus(stepId: string): FlowStepResult | undefined {
     return runState?.stepResults.find(r => r.stepId === stepId);
@@ -134,10 +154,20 @@
         {#if isRunning}
           <button class="btn-run-flow stopping" on:click={() => dispatch('abort')}>Stop</button>
         {:else}
-          <button class="btn-run-flow" on:click={() => dispatch('run')}>Run flow</button>
+          <button class="btn-run-flow" on:click={() => dispatch('run')} disabled={hasAnyBroken} title={hasAnyBroken ? 'Fix broken step references before running' : ''}>Run flow</button>
         {/if}
       {/if}
     </div>
+
+    {#if hasAnyBroken}
+      <div class="broken-warning">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="#D4900A" stroke-width="1.3" fill="#D4900A10"/>
+          <path d="M8 6v3M8 11v.5" stroke="#D4900A" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>{brokenCount} step{brokenCount === 1 ? '' : 's'} reference requests that no longer exist. Remove or re-add them.</span>
+      </div>
+    {/if}
 
     {#if flow.steps.length === 0}
       <div class="steps-empty">
@@ -148,7 +178,8 @@
       <div class="steps-list">
         {#each flow.steps as step, i}
           {@const sr = getStepStatus(step.id)}
-          <div class="step-card" class:step-passed={sr?.status === 'passed'} class:step-failed={sr?.status === 'failed'} class:step-running={sr?.status === 'running'} class:step-skipped={sr?.status === 'skipped'}>
+          {@const broken = isStepBroken(step)}
+          <div class="step-card" class:step-passed={sr?.status === 'passed'} class:step-failed={sr?.status === 'failed'} class:step-running={sr?.status === 'running'} class:step-skipped={sr?.status === 'skipped'} class:step-broken={broken}>
             <div class="step-reorder">
               <button
                 class="btn-move"
@@ -177,6 +208,9 @@
             {/if}
             <span class="step-label" title={step.label}>{getUrl(step.label)}</span>
             <span class="step-file" title={step.filePath}>{step.filePath}</span>
+            {#if broken}
+              <span class="step-broken-badge">missing</span>
+            {/if}
             <button
               class="btn-continue-toggle"
               class:active={step.continueOnFailure}
@@ -564,6 +598,40 @@
   .step-duration {
     font-size: 10px;
     color: #AAA;
+  }
+
+  /* Broken references */
+  .broken-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #D4900A08;
+    border: 1px solid #D4900A30;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #9A7520;
+  }
+  .step-card.step-broken {
+    border-color: #D4900A50;
+    background: #D4900A06;
+  }
+  .step-card.step-broken .step-label {
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+  .step-broken-badge {
+    font-size: 9px;
+    font-weight: 600;
+    color: #D4900A;
+    background: #D4900A15;
+    padding: 1px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .btn-run-flow:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   /* Results section */

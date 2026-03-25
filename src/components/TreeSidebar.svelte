@@ -212,6 +212,16 @@
               </span>
             {:else}
               <button
+                class="btn-dup-flow"
+                on:click|stopPropagation={() => dispatch('duplicateFlow', path)}
+                title="Duplicate flow"
+              >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                  <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+                  <path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+              </button>
+              <button
                 class="btn-del-flow"
                 on:click|stopPropagation={() => confirmDeleteFlow = path}
                 title="Delete flow"
@@ -615,6 +625,27 @@
     padding: 1px 5px;
     border-radius: 8px;
     flex-shrink: 0;
+  }
+  .btn-dup-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    flex-shrink: 0;
+    visibility: hidden;
+    padding: 0;
+  }
+  .flow-item:hover .btn-dup-flow {
+    visibility: visible;
+  }
+  .btn-dup-flow:hover {
+    background: #8040A818;
+    color: #8040A8;
   }
   .btn-del-flow {
     display: flex;
