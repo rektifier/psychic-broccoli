@@ -16,6 +16,8 @@
   let filter = '';
   let displayMode: 'name' | 'url' = 'name';
 
+  $: suffixMap = new Map(files.map(f => [f.path, computeUrlSuffixes(f.requests)]));
+
   $: filteredFiles = filter.trim()
     ? files.filter(f =>
         f.name.toLowerCase().includes(filter.toLowerCase()) ||
@@ -47,6 +49,24 @@
     DELETE: '#CC4455', HEAD: '#8040A8', OPTIONS: '#1A8898',
     TRACE: '#666677', CONNECT: '#CC4455',
   };
+
+  /** Compute unique URL suffixes for requests in a file, stripping common prefix segments. */
+  function computeUrlSuffixes(requests: { url: string }[]): string[] {
+    if (requests.length === 0) return [];
+    if (requests.length === 1) return [requests[0].url];
+    const split = requests.map(r => r.url.split('/'));
+    const minLen = Math.min(...split.map(s => s.length));
+    let common = 0;
+    for (let i = 0; i < minLen; i++) {
+      if (split.every(s => s[i] === split[0][i])) common = i + 1;
+      else break;
+    }
+    if (common === 0) return requests.map(r => r.url);
+    return split.map(s => {
+      const unique = s.slice(common);
+      return '/' + unique.join('/');
+    });
+  }
 
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) dispatch('close');
@@ -99,10 +119,10 @@
             </svg>
             <span class="picker-file-name">{file.name.replace(/\.(http|rest)$/, '')}</span>
           </div>
-          {#each file.requests as req, i}
+          {#each file.requests as req, i (req.id)}
             <button class="picker-request" on:click={() => pickRequest(file, i)} title={displayMode === 'name' ? req.url : req.name}>
               <span class="picker-method" style="color: {MC[req.method] || '#888'}">{req.method.slice(0, 3)}</span>
-              <span class="picker-url">{displayMode === 'url' ? req.url : req.name}</span>
+              <span class="picker-url">{displayMode === 'url' ? (suffixMap.get(file.path)?.[i] ?? req.url) : req.name}</span>
               {#if req.varName}
                 <span class="picker-varname">{req.varName}</span>
               {/if}
