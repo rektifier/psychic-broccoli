@@ -158,7 +158,7 @@
   {#if tree.length > 0}
     <div class="section flow-section">
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="flow-header" on:click={() => flowsExpanded = !flowsExpanded} on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flowsExpanded = !flowsExpanded; } }}>
+      <div class="flow-header" on:click={(e) => { if ((e.target as HTMLElement).closest('.btn-new-flow')) return; flowsExpanded = !flowsExpanded; }} on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flowsExpanded = !flowsExpanded; } }}>
         <span class="chevron" class:open={flowsExpanded}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -172,7 +172,7 @@
         <span class="flow-count">{flowEntries.length}</span>
         <button
           class="btn-new-flow"
-          on:click|stopPropagation={() => { showNewFlow = !showNewFlow; }}
+          on:click|stopPropagation={() => { showNewFlow = !showNewFlow; flowsExpanded = true; }}
           title="New test flow"
         >+</button>
       </div>
