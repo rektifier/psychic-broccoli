@@ -7,6 +7,7 @@
   import HelpModal from './components/HelpModal.svelte';
   import ImportEnvModal from './components/ImportEnvModal.svelte';
   import TabBar from './components/TabBar.svelte';
+  import FlowEditor from './components/FlowEditor.svelte';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -19,7 +20,7 @@
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
     flows, flowRunHistory, flowTabs, activeFlowTabPath,
-    openFlowTab, closeFlowTab,
+    openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
@@ -543,6 +544,9 @@
       saveEnvFile($envFile);
       showEnvEditor = false;
     }
+    // Deactivate any flow tab when selecting a request
+    activeFlowTabPath.set(null);
+    activeFlowPath.set(null);
     previewRequest(e.detail);
   }
 
@@ -562,6 +566,9 @@
       saveEnvFile($envFile);
       showEnvEditor = false;
     }
+    // Deactivate any flow tab when switching to a request tab
+    activeFlowTabPath.set(null);
+    activeFlowPath.set(null);
     activateTab(e.detail);
   }
 
@@ -681,6 +688,26 @@
     openFlowTab(relativePath, flow.name);
   }
 
+  async function handleSaveFlow(e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>) {
+    const { flowPath, flow } = e.detail;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const { writeFlowFile } = await import('./lib/flowIO');
+    const segments = flowPath.split('/');
+    let absolutePath = rootPath;
+    for (const seg of segments) {
+      absolutePath = await join(absolutePath, seg);
+    }
+    await writeFlowFile(absolutePath, flow);
+    flows.update(f => ({ ...f, [flowPath]: flow }));
+
+    // Update tab label if the name changed
+    flowTabs.update(ts => ts.map(t =>
+      t.flowPath === flowPath ? { ...t, label: flow.name } : t
+    ));
+  }
+
   async function handleDeleteFlow(e: CustomEvent<string>) {
     const path = e.detail;
     const rootPath = $workspace.rootPath;
@@ -757,8 +784,12 @@
         activeLocation={$selectedLocation}
         isPreview={$isPreview}
         previewLabel={$activeRequest?.name ?? ''}
+        flowTabs={$flowTabs}
+        activeFlowPath={$activeFlowTabPath}
         on:activate={handleTabActivate}
         on:close={handleTabClose}
+        on:activateFlowTab={(e) => activateFlowTab(e.detail)}
+        on:closeFlowTab={(e) => closeFlowTab(e.detail)}
       />
       <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
         {#if showEnvEditor && $envFile && $activeEnvironment}
@@ -774,6 +805,12 @@
               on:close={() => showEnvEditor = false}
             />
           </div>
+        {:else if $activeFlowTabPath && $activeFlow}
+          <FlowEditor
+            flow={$activeFlow}
+            flowPath={$activeFlowTabPath}
+            on:save={handleSaveFlow}
+          />
         {:else if $activeRequest && $selectedLocation}
           <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
             <RequestEditor

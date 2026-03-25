@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { Tab } from '../lib/stores';
+  import type { Tab, FlowTab } from '../lib/stores';
   import type { RequestLocation } from '../lib/types';
 
   export let tabs: Tab[] = [];
@@ -8,24 +8,47 @@
   export let isPreview: boolean = false;
   export let previewLabel: string = '';
 
+  // Flow tabs
+  export let flowTabs: FlowTab[] = [];
+  export let activeFlowPath: string | null = null;
+
   const dispatch = createEventDispatcher<{
     activate: RequestLocation;
     close: RequestLocation;
+    activateFlowTab: string;
+    closeFlowTab: string;
   }>();
 
   function isActive(tab: Tab): boolean {
-    if (!activeLocation) return false;
+    if (!activeLocation || activeFlowPath) return false;
     return tab.location.filePath === activeLocation.filePath
       && tab.location.requestIndex === activeLocation.requestIndex;
   }
-
-  function isPreviewTab(tab: Tab): boolean {
-    return false; // Pinned tabs are never previews
-  }
 </script>
 
-{#if tabs.length > 0}
+{#if tabs.length > 0 || flowTabs.length > 0}
   <div class="tab-bar">
+    {#each flowTabs as ft}
+      <div
+        class="tab flow-tab"
+        class:active={activeFlowPath === ft.flowPath}
+        on:click={() => dispatch('activateFlowTab', ft.flowPath)}
+        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('activateFlowTab', ft.flowPath); } }}
+        role="tab"
+        tabindex="0"
+      >
+        <svg class="flow-tab-icon" width="10" height="10" viewBox="0 0 16 16" fill="none">
+          <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.15"/>
+          <path d="M6 4.5h4M11.5 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="tab-label">{ft.label}</span>
+        <button
+          class="tab-close"
+          on:click|stopPropagation={() => dispatch('closeFlowTab', ft.flowPath)}
+          title="Close tab"
+        >&times;</button>
+      </div>
+    {/each}
     {#each tabs as tab}
       <div
         class="tab"
@@ -97,6 +120,17 @@
     right: 0;
     height: 2px;
     background: #D4900A;
+  }
+  .tab.flow-tab.active::after {
+    background: #8040A8;
+  }
+  .flow-tab-icon {
+    flex-shrink: 0;
+    color: #8040A8;
+    opacity: 0.7;
+  }
+  .tab.flow-tab.active .flow-tab-icon {
+    opacity: 1;
   }
   .tab.preview {
     font-style: italic;
