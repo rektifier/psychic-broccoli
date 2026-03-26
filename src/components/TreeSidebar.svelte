@@ -86,6 +86,9 @@
             <button class="import-menu-item" on:click={() => { showImportMenu = false; dispatch('importInsomnia'); }}>
               Insomnia Export
             </button>
+            <button class="import-menu-item" on:click={() => { showImportMenu = false; dispatch('importOpenApi'); }}>
+              OpenAPI / Swagger
+            </button>
           </div>
         {/if}
       </div>
