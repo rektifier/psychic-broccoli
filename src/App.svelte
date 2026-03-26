@@ -27,6 +27,7 @@
   import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
+  import { importOpenApiSpec } from './lib/openapi';
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
@@ -374,6 +375,29 @@
     }
   }
 
+  async function importOpenApi() {
+    try {
+      const filePath = await open({
+        title: 'Import OpenAPI / Swagger Spec',
+        filters: [{ name: 'OpenAPI Spec', extensions: ['json', 'yaml', 'yml'] }],
+      });
+      if (!filePath) return;
+
+      if (!$workspace.rootPath) {
+        addToast('Open a workspace folder first before importing.', 'error');
+        return;
+      }
+
+      const content = await readTextFile(filePath as string);
+      const result = importOpenApiSpec(content);
+      const written = await writeImportedFiles(result);
+      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
+      showEnvModalIfNeeded(result);
+    } catch (e: any) {
+      addToast(`Import failed: ${e.message || e}`, 'error');
+    }
+  }
+
   // ─── Save File ───
 
   function findFileInTree(nodes: TreeNode[], path: string): any {
@@ -674,6 +698,7 @@
         on:openFolder={openFolder}
         on:importPostman={importPostman}
         on:importInsomnia={importInsomnia}
+        on:importOpenApi={importOpenApi}
         on:select={handleSelect}
         on:pinRequest={handlePinRequest}
         on:toggleFolder={handleToggleFolder}
