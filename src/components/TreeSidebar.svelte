@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import TreeNode from './TreeNode.svelte';
   import type { TreeNode as TNode, RequestLocation } from '../lib/types';
+  import { getAllFileNodes } from '../lib/parser';
 
   export let tree: TNode[] = [];
   export let selected: RequestLocation | null = null;
@@ -44,6 +45,11 @@
     if (e.key === 'Enter') addEnvironment();
     if (e.key === 'Escape') showAddEnv = false;
   }
+
+  $: usedNames = getAllFileNodes(tree)
+    .flatMap(f => f.requests)
+    .map(r => r.varName)
+    .filter((n): n is string => !!n);
 
   $: if (showAddEnv && inputEl) inputEl.focus();
 </script>
@@ -176,6 +182,7 @@
           depth={0}
           {displayMode}
           {sortByUrl}
+          {usedNames}
           on:toggleFolder
           on:select
           on:pinRequest

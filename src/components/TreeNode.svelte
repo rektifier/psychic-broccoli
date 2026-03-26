@@ -7,6 +7,7 @@
   export let depth: number = 0;
   export let displayMode: 'name' | 'url' = 'name';
   export let sortByUrl: boolean = false;
+  export let usedNames: string[] = [];
 
   const dispatch = createEventDispatcher();
 
@@ -47,6 +48,14 @@
   let namingValue: string = '';
   let confirmDeleteIndex: number = -1;
 
+  $: isDuplicate = (() => {
+    const v = namingValue.trim();
+    if (!v || namingIndex < 0) return false;
+    const currentVarName = node.type === 'file' ? node.requests[namingIndex]?.varName : null;
+    if (v === currentVarName) return false;
+    return usedNames.includes(v);
+  })();
+
   function isSel(fp: string, ri: number): boolean {
     return selected?.filePath === fp && selected?.requestIndex === ri;
   }
@@ -57,6 +66,7 @@
   }
 
   function confirmNaming(filePath: string) {
+    if (isDuplicate) return;
     dispatch('nameRequest', { filePath, requestIndex: namingIndex, varName: namingValue.trim() });
     namingIndex = -1;
     namingValue = '';
@@ -106,6 +116,7 @@
           depth={depth + 1}
           {displayMode}
           {sortByUrl}
+          {usedNames}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -159,6 +170,7 @@
             <!-- svelte-ignore a11y_autofocus -->
             <input
               class="naming-input"
+              class:naming-error={isDuplicate}
               bind:value={namingValue}
               on:keydown={(e) => { if (e.key === 'Enter') confirmNaming(node.path); if (e.key === 'Escape') { namingIndex = -1; } }}
               on:blur={() => confirmNaming(node.path)}
@@ -166,6 +178,9 @@
               spellcheck="false"
               autofocus
             />
+            {#if isDuplicate}
+              <span class="naming-duplicate-hint">Name in use</span>
+            {/if}
           </div>
         {:else}
           <div
@@ -453,7 +468,18 @@
     outline: none;
     min-width: 0;
   }
+  .naming-input.naming-error {
+    border-color: #CC4455;
+    color: #CC4455;
+  }
   .naming-input::placeholder {
     color: #BBB;
+  }
+  .naming-duplicate-hint {
+    font-size: 9px;
+    color: #CC4455;
+    font-weight: 500;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 </style>

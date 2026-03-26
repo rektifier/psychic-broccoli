@@ -623,6 +623,18 @@
     if (!file) return;
     const req = file.requests[requestIndex];
     if (!req) return;
+    // Block duplicate names
+    if (varName) {
+      const duplicate = getAllFileNodes($workspace.tree).some(f =>
+        f.requests.some((r, ri) =>
+          r.varName === varName && !(f.path === filePath && ri === requestIndex)
+        )
+      );
+      if (duplicate) {
+        addToast(`Name "${varName}" is already in use`);
+        return;
+      }
+    }
     // Remove old name from namedResults if it changed or was cleared
     if (req.varName && req.varName !== varName) {
       namedResults.update(nr => {
