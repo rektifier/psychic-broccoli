@@ -203,7 +203,6 @@
             title={flow.description || flow.name}
           >
             <span class="flow-item-name">{flow.name}</span>
-            <span class="flow-item-steps">{flow.steps.length}</span>
             {#if confirmDeleteFlow === path}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <span class="flow-confirm-delete" on:click|stopPropagation on:keydown|stopPropagation>
@@ -482,6 +481,7 @@
   }
   .flow-header {
     display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 6px;
     width: 100%;
@@ -494,6 +494,7 @@
     font-weight: 600;
     cursor: pointer;
     text-align: left;
+    white-space: nowrap;
     transition: background 0.1s;
   }
   .flow-header:hover {
@@ -579,6 +580,7 @@
   }
   .flow-item {
     display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 6px;
     width: 100%;
@@ -590,6 +592,7 @@
     font-size: 12px;
     text-align: left;
     cursor: pointer;
+    white-space: nowrap;
     transition: background 0.1s;
     position: relative;
   }
