@@ -54,6 +54,8 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 
 **Interface**
 - Resizable panes with a draggable divider between the request editor and response viewer.
+- Toggle between request names and URL paths in the sidebar.
+- Sort requests alphabetically by URL for quick navigation in large files.
 - Raw request view to inspect the exact method, URL, headers, and body that were sent.
 - Keyboard shortcut: <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send.
 
