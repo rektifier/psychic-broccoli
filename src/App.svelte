@@ -523,7 +523,13 @@
       saveEnvFile($envFile);
       showEnvEditor = false;
     }
-    previewRequest(e.detail);
+    const loc = e.detail;
+    const hasTab = $tabs.some(t => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex);
+    if (hasTab) {
+      activateTab(loc);
+    } else {
+      previewRequest(loc);
+    }
   }
 
   function handlePinRequest(e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>) {
