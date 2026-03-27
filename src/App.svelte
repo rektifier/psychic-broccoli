@@ -6,6 +6,8 @@
   import ToastContainer from './components/ToastContainer.svelte';
   import HelpModal from './components/HelpModal.svelte';
   import ImportEnvModal from './components/ImportEnvModal.svelte';
+  import ImportCollectionModal from './components/ImportCollectionModal.svelte';
+  import type { ImportFormat } from './lib/detect';
   import TabBar from './components/TabBar.svelte';
   import logoUrl from './assets/logo.png';
   import {
@@ -41,6 +43,9 @@
   let showEnvEditor = false;
 
   let showHelp = false;
+
+  // ─── Import Collection Modal ───
+  let showImportCollectionModal = false;
 
   // ─── Import Environment Modal ───
   let showImportEnvModal = false;
@@ -329,21 +334,22 @@
     }
   }
 
-  async function importPostman() {
+  async function handleImportFile(e: CustomEvent<{ content: string; format: ImportFormat }>) {
+    showImportCollectionModal = false;
+    const { content, format } = e.detail;
+
+    if (!$workspace.rootPath) {
+      addToast('Open a workspace folder first before importing.', 'error');
+      return;
+    }
+
     try {
-      const filePath = await open({
-        title: 'Import Postman Collection',
-        filters: [{ name: 'Postman Collection', extensions: ['json'] }],
-      });
-      if (!filePath) return;
-
-      if (!$workspace.rootPath) {
-        addToast('Open a workspace folder first before importing.', 'error');
-        return;
+      let result: ImportResult;
+      switch (format) {
+        case 'postman': result = importPostmanCollection(content); break;
+        case 'insomnia': result = importInsomniaExport(content); break;
+        case 'openapi': result = importOpenApiSpec(content); break;
       }
-
-      const jsonString = await readTextFile(filePath as string);
-      const result = importPostmanCollection(jsonString);
       const written = await writeImportedFiles(result);
       addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
       showEnvModalIfNeeded(result);
@@ -352,44 +358,16 @@
     }
   }
 
-  async function importInsomnia() {
-    try {
-      const filePath = await open({
-        title: 'Import Insomnia Export',
-        filters: [{ name: 'Insomnia Export', extensions: ['json', 'yaml', 'yml'] }],
-      });
-      if (!filePath) return;
+  async function handleImportUrl(e: CustomEvent<{ content: string }>) {
+    showImportCollectionModal = false;
 
-      if (!$workspace.rootPath) {
-        addToast('Open a workspace folder first before importing.', 'error');
-        return;
-      }
-
-      const jsonString = await readTextFile(filePath as string);
-      const result = importInsomniaExport(jsonString);
-      const written = await writeImportedFiles(result);
-      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
-      showEnvModalIfNeeded(result);
-    } catch (e: any) {
-      addToast(`Import failed: ${e.message || e}`, 'error');
+    if (!$workspace.rootPath) {
+      addToast('Open a workspace folder first before importing.', 'error');
+      return;
     }
-  }
 
-  async function importOpenApi() {
     try {
-      const filePath = await open({
-        title: 'Import OpenAPI / Swagger Spec',
-        filters: [{ name: 'OpenAPI Spec', extensions: ['json', 'yaml', 'yml'] }],
-      });
-      if (!filePath) return;
-
-      if (!$workspace.rootPath) {
-        addToast('Open a workspace folder first before importing.', 'error');
-        return;
-      }
-
-      const content = await readTextFile(filePath as string);
-      const result = importOpenApiSpec(content);
+      const result = importOpenApiSpec(e.detail.content);
       const written = await writeImportedFiles(result);
       addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
       showEnvModalIfNeeded(result);
@@ -681,6 +659,17 @@
   on:confirm={handleImportEnvConfirm}
   on:skip={handleImportEnvSkip}
 />
+<ImportCollectionModal
+  visible={showImportCollectionModal}
+  on:importFile={handleImportFile}
+  on:importUrl={handleImportUrl}
+  on:cancel={() => showImportCollectionModal = false}
+/>
+
+<svelte:window
+  on:dragover|preventDefault={() => {}}
+  on:drop|preventDefault={() => {}}
+/>
 
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
@@ -693,12 +682,11 @@
         tree={$workspace.tree}
         selected={$selectedLocation}
         rootName={$workspace.rootName}
+        hasWorkspace={!!$workspace.rootPath}
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
         on:openFolder={openFolder}
-        on:importPostman={importPostman}
-        on:importInsomnia={importInsomnia}
-        on:importOpenApi={importOpenApi}
+        on:importCollection={() => showImportCollectionModal = true}
         on:select={handleSelect}
         on:pinRequest={handlePinRequest}
         on:toggleFolder={handleToggleFolder}
