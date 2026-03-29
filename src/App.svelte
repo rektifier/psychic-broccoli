@@ -5,6 +5,7 @@
   import EnvironmentEditor from './components/EnvironmentEditor.svelte';
   import ToastContainer from './components/ToastContainer.svelte';
   import HelpModal from './components/HelpModal.svelte';
+  import VariableInspector from './components/VariableInspector.svelte';
   import ImportEnvModal from './components/ImportEnvModal.svelte';
   import ImportCollectionModal from './components/ImportCollectionModal.svelte';
   import type { ImportFormat } from './lib/detect';
@@ -24,7 +25,7 @@
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
     buildWorkspaceTree, createFileNode, getAllFileNodes,
-    executePbDirectives,
+    executePbDirectives, parseScriptText, applyRequestMutations,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
@@ -41,6 +42,7 @@
   import { onDestroy } from 'svelte';
 
   let showEnvEditor = false;
+  let showVarInspector = false;
 
   let showHelp = false;
 
@@ -424,12 +426,44 @@
     const startTime = performance.now();
 
     try {
-      const url = substituteAll(request.url, ctx);
-      const body = substituteAll(request.body, ctx);
-      const headers: Record<string, string> = {};
+      let url = substituteAll(request.url, ctx);
+      let body = substituteAll(request.body, ctx);
+      let headers: Record<string, string> = {};
       for (const h of request.headers) {
         if (h.enabled) {
           headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
+        }
+      }
+
+      // ── Execute beforeSend scripts ──
+      const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
+      if (beforeSendDirectives.length > 0) {
+        const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
+        for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
+
+        const dummyResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
+        const bsResult = executePbDirectives(
+          beforeSendDirectives, dummyResponse,
+          { url, method: request.method, headers, body },
+          mergedVars, $namedResults,
+        );
+
+        // Apply request mutations
+        const mutated = applyRequestMutations(
+          { url, method: request.method, headers, body },
+          bsResult.requestMutations,
+        );
+        url = mutated.url;
+        headers = mutated.headers;
+        body = mutated.body;
+
+        // Apply set vars from beforeSend
+        if (Object.keys(bsResult.setVars).length > 0) {
+          pbEnvOverrides.update(ev => ({ ...ev, ...bsResult.setVars }));
+        }
+        if (Object.keys(bsResult.globalVars).length > 0) {
+          pbGlobals.update(g => ({ ...g, ...bsResult.globalVars }));
+          pbEnvOverrides.update(ev => ({ ...ev, ...bsResult.globalVars }));
         }
       }
 
@@ -467,13 +501,15 @@
         }));
       }
 
-      // ── Execute pb directives ──
-      if (request.directives && request.directives.length > 0) {
+      // ── Execute pb directives + afterReceive scripts ──
+      const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
+      const allDirectives = [...(request.directives || []), ...afterReceiveDirectives];
+      if (allDirectives.length > 0) {
         const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
         for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
 
         const pbResult = executePbDirectives(
-          request.directives, response,
+          allDirectives, response,
           { url, method: request.method, headers, body },
           mergedVars,
           $namedResults,
@@ -657,6 +693,22 @@
 
 <ToastContainer />
 <HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<VariableInspector
+  visible={showVarInspector}
+  fileVariables={$activeFileVariables}
+  envVariables={$resolvedEnvVars}
+  pbOverrides={$pbEnvOverrides}
+  pbGlobals={$pbGlobals}
+  namedResults={$namedResults}
+  activeEnv={$activeEnvironment}
+  activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
+  on:close={() => showVarInspector = false}
+  on:clearRuntime={() => {
+    pbEnvOverrides.set({});
+    pbGlobals.set({});
+    namedResults.set({});
+  }}
+/>
 <ImportEnvModal
   visible={showImportEnvModal}
   variables={pendingImportVars}
@@ -701,6 +753,7 @@
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
         on:addEnv={handleAddEnv}
         on:editEnv={() => showEnvEditor = true}
+        on:openVarInspector={() => showVarInspector = true}
         on:nameRequest={handleNameRequest}
       />
     </div>
