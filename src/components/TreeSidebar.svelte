@@ -93,6 +93,16 @@
           <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2"/>
         </svg>
       </button>
+      <button
+        class="btn-edit-env"
+        on:click={() => dispatch('openVarInspector')}
+        title="Variable inspector"
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <text x="1" y="12" font-size="11" font-weight="700" fill="currentColor" font-family="system-ui">x</text>
+          <path d="M9 3h5M9 8h5M9 13h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
     </div>
 
     {#if showAddEnv}
@@ -165,6 +175,16 @@
         />
       {/each}
     {/if}
+  </div>
+  <div class="sidebar-footer">
+    <button class="btn-help" on:click={() => dispatch('openHelp')} title="Help and keyboard shortcuts">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M6.5 6.2a1.5 1.5 0 012.8.8c0 1-1.3 1.2-1.3 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="8" cy="11.5" r="0.6" fill="currentColor"/>
+      </svg>
+      <span>Help</span>
+    </button>
   </div>
 </aside>
 
@@ -378,4 +398,30 @@
     font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 4px;
   }
   .btn-open:hover { background: #D4900A20; border-color: #D4900A; }
+
+  /* Sidebar footer */
+  .sidebar-footer {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    border-top: 1px solid #EDEDF0;
+  }
+  .btn-help {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 5px 8px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: #AAA;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-help:hover {
+    background: #F0F0F4;
+    color: #666;
+  }
 </style>
