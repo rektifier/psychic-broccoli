@@ -40,6 +40,12 @@ const NAME_DIRECTIVE_RE = /^(?:#|\/\/)\s*@name\s+(\S+)\s*$/;
 /** Pb directive: # @pb.set("key", expr) or # @pb.global("key", expr) or # @pb.assert(expr, "label") */
 const PB_DIRECTIVE_RE = /^(?:#|\/\/)\s*@pb\.(\w+)\((.+)\)\s*$/;
 
+/** Pb script section markers: # @pb.beforeSend or # @pb.afterReceive */
+const PB_SECTION_RE = /^(?:#|\/\/)\s*@pb\.(beforeSend|afterReceive)\s*$/;
+
+/** Bare pb directive: pb.set(...), pb.global(...), pb.assert(...) */
+const BARE_PB_RE = /^pb\.(\w+)\((.+)\)\s*$/;
+
 /** Dynamic variable: {{$something ...}} */
 const DYNAMIC_VAR_RE = /\{\{\$(\w+)(?:\s+(.+?))?\}\}/g;
 
@@ -90,12 +96,15 @@ export function parseHttpFile(content: string): ParseResult {
   let currentHeaders: HttpHeader[] = [];
   let currentBody: string[] = [];
   let currentDirectives: PbDirective[] = [];
+  let currentBeforeSend: string[] = [];
+  let currentAfterReceive: string[] = [];
+  let currentScriptSection: 'beforeSend' | 'afterReceive' | null = null;
   let inBody = false;
   let hasRequest = false;
 
   function flushRequest() {
     if (currentMethod && currentUrl) {
-      requests.push({
+      const req: HttpRequest = {
         id: nextId(),
         name: currentName || `${currentMethod} ${currentUrl}`,
         varName: currentVarName,
@@ -104,7 +113,12 @@ export function parseHttpFile(content: string): ParseResult {
         headers: currentHeaders,
         body: currentBody.join('\n').trim(),
         directives: currentDirectives,
-      });
+      };
+      const bs = currentBeforeSend.join('\n').trim();
+      const ar = currentAfterReceive.join('\n').trim();
+      if (bs) req.beforeSend = bs;
+      if (ar) req.afterReceive = ar;
+      requests.push(req);
     }
     currentName = '';
     currentVarName = null;
@@ -113,6 +127,9 @@ export function parseHttpFile(content: string): ParseResult {
     currentHeaders = [];
     currentBody = [];
     currentDirectives = [];
+    currentBeforeSend = [];
+    currentAfterReceive = [];
+    currentScriptSection = null;
     inBody = false;
     hasRequest = false;
   }
@@ -141,11 +158,28 @@ export function parseHttpFile(content: string): ParseResult {
       continue;
     }
 
+    // ── Pb script section markers: # @pb.beforeSend, # @pb.afterReceive ──
+    const sectionMatch = line.match(PB_SECTION_RE);
+    if (sectionMatch) {
+      currentScriptSection = sectionMatch[1] as 'beforeSend' | 'afterReceive';
+      continue;
+    }
+
     // ── Pb directives: # @pb.set(...), # @pb.assert(...), # @pb.global(...) ──
     const pbMatch = line.match(PB_DIRECTIVE_RE);
     if (pbMatch) {
-      const directive = parsePbDirective(pbMatch[1], pbMatch[2]);
-      if (directive) currentDirectives.push(directive);
+      if (currentScriptSection) {
+        // Convert comment-prefixed back to bare form for the textarea
+        const bare = `pb.${pbMatch[1]}(${pbMatch[2]})`;
+        if (currentScriptSection === 'beforeSend') {
+          currentBeforeSend.push(bare);
+        } else {
+          currentAfterReceive.push(bare);
+        }
+      } else {
+        const directive = parsePbDirective(pbMatch[1], pbMatch[2]);
+        if (directive) currentDirectives.push(directive);
+      }
       continue;
     }
 
@@ -278,6 +312,37 @@ export function serializeHttpFile(requests: HttpRequest[], variables: Variable[]
           case 'assert':
             parts.push(`# @pb.assert(${d.expr}, "${d.label}")`);
             break;
+        }
+      }
+    }
+
+    // Before-send scripts
+    if (req.beforeSend?.trim()) {
+      if (!req.directives || req.directives.length === 0) parts.push('');
+      parts.push('# @pb.beforeSend');
+      for (const line of req.beforeSend.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        // Wrap bare pb.* lines in comment-directive syntax
+        if (trimmed.match(BARE_PB_RE)) {
+          parts.push(`# @${trimmed}`);
+        } else {
+          parts.push(trimmed);
+        }
+      }
+    }
+
+    // After-receive scripts
+    if (req.afterReceive?.trim()) {
+      if ((!req.directives || req.directives.length === 0) && !req.beforeSend?.trim()) parts.push('');
+      parts.push('# @pb.afterReceive');
+      for (const line of req.afterReceive.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.match(BARE_PB_RE)) {
+          parts.push(`# @${trimmed}`);
+        } else {
+          parts.push(trimmed);
         }
       }
     }
@@ -618,10 +683,18 @@ function parsePbDirective(action: string, argsRaw: string): PbDirective | null {
   const args = argsRaw.trim();
 
   if (action === 'set' || action === 'global') {
-    // pb.set("key", expr)  or  pb.global("key", expr)
+    // Quoted key: pb.set("key", expr)
     const m = args.match(/^(["'])(.+?)\1\s*,\s*(.+)$/);
-    if (!m) return null;
-    return { type: action, key: m[2], expr: m[3].trim() };
+    if (m) return { type: action, key: m[2], expr: m[3].trim() };
+    // Unquoted key: pb.set(pb.request.body.$.country, "NO")
+    const u = args.match(/^([\w.$\-]+)\s*,\s*(.+)$/);
+    if (u) {
+      let key = u[1];
+      // Normalize: strip leading "pb." so pb.request.* becomes request.*
+      if (key.startsWith('pb.')) key = key.substring(3);
+      return { type: action, key, expr: u[2].trim() };
+    }
+    return null;
   }
 
   if (action === 'assert') {
@@ -780,12 +853,51 @@ function resolvePbResponsePath(path: string, response: HttpResponse): unknown {
   return null;
 }
 
+// ─── Pb Script Text Parser ─────────────────────────────────────────────────
+
+/**
+ * Parse a beforeSend / afterReceive script textarea into PbDirective[].
+ * Accepts both comment-prefixed (`# @pb.set(...)`) and bare (`pb.set(...)`) syntax.
+ */
+export function parseScriptText(text: string): PbDirective[] {
+  if (!text) return [];
+  const directives: PbDirective[] = [];
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Skip pure comments that aren't directives
+    if ((trimmed.startsWith('#') || trimmed.startsWith('//')) && !trimmed.match(PB_DIRECTIVE_RE)) continue;
+    // Try comment-prefixed syntax first: # @pb.set(...) or // @pb.set(...)
+    const cm = trimmed.match(PB_DIRECTIVE_RE);
+    if (cm) {
+      const d = parsePbDirective(cm[1], cm[2]);
+      if (d) directives.push(d);
+      continue;
+    }
+    // Try bare syntax: pb.set(...)
+    const bm = trimmed.match(BARE_PB_RE);
+    if (bm) {
+      const d = parsePbDirective(bm[1], bm[2]);
+      if (d) directives.push(d);
+    }
+  }
+  return directives;
+}
+
 // ─── Pb Directive Executor ──────────────────────────────────────────────────
+
+export interface RequestMutations {
+  url?: string;
+  headers: Record<string, string>;
+  bodyPatches: { path: string; value: unknown }[];
+  bodyFull?: string;
+}
 
 export interface PbExecutionResult {
   assertionResults: PbAssertionResult[];
   setVars: Record<string, string>;
   globalVars: Record<string, string>;
+  requestMutations: RequestMutations;
 }
 
 /**
@@ -799,14 +911,33 @@ export function executePbDirectives(
   namedResults: Record<string, NamedRequestResult> = {},
 ): PbExecutionResult {
   const ctx: PbEvalContext = { response, request, variables, namedResults };
-  const result: PbExecutionResult = { assertionResults: [], setVars: {}, globalVars: {} };
+  const result: PbExecutionResult = {
+    assertionResults: [], setVars: {}, globalVars: {},
+    requestMutations: { headers: {}, bodyPatches: [] },
+  };
 
   for (const d of directives) {
     switch (d.type) {
       case 'set': {
         const value = evaluatePbExpression(d.expr, ctx);
         const strValue = value == null ? '' : String(value);
-        result.setVars[d.key] = strValue;
+
+        // Check for request.* mutation keys
+        if (d.key === 'request.url') {
+          result.requestMutations.url = strValue;
+        } else if (d.key.startsWith('request.header.')) {
+          const headerName = d.key.substring('request.header.'.length);
+          result.requestMutations.headers[headerName] = strValue;
+        } else if (d.key === 'request.body') {
+          result.requestMutations.bodyFull = strValue;
+        } else if (d.key.startsWith('request.body.$.')) {
+          const path = d.key.substring('request.body.$.'.length);
+          result.requestMutations.bodyPatches.push({ path, value });
+        } else {
+          // Regular file-level variable
+          result.setVars[d.key] = strValue;
+        }
+
         // Make immediately available to subsequent directives
         ctx.variables[d.key] = strValue;
         break;
@@ -837,6 +968,69 @@ export function executePbDirectives(
   }
 
   return result;
+}
+
+/**
+ * Apply request mutations from beforeSend pb.set("request.*") directives
+ * to the outgoing request properties.
+ */
+export function applyRequestMutations(
+  req: { url: string; method: string; headers: Record<string, string>; body: string },
+  mutations: RequestMutations,
+): { url: string; method: string; headers: Record<string, string>; body: string } {
+  let { url, method, headers, body } = req;
+
+  // URL override
+  if (mutations.url !== undefined) {
+    url = mutations.url;
+  }
+
+  // Header overrides (case-insensitive merge)
+  if (Object.keys(mutations.headers).length > 0) {
+    headers = { ...headers };
+    for (const [name, value] of Object.entries(mutations.headers)) {
+      const existingKey = Object.keys(headers).find(k => k.toLowerCase() === name.toLowerCase());
+      if (existingKey) delete headers[existingKey];
+      headers[name] = value;
+    }
+  }
+
+  // Full body replacement
+  if (mutations.bodyFull !== undefined) {
+    body = mutations.bodyFull;
+  }
+
+  // JSON body patches (applied after full replacement if both exist)
+  if (mutations.bodyPatches.length > 0) {
+    try {
+      let parsed = body ? JSON.parse(body) : {};
+      for (const patch of mutations.bodyPatches) {
+        setByPath(parsed, patch.path, patch.value);
+      }
+      body = JSON.stringify(parsed, null, 2);
+    } catch {
+      // Body isn't valid JSON - skip patches
+    }
+  }
+
+  return { url, method, headers, body };
+}
+
+/**
+ * Set a value in a nested object by dot-path (e.g. "data.user.name").
+ * Creates intermediate objects as needed.
+ */
+function setByPath(obj: any, path: string, value: unknown): void {
+  const segments = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+  let current = obj;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i];
+    if (current[seg] === undefined || current[seg] === null) {
+      current[seg] = /^\d+$/.test(segments[i + 1]) ? [] : {};
+    }
+    current = current[seg];
+  }
+  current[segments[segments.length - 1]] = value;
 }
 
 // ─── Environment File Handling ──────────────────────────────────────────────

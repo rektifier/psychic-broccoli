@@ -27,13 +27,22 @@
     CONNECT: '#CC4455',
   };
 
-  export let bottomTab: 'body' | 'assertions' = 'body';
+  export let bottomTab: 'body' | 'assertions' | 'before-send' | 'after-receive' = 'body';
 
   let headersOpen = true;
   let assertionsOpen = true;
   let showPicker = false;
-  let pickerTarget: 'url' | 'headerKey' | 'headerValue' | 'body' | 'assertions' | null = null;
+  let pickerTarget: 'url' | 'headerKey' | 'headerValue' | 'body' | 'assertions' | 'before-send' | 'after-receive' | null = null;
   let pickerHeaderIndex: number = -1;
+  let cursorPosition: number = -1;
+
+  /** Insert `value` into `text` at `cursorPosition`, or append if -1. */
+  function insertAtCursor(text: string, value: string): string {
+    if (cursorPosition >= 0 && cursorPosition <= text.length) {
+      return text.slice(0, cursorPosition) + value + text.slice(cursorPosition);
+    }
+    return text + value;
+  }
 
   function update(changes: Partial<HttpRequest>) {
     dispatch('update', { ...request, ...changes });
@@ -137,6 +146,17 @@
     (d): d is { type: 'assert'; expr: string; label: string } => d.type === 'assert'
   );
 
+  function countScriptLines(text: string | undefined): number {
+    if (!text) return 0;
+    return text.split('\n').filter(l => {
+      const t = l.trim();
+      return t && !t.startsWith('//') && !(t.startsWith('#') && !t.match(/^#\s*@pb\./));
+    }).length;
+  }
+
+  $: beforeSendCount = countScriptLines(request.beforeSend);
+  $: afterReceiveCount = countScriptLines(request.afterReceive);
+
   let assertionsTextInternal = '';
   let lastRequestId = '';
 
@@ -180,7 +200,10 @@
     request.body,
   ].join('\n');
 
-  function openPicker(target: 'url' | 'body' | 'assertions' | 'headerValue', headerIndex?: number) {
+  function openPicker(target: 'url' | 'body' | 'assertions' | 'before-send' | 'after-receive' | 'headerValue', headerIndex?: number) {
+    // Capture cursor position from the currently focused input/textarea
+    const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+    cursorPosition = active?.selectionStart ?? -1;
     pickerTarget = target;
     pickerHeaderIndex = headerIndex ?? -1;
     showPicker = true;
@@ -190,11 +213,11 @@
     const value = e.detail;
     showPicker = false;
     if (pickerTarget === 'url') {
-      update({ url: request.url + value });
+      update({ url: insertAtCursor(request.url, value) });
     } else if (pickerTarget === 'body') {
-      update({ body: request.body + value });
+      update({ body: insertAtCursor(request.body, value) });
     } else if (pickerTarget === 'assertions') {
-      assertionsTextInternal = assertionsTextInternal + value;
+      assertionsTextInternal = insertAtCursor(assertionsTextInternal, value);
       // Re-parse the updated text into directives
       const nonAssertDirectives = (request.directives ?? []).filter(d => d.type !== 'assert');
       const newAssertions: PbDirective[] = assertionsTextInternal
@@ -208,11 +231,16 @@
           return { type: 'assert' as const, expr: line, label: '' };
         });
       update({ directives: [...nonAssertDirectives, ...newAssertions] });
+    } else if (pickerTarget === 'before-send') {
+      update({ beforeSend: insertAtCursor(request.beforeSend ?? '', value) });
+    } else if (pickerTarget === 'after-receive') {
+      update({ afterReceive: insertAtCursor(request.afterReceive ?? '', value) });
     } else if (pickerTarget === 'headerValue' && pickerHeaderIndex >= 0) {
       const headers = [...request.headers];
-      headers[pickerHeaderIndex] = { ...headers[pickerHeaderIndex], value: headers[pickerHeaderIndex].value + value };
+      headers[pickerHeaderIndex] = { ...headers[pickerHeaderIndex], value: insertAtCursor(headers[pickerHeaderIndex].value, value) };
       update({ headers });
     }
+    cursorPosition = -1;
   }
 </script>
 
@@ -260,7 +288,7 @@
       spellcheck="false"
     />
 
-    <button class="btn-insert-url" on:click={() => openPicker('url')} title="Insert variable">
+    <button class="btn-insert-url" on:mousedown|preventDefault on:click={() => openPicker('url')} title="Insert variable">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
         <path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
@@ -337,7 +365,7 @@
             </div>
             <input class="header-value" type="text" value={header.value}
               on:input={(e) => updateHeader(i, { value: e.currentTarget.value })} placeholder="Value" spellcheck="false" />
-            <button class="btn-insert" on:click={() => openPicker('headerValue', i)} title="Insert variable">
+            <button class="btn-insert" on:mousedown|preventDefault on:click={() => openPicker('headerValue', i)} title="Insert variable">
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
               </svg>
@@ -362,8 +390,20 @@
           <span class="section-count">{assertionDirectives.length}</span>
         {/if}
       </button>
+      <button class="bottom-tab" class:active={bottomTab === 'before-send'} on:click={() => { bottomTab = 'before-send'; dispatch('bottomTabChange', bottomTab); }}>
+        Before Send
+        {#if beforeSendCount > 0}
+          <span class="section-count">{beforeSendCount}</span>
+        {/if}
+      </button>
+      <button class="bottom-tab" class:active={bottomTab === 'after-receive'} on:click={() => { bottomTab = 'after-receive'; dispatch('bottomTabChange', bottomTab); }}>
+        After Receive
+        {#if afterReceiveCount > 0}
+          <span class="section-count">{afterReceiveCount}</span>
+        {/if}
+      </button>
       <div class="bottom-tab-actions">
-        <button class="btn-insert" on:click={() => openPicker(bottomTab === 'assertions' ? 'assertions' : 'body')} title="Insert variable">
+        <button class="btn-insert" on:mousedown|preventDefault on:click={() => openPicker(bottomTab)} title="Insert variable">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
           </svg>
@@ -385,6 +425,22 @@
           value={assertionsTextInternal}
           on:input={onAssertionsTextInput}
           placeholder={"# One assertion per line:\n# pb.response.status == 200 | Should return 200\n# pb.response.body.$.name != null | Name should exist"}
+          spellcheck="false"
+        ></textarea>
+      {:else if bottomTab === 'before-send'}
+        <textarea
+          class="body-editor"
+          value={request.beforeSend ?? ''}
+          on:input={(e) => update({ beforeSend: e.currentTarget.value })}
+          placeholder={"# Scripts to run before sending the request\npb.set(pb.request.header.X-Custom, \"value\")\npb.set(pb.request.body.$.field, \"value\")"}
+          spellcheck="false"
+        ></textarea>
+      {:else if bottomTab === 'after-receive'}
+        <textarea
+          class="body-editor"
+          value={request.afterReceive ?? ''}
+          on:input={(e) => update({ afterReceive: e.currentTarget.value })}
+          placeholder={"# Scripts to run after receiving the response\npb.set(\"token\", pb.response.body.$.token)\npb.global(\"sessionId\", pb.response.body.$.id)"}
           spellcheck="false"
         ></textarea>
       {/if}
