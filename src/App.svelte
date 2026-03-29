@@ -730,9 +730,7 @@
 />
 
 <main class="app">
-  <div class="titlebar" data-tauri-drag-region>
-    <button class="help-btn" on:click={() => showHelp = true}>?</button>
-  </div>
+  <div class="titlebar" data-tauri-drag-region></div>
 
   <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
@@ -754,6 +752,7 @@
         on:addEnv={handleAddEnv}
         on:editEnv={() => showEnvEditor = true}
         on:openVarInspector={() => showVarInspector = true}
+        on:openHelp={() => showHelp = true}
         on:nameRequest={handleNameRequest}
       />
     </div>
@@ -837,22 +836,6 @@
     background: #F0F0F4; border-bottom: 1px solid #DCDCE2;
     -webkit-app-region: drag; user-select: none; flex-shrink: 0;
   }
-  .help-btn {
-    -webkit-app-region: no-drag;
-    width: 20px; height: 20px;
-    margin-left: auto;
-    margin-right: 8px;
-    border: 1px solid #D4D4D8;
-    border-radius: 50%;
-    background: transparent;
-    color: #999;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.1s;
-  }
-  .help-btn:hover { background: #E4E4EA; color: #555; border-color: #BBB; }
   .layout { display: flex; flex: 1; overflow: hidden; }
 
   .sidebar-container {
