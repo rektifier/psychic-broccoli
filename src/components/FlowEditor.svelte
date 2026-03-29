@@ -50,7 +50,8 @@
 
   // Drag-and-drop reordering
   let draggingIndex: number = -1;
-  let dragOverIndex: number = -1;
+  /** Insertion slot: 0 = before first, 1 = after first / before second, etc. */
+  let insertSlot: number = -1;
 
   function onDragStart(e: DragEvent, index: number) {
     draggingIndex = index;
@@ -60,27 +61,55 @@
     }
   }
 
-  function onDragOver(e: DragEvent, index: number) {
+  function onListDragOver(e: DragEvent) {
+    if (draggingIndex === -1) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    dragOverIndex = index;
+
+    // Find which insertion slot the cursor is closest to
+    const list = (e.currentTarget as HTMLElement);
+    const cards = list.querySelectorAll('.step-card');
+    let slot = cards.length; // default: after last
+
+    for (let i = 0; i < cards.length; i++) {
+      const rect = cards[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        slot = i;
+        break;
+      }
+    }
+
+    // Don't show indicator right above or below the dragged item (no-op drop)
+    if (slot === draggingIndex || slot === draggingIndex + 1) {
+      insertSlot = -1;
+    } else {
+      insertSlot = slot;
+    }
   }
 
-  function onDrop(e: DragEvent, index: number) {
+  function onListDrop(e: DragEvent) {
     e.preventDefault();
-    if (draggingIndex === -1 || draggingIndex === index) return;
+    if (draggingIndex === -1 || insertSlot === -1) {
+      draggingIndex = -1;
+      insertSlot = -1;
+      return;
+    }
+
     const steps = [...flow.steps];
     const [moved] = steps.splice(draggingIndex, 1);
-    steps.splice(index, 0, moved);
+    // Adjust target index after removal
+    const target = insertSlot > draggingIndex ? insertSlot - 1 : insertSlot;
+    steps.splice(target, 0, moved);
     flow = { ...flow, steps };
     save();
     draggingIndex = -1;
-    dragOverIndex = -1;
+    insertSlot = -1;
   }
 
   function onDragEnd() {
     draggingIndex = -1;
-    dragOverIndex = -1;
+    insertSlot = -1;
   }
 
   const MC: Record<string, string> = {
@@ -201,8 +230,17 @@
         <button class="steps-empty-btn" on:click={() => showPicker = true}>Add a request</button>
       </div>
     {:else}
-      <div class="steps-list">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="steps-list"
+        on:dragover={onListDragOver}
+        on:drop={onListDrop}
+        on:dragleave={() => { insertSlot = -1; }}
+      >
         {#each flow.steps as step, i}
+          {#if insertSlot === i}
+            <div class="drop-indicator"></div>
+          {/if}
           {@const sr = getStepStatus(step.id)}
           {@const broken = isStepBroken(step)}
           <div
@@ -213,11 +251,8 @@
             class:step-skipped={sr?.status === 'skipped'}
             class:step-broken={broken}
             class:dragging={draggingIndex === i}
-            class:drag-over={dragOverIndex === i && draggingIndex !== i}
             draggable="true"
             on:dragstart={(e) => onDragStart(e, i)}
-            on:dragover={(e) => onDragOver(e, i)}
-            on:drop={(e) => onDrop(e, i)}
             on:dragend={onDragEnd}
             role="listitem"
           >
@@ -270,6 +305,9 @@
             <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step">&times;</button>
           </div>
         {/each}
+        {#if insertSlot === flow.steps.length}
+          <div class="drop-indicator"></div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -474,12 +512,15 @@
     cursor: grabbing;
   }
   .step-card.dragging {
-    opacity: 0.4;
+    opacity: 0.35;
   }
-  .step-card.drag-over {
-    border-color: #8040A8;
-    background: #8040A808;
-    box-shadow: 0 0 0 1px #8040A840;
+  .drop-indicator {
+    height: 3px;
+    background: #8040A8;
+    border-radius: 2px;
+    margin: -2px 0;
+    position: relative;
+    z-index: 1;
   }
   .step-number {
     font-size: 10px;
