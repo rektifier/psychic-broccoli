@@ -93,6 +93,16 @@
           <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2"/>
         </svg>
       </button>
+      <button
+        class="btn-edit-env"
+        on:click={() => dispatch('openVarInspector')}
+        title="Variable inspector"
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <text x="1" y="12" font-size="11" font-weight="700" fill="currentColor" font-family="system-ui">x</text>
+          <path d="M9 3h5M9 8h5M9 13h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
     </div>
 
     {#if showAddEnv}

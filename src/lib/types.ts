@@ -25,6 +25,10 @@ export interface HttpRequest {
   body: string;
   /** Pb script directives (`# @pb.set(...)`, `# @pb.assert(...)`, etc.) */
   directives: PbDirective[];
+  /** Scripts to run before the request is sent */
+  beforeSend?: string;
+  /** Scripts to run after the response is received */
+  afterReceive?: string;
 }
 
 export interface HttpResponse {
