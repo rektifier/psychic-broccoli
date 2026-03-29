@@ -52,7 +52,15 @@ GET https://&#123;&#123;hostname&#125;&#125;:&#123;&#123;port&#125;&#125;/api/us
   "dev": &#123; "Token": "dev-token-123" &#125;,
   "staging": &#123; "Token": "staging-token-789" &#125;
 &#125;</pre>
-        <p>Add a <code>.user</code> file for personal overrides (gitignored).</p>
+        <p>Add a <code>http-client.env.json.user</code> file for personal overrides (gitignored).</p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Dynamic variables</div>
+        <pre class="code-block">&#123;&#123;$randomInt 1 100&#125;&#125;      Random integer
+&#123;&#123;$timestamp&#125;&#125;            Unix epoch (UTC)
+&#123;&#123;$datetime iso8601&#125;&#125;     UTC datetime
+&#123;&#123;$localDatetime iso8601&#125;&#125; Local datetime</pre>
       </div>
 
       <div class="section">
@@ -71,23 +79,10 @@ Authorization: Bearer &#123;&#123;login.response.body.$.token&#125;&#125;</pre>
       </div>
 
       <div class="section">
-        <div class="section-title">Dynamic variables</div>
-        <pre class="code-block">&#123;&#123;$randomInt 1 100&#125;&#125;      Random integer
-&#123;&#123;$timestamp&#125;&#125;            Unix epoch (UTC)
-&#123;&#123;$datetime iso8601&#125;&#125;     UTC datetime
-&#123;&#123;$localDatetime iso8601&#125;&#125; Local datetime</pre>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Assertions</div>
-        <p>Add assertions in the <strong>Assertions</strong> tab. One assertion per line, with expression and label separated by <code> | </code>.</p>
-        <pre class="code-block">expression | Label text
-expression without a label</pre>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Assertion - Data access</div>
-        <pre class="code-block">pb.response.status             HTTP status code
+        <div class="section-title">The pb. prefix</div>
+        <p>All scripting in Psychic Broccoli uses the <code>pb.</code> prefix. It gives you access to the current request and response, and lets you set variables, mutate requests, and write assertions.</p>
+        <pre class="code-block"><strong>Read data</strong>
+pb.response.status             HTTP status code
 pb.response.statusText         Status text ("OK")
 pb.response.body               Raw response body
 pb.response.body.$.path        JSONPath into body
@@ -99,7 +94,63 @@ pb.request.url                 Request URL
 pb.request.method              Request method
 pb.request.body                Request body
 pb.request.headers.Name        Request header
-&#123;&#123;variableName&#125;&#125;               Environment/file variable</pre>
+
+<strong>Write data</strong>
+pb.set("key", expr)            Store a file-level variable
+pb.global("key", expr)         Store a workspace variable
+pb.assert(expr, "label")       Assert a condition
+
+<strong>Mutate the request (Before Send only)</strong>
+pb.set("request.url", expr)              Override URL
+pb.set("request.header.Name", expr)      Set/replace a header
+pb.set("request.body", expr)             Replace entire body
+pb.set("request.body.$.path", expr)      Patch a JSON field</pre>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Before Send</div>
+        <p>Scripts in the <strong>Before Send</strong> tab run after variables are resolved but before the request is sent. Use them to dynamically mutate the outgoing request.</p>
+        <pre class="code-block"><strong>Add or override headers</strong>
+pb.set("request.header.X-Request-Id", &#123;&#123;$timestamp&#125;&#125;)
+pb.set("request.header.Authorization", "Bearer " + &#123;&#123;token&#125;&#125;)
+
+<strong>Override the URL</strong>
+pb.set("request.url", "https://fallback.example.com/api")
+
+<strong>Patch JSON body fields</strong>
+pb.set("request.body.$.timestamp", &#123;&#123;$timestamp&#125;&#125;)
+pb.set("request.body.$.user.name", "Override Name")
+
+<strong>Replace the entire body</strong>
+pb.set("request.body", "&#123;\"key\": \"value\"&#125;")
+
+<strong>Set variables for later use</strong>
+pb.set("computedKey", "prefix-" + &#123;&#123;$randomInt 1 999&#125;&#125;)</pre>
+      </div>
+
+      <div class="section">
+        <div class="section-title">After Receive</div>
+        <p>Scripts in the <strong>After Receive</strong> tab run once the response arrives. Use them to extract values, store tokens, or validate responses.</p>
+        <pre class="code-block"><strong>Extract and store values</strong>
+pb.set("token", pb.response.body.$.access_token)
+pb.set("userId", pb.response.body.$.data.user.id)
+pb.global("sessionId", pb.response.body.$.session)
+
+<strong>Store response metadata</strong>
+pb.set("lastStatus", pb.response.status)
+pb.set("responseTime", pb.response.time)
+pb.set("contentType", pb.response.headers.Content-Type)
+
+<strong>Chain into later requests</strong>
+pb.global("authToken", pb.response.body.$.token)
+pb.global("baseUrl", pb.response.body.$.config.apiUrl)</pre>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Assertions</div>
+        <p>Add assertions in the <strong>Assertions</strong> tab. One assertion per line, with expression and label separated by <code> | </code>.</p>
+        <pre class="code-block">expression | Label text
+expression without a label</pre>
       </div>
 
       <div class="section">
@@ -143,12 +194,19 @@ pb.response.status == &#123;&#123;expectedStatus&#125;&#125; | Variable comparis
       </div>
 
       <div class="section">
-        <div class="section-title">Assertion - Set &amp; Global directives</div>
-        <p>In <code>.http</code> files, you can also store values for use in later requests:</p>
-        <pre class="code-block"># @pb.set("token", pb.response.body.$.token)
-# @pb.global("sessionId", pb.response.body.$.id)
+        <div class="section-title">Pb directives in .http files</div>
+        <p>In <code>.http</code> files, use comment-prefixed syntax with section markers:</p>
+        <pre class="code-block">GET &#123;&#123;baseUrl&#125;&#125;/api/users/1
+Authorization: Bearer &#123;&#123;token&#125;&#125;
+
+# @pb.beforeSend
+# @pb.set("request.header.X-Trace", &#123;&#123;$timestamp&#125;&#125;)
+
+# @pb.afterReceive
+# @pb.set("userId", pb.response.body.$.id)
+# @pb.global("lastUser", pb.response.body.$.name)
 # @pb.assert(pb.response.status == 200, "OK")</pre>
-        <p><code>set</code> stores a file-level variable. <code>global</code> persists across files.</p>
+        <p><code>set</code> stores a variable scoped to the current file. <code>global</code> makes it available across all files in the workspace. Both are runtime-only and reset when you close the app. The GUI tabs and file directives are equivalent.</p>
       </div>
 
       <div class="section">

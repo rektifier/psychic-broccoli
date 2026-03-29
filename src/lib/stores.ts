@@ -30,7 +30,7 @@ export const isLoading = writable<boolean>(false);
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 
-export type BottomTab = 'body' | 'assertions';
+export type BottomTab = 'body' | 'assertions' | 'before-send' | 'after-receive';
 export type ResponseTab = 'body' | 'headers' | 'request' | 'assertions';
 
 export interface Tab {
