@@ -133,6 +133,41 @@
     cachedRects = [];
   }
 
+  function onListDragLeave(e: DragEvent) {
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node))
+      insertSlot = -1;
+  }
+
+  function moveStep(from: number, to: number) {
+    if (from === to || to < 0 || to >= flow.steps.length) return;
+    const steps = [...flow.steps];
+    const [moved] = steps.splice(from, 1);
+    steps.splice(to, 0, moved);
+    flow = { ...flow, steps };
+    save();
+  }
+
+  function onStepKeydown(e: KeyboardEvent, index: number) {
+    if (e.key === 'ArrowUp' && index > 0) {
+      e.preventDefault();
+      moveStep(index, index - 1);
+      // Re-focus the moved card's handle after Svelte re-renders
+      requestAnimationFrame(() => {
+        const list = (e.target as HTMLElement).closest('.steps-list');
+        const handles = list?.querySelectorAll<HTMLElement>('.drag-handle');
+        handles?.[index - 1]?.focus();
+      });
+    } else if (e.key === 'ArrowDown' && index < flow.steps.length - 1) {
+      e.preventDefault();
+      moveStep(index, index + 1);
+      requestAnimationFrame(() => {
+        const list = (e.target as HTMLElement).closest('.steps-list');
+        const handles = list?.querySelectorAll<HTMLElement>('.drag-handle');
+        handles?.[index + 1]?.focus();
+      });
+    }
+  }
+
   const MC: Record<string, string> = {
     GET: '#2B7FC5', POST: '#3D8B45', PUT: '#9A7520', PATCH: '#A06828',
     DELETE: '#CC4455', HEAD: '#8040A8', OPTIONS: '#1A8898',
@@ -251,12 +286,12 @@
         <button class="steps-empty-btn" on:click={() => showPicker = true}>Add a request</button>
       </div>
     {:else}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="steps-list"
+        role="list"
         on:dragover={onListDragOver}
         on:drop={onListDrop}
-        on:dragleave={(e) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) insertSlot = -1; }}
+        on:dragleave={onListDragLeave}
       >
         {#each flow.steps as step, i}
           {#if insertSlot === i}
@@ -274,10 +309,18 @@
             class:dragging={draggingIndex === i}
             draggable="true"
             on:dragstart={(e) => onDragStart(e, i)}
+            on:dragover|preventDefault
             on:dragend={onDragEnd}
             role="listitem"
           >
-            <span class="drag-handle" title="Drag to reorder">
+            <span
+              class="drag-handle"
+              title="Drag to reorder"
+              role="button"
+              tabindex="0"
+              aria-label="Reorder step {i + 1}, use arrow keys"
+              on:keydown={(e) => onStepKeydown(e, i)}
+            >
               <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
                 <circle cx="3" cy="2.5" r="1.2" fill="currentColor"/>
                 <circle cx="7" cy="2.5" r="1.2" fill="currentColor"/>
@@ -531,6 +574,12 @@
   }
   .drag-handle:active {
     cursor: grabbing;
+  }
+  .drag-handle:focus-visible {
+    outline: 2px solid #8040A8;
+    outline-offset: 2px;
+    border-radius: 3px;
+    color: #888;
   }
   .step-card.dragging {
     opacity: 0.35;
