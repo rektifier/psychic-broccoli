@@ -5,6 +5,7 @@
   import EnvironmentEditor from './components/EnvironmentEditor.svelte';
   import ToastContainer from './components/ToastContainer.svelte';
   import HelpModal from './components/HelpModal.svelte';
+  import VariableInspector from './components/VariableInspector.svelte';
   import ImportEnvModal from './components/ImportEnvModal.svelte';
   import ImportCollectionModal from './components/ImportCollectionModal.svelte';
   import type { ImportFormat } from './lib/detect';
@@ -41,6 +42,7 @@
   import { onDestroy } from 'svelte';
 
   let showEnvEditor = false;
+  let showVarInspector = false;
 
   let showHelp = false;
 
@@ -691,6 +693,22 @@
 
 <ToastContainer />
 <HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<VariableInspector
+  visible={showVarInspector}
+  fileVariables={$activeFileVariables}
+  envVariables={$resolvedEnvVars}
+  pbOverrides={$pbEnvOverrides}
+  pbGlobals={$pbGlobals}
+  namedResults={$namedResults}
+  activeEnv={$activeEnvironment}
+  activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
+  on:close={() => showVarInspector = false}
+  on:clearRuntime={() => {
+    pbEnvOverrides.set({});
+    pbGlobals.set({});
+    namedResults.set({});
+  }}
+/>
 <ImportEnvModal
   visible={showImportEnvModal}
   variables={pendingImportVars}
@@ -735,6 +753,7 @@
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
         on:addEnv={handleAddEnv}
         on:editEnv={() => showEnvEditor = true}
+        on:openVarInspector={() => showVarInspector = true}
         on:nameRequest={handleNameRequest}
       />
     </div>
