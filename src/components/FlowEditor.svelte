@@ -52,9 +52,22 @@
   let draggingIndex: number = -1;
   /** Insertion slot: 0 = before first, 1 = after first / before second, etc. */
   let insertSlot: number = -1;
+  /** Cached card positions from drag start - prevents layout-feedback flicker */
+  let cachedRects: { top: number; height: number }[] = [];
+  const HYSTERESIS = 8; // px deadzone before switching slots
 
   function onDragStart(e: DragEvent, index: number) {
     draggingIndex = index;
+    // Snapshot card positions before any visual changes
+    const card = e.currentTarget as HTMLElement;
+    const list = card.closest('.steps-list');
+    if (list) {
+      const cards = list.querySelectorAll('.step-card');
+      cachedRects = Array.from(cards).map(c => {
+        const r = c.getBoundingClientRect();
+        return { top: r.top, height: r.height };
+      });
+    }
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', String(index));
@@ -62,30 +75,35 @@
   }
 
   function onListDragOver(e: DragEvent) {
-    if (draggingIndex === -1) return;
+    if (draggingIndex === -1 || cachedRects.length === 0) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 
-    // Find which insertion slot the cursor is closest to
-    const list = (e.currentTarget as HTMLElement);
-    const cards = list.querySelectorAll('.step-card');
-    let slot = cards.length; // default: after last
+    // Find which insertion slot the cursor is closest to using cached rects
+    let newSlot = cachedRects.length; // default: after last
 
-    for (let i = 0; i < cards.length; i++) {
-      const rect = cards[i].getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
+    for (let i = 0; i < cachedRects.length; i++) {
+      const midY = cachedRects[i].top + cachedRects[i].height / 2;
       if (e.clientY < midY) {
-        slot = i;
+        newSlot = i;
         break;
       }
     }
 
     // Don't show indicator right above or below the dragged item (no-op drop)
-    if (slot === draggingIndex || slot === draggingIndex + 1) {
+    if (newSlot === draggingIndex || newSlot === draggingIndex + 1) {
       insertSlot = -1;
-    } else {
-      insertSlot = slot;
+      return;
     }
+
+    // Hysteresis: if we already have a slot, require cursor to move past deadzone
+    if (insertSlot !== -1 && newSlot !== insertSlot) {
+      const boundaryIdx = newSlot < cachedRects.length ? newSlot : cachedRects.length - 1;
+      const mid = cachedRects[boundaryIdx].top + cachedRects[boundaryIdx].height / 2;
+      if (Math.abs(e.clientY - mid) < HYSTERESIS) return;
+    }
+
+    insertSlot = newSlot;
   }
 
   function onListDrop(e: DragEvent) {
@@ -93,6 +111,7 @@
     if (draggingIndex === -1 || insertSlot === -1) {
       draggingIndex = -1;
       insertSlot = -1;
+      cachedRects = [];
       return;
     }
 
@@ -105,11 +124,13 @@
     save();
     draggingIndex = -1;
     insertSlot = -1;
+    cachedRects = [];
   }
 
   function onDragEnd() {
     draggingIndex = -1;
     insertSlot = -1;
+    cachedRects = [];
   }
 
   const MC: Record<string, string> = {
@@ -235,7 +256,7 @@
         class="steps-list"
         on:dragover={onListDragOver}
         on:drop={onListDrop}
-        on:dragleave={() => { insertSlot = -1; }}
+        on:dragleave={(e) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) insertSlot = -1; }}
       >
         {#each flow.steps as step, i}
           {#if insertSlot === i}
@@ -515,12 +536,21 @@
     opacity: 0.35;
   }
   .drop-indicator {
+    height: 0;
+    overflow: visible;
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .drop-indicator::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -1.5px;
     height: 3px;
     background: #8040A8;
     border-radius: 2px;
-    margin: -2px 0;
-    position: relative;
-    z-index: 1;
   }
   .step-number {
     font-size: 10px;
