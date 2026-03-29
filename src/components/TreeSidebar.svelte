@@ -588,14 +588,6 @@
     flex: 1;
     min-width: 0;
   }
-  .flow-item-steps {
-    font-size: 10px;
-    color: #999;
-    background: #F0F0F4;
-    padding: 1px 5px;
-    border-radius: 8px;
-    flex-shrink: 0;
-  }
   .btn-dup-flow {
     display: flex;
     align-items: center;
