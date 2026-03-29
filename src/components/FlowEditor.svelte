@@ -48,6 +48,41 @@
   let nameInputEl: HTMLInputElement;
   let showPicker = false;
 
+  // Drag-and-drop reordering
+  let draggingIndex: number = -1;
+  let dragOverIndex: number = -1;
+
+  function onDragStart(e: DragEvent, index: number) {
+    draggingIndex = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  function onDragOver(e: DragEvent, index: number) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dragOverIndex = index;
+  }
+
+  function onDrop(e: DragEvent, index: number) {
+    e.preventDefault();
+    if (draggingIndex === -1 || draggingIndex === index) return;
+    const steps = [...flow.steps];
+    const [moved] = steps.splice(draggingIndex, 1);
+    steps.splice(index, 0, moved);
+    flow = { ...flow, steps };
+    save();
+    draggingIndex = -1;
+    dragOverIndex = -1;
+  }
+
+  function onDragEnd() {
+    draggingIndex = -1;
+    dragOverIndex = -1;
+  }
+
   const MC: Record<string, string> = {
     GET: '#2B7FC5', POST: '#3D8B45', PUT: '#9A7520', PATCH: '#A06828',
     DELETE: '#CC4455', HEAD: '#8040A8', OPTIONS: '#1A8898',
@@ -81,15 +116,6 @@
 
   function removeStep(index: number) {
     flow = { ...flow, steps: flow.steps.filter((_, i) => i !== index) };
-    save();
-  }
-
-  function moveStep(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= flow.steps.length) return;
-    const steps = [...flow.steps];
-    [steps[index], steps[target]] = [steps[target], steps[index]];
-    flow = { ...flow, steps };
     save();
   }
 
@@ -179,29 +205,32 @@
         {#each flow.steps as step, i}
           {@const sr = getStepStatus(step.id)}
           {@const broken = isStepBroken(step)}
-          <div class="step-card" class:step-passed={sr?.status === 'passed'} class:step-failed={sr?.status === 'failed'} class:step-running={sr?.status === 'running'} class:step-skipped={sr?.status === 'skipped'} class:step-broken={broken}>
-            <div class="step-reorder">
-              <button
-                class="btn-move"
-                disabled={i === 0}
-                on:click={() => moveStep(i, -1)}
-                title="Move up"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path d="M2 6.5l3-3 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <button
-                class="btn-move"
-                disabled={i === flow.steps.length - 1}
-                on:click={() => moveStep(i, 1)}
-                title="Move down"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-            </div>
+          <div
+            class="step-card"
+            class:step-passed={sr?.status === 'passed'}
+            class:step-failed={sr?.status === 'failed'}
+            class:step-running={sr?.status === 'running'}
+            class:step-skipped={sr?.status === 'skipped'}
+            class:step-broken={broken}
+            class:dragging={draggingIndex === i}
+            class:drag-over={dragOverIndex === i && draggingIndex !== i}
+            draggable="true"
+            on:dragstart={(e) => onDragStart(e, i)}
+            on:dragover={(e) => onDragOver(e, i)}
+            on:drop={(e) => onDrop(e, i)}
+            on:dragend={onDragEnd}
+            role="listitem"
+          >
+            <span class="drag-handle" title="Drag to reorder">
+              <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
+                <circle cx="3" cy="2.5" r="1.2" fill="currentColor"/>
+                <circle cx="7" cy="2.5" r="1.2" fill="currentColor"/>
+                <circle cx="3" cy="7" r="1.2" fill="currentColor"/>
+                <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+                <circle cx="3" cy="11.5" r="1.2" fill="currentColor"/>
+                <circle cx="7" cy="11.5" r="1.2" fill="currentColor"/>
+              </svg>
+            </span>
             <span class="step-number">{i + 1}</span>
             {#if getMethod(step.label)}
               <span class="step-method" style="color: {MC[getMethod(step.label)] || '#888'}">{getMethod(step.label).slice(0, 3)}</span>
@@ -428,31 +457,29 @@
   .step-card:hover {
     border-color: #D4D4D8;
   }
-  .step-reorder {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    flex-shrink: 0;
-  }
-  .btn-move {
-    width: 16px; height: 12px;
-    border: none;
-    border-radius: 2px;
-    background: transparent;
-    color: #BBB;
-    cursor: pointer;
+  .drag-handle {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0;
+    width: 16px;
+    flex-shrink: 0;
+    color: #CCC;
+    cursor: grab;
+    transition: color 0.15s;
   }
-  .btn-move:hover:not(:disabled) {
-    color: #8040A8;
-    background: #8040A810;
+  .step-card:hover .drag-handle {
+    color: #AAA;
   }
-  .btn-move:disabled {
-    opacity: 0.3;
-    cursor: default;
+  .drag-handle:active {
+    cursor: grabbing;
+  }
+  .step-card.dragging {
+    opacity: 0.4;
+  }
+  .step-card.drag-over {
+    border-color: #8040A8;
+    background: #8040A808;
+    box-shadow: 0 0 0 1px #8040A840;
   }
   .step-number {
     font-size: 10px;
