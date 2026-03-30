@@ -987,6 +987,7 @@
             on:save={handleSaveFlow}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
+            on:clearHistory={() => flowRunHistory.set($flowRunHistory.filter(r => r.flowFilePath !== $activeFlowTabPath))}
           />
         {:else if $activeRequest && $selectedLocation}
           <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">

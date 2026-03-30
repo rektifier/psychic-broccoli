@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import type { FlowRunRecord, FlowStepResult } from '../lib/types';
+
+  const dispatch = createEventDispatcher<{ clearHistory: void }>();
 
   export let runRecord: FlowRunRecord | null = null;
   export let history: FlowRunRecord[] = [];
@@ -134,7 +137,10 @@
   <!-- History -->
   {#if relevantHistory.length > 0}
     <div class="results-history">
-      <span class="history-title">Run history</span>
+      <div class="history-header">
+        <span class="history-title">Run history</span>
+        <button class="btn-clear-history" on:click={() => dispatch('clearHistory')}>Clear</button>
+      </div>
       <div class="history-list">
         {#each relevantHistory.slice(0, 20) as rec}
           <button
@@ -367,12 +373,33 @@
     border-top: 1px solid #EDEDF0;
     padding-top: 16px;
   }
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
   .history-title {
     font-size: 11px;
     font-weight: 700;
     color: #888;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+  .btn-clear-history {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid #CC445530;
+    border-radius: 4px;
+    background: #CC445508;
+    color: #CC4455;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .btn-clear-history:hover {
+    border-color: #CC4455;
+    background: #CC445515;
   }
   .history-list {
     display: flex;

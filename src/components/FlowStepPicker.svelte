@@ -72,6 +72,17 @@
     if (e.target === e.currentTarget) dispatch('close');
   }
 
+  let expandedFiles: Set<string> = new Set();
+
+  function toggleFile(path: string) {
+    if (expandedFiles.has(path)) {
+      expandedFiles.delete(path);
+    } else {
+      expandedFiles.add(path);
+    }
+    expandedFiles = expandedFiles;
+  }
+
   let filterInputEl: HTMLInputElement;
   $: if (filterInputEl) filterInputEl.focus();
 </script>
@@ -111,23 +122,32 @@
     </div>
     <div class="picker-list">
       {#each filteredFiles as file}
+        {@const expanded = expandedFiles.has(file.path)}
         <div class="picker-file">
-          <div class="picker-file-header">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="picker-file-header" on:click={() => toggleFile(file.path)} on:keydown={(e) => { if (e.key === 'Enter') toggleFile(file.path); }}>
+            <span class="picker-chevron" class:open={expanded}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <path d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" fill="#2B7FC518" stroke="#2B7FC5" stroke-width="1.2"/>
               <path d="M9 2v4h4" stroke="#2B7FC5" stroke-width="1.2"/>
             </svg>
             <span class="picker-file-name">{file.name.replace(/\.(http|rest)$/, '')}</span>
           </div>
-          {#each file.requests as req, i (req.id)}
-            <button class="picker-request" on:click={() => pickRequest(file, i)} title={displayMode === 'name' ? req.url : req.name}>
-              <span class="picker-method" style="color: {MC[req.method] || '#888'}">{req.method.slice(0, 3)}</span>
-              <span class="picker-url">{displayMode === 'url' ? (suffixMap.get(file.path)?.[i] ?? req.url) : req.name}</span>
-              {#if req.varName}
-                <span class="picker-varname">{req.varName}</span>
-              {/if}
-            </button>
-          {/each}
+          {#if expanded}
+            {#each file.requests as req, i (req.id)}
+              <button class="picker-request" on:click={() => pickRequest(file, i)} title={displayMode === 'name' ? req.url : req.name}>
+                <span class="picker-method" style="color: {MC[req.method] || '#888'}">{req.method.slice(0, 3)}</span>
+                <span class="picker-url">{displayMode === 'url' ? (suffixMap.get(file.path)?.[i] ?? req.url) : req.name}</span>
+                {#if req.varName}
+                  <span class="picker-varname">{req.varName}</span>
+                {/if}
+              </button>
+            {/each}
+          {/if}
         </div>
       {:else}
         <div class="picker-empty">No matching requests</div>
@@ -245,6 +265,25 @@
     color: #888;
     font-size: 11px;
     font-weight: 500;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background 0.1s;
+  }
+  .picker-file-header:hover {
+    background: #F0F0F4;
+  }
+  .picker-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: #BBB;
+    transition: transform 0.15s;
+  }
+  .picker-chevron.open {
+    transform: rotate(90deg);
   }
   .picker-file-name {
     overflow: hidden;
