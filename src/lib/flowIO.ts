@@ -5,7 +5,8 @@ import type { FlowDefinition, FlowRunRecord, FlowStep } from './types';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const FLOW_EXTENSION = '.pb-flow.json';
-const RESULTS_DIR = '.pb-flow-results';
+export const FLOWS_DIR = 'flows';
+const RESULTS_DIR = `${FLOWS_DIR}/.results`;
 const MAX_HISTORY_PER_FLOW = 50;
 
 // ─── Flow File Parsing / Serialization ───────────────────────────────────────
@@ -58,26 +59,28 @@ export interface DiscoveredFlow {
   flow: FlowDefinition;
 }
 
-/** Recursively scan a directory for .pb-flow.json files. */
+/** Scan the flows/ directory for .pb-flow.json files. */
 export async function scanForFlowFiles(dir: string, rootDir: string): Promise<DiscoveredFlow[]> {
-  const entries = await readDir(dir);
-  const results: DiscoveredFlow[] = [];
+  const flowsDir = await join(rootDir, FLOWS_DIR);
+  let entries: { name: string; isDirectory: boolean }[];
+  try {
+    entries = await readDir(flowsDir) as any[];
+  } catch {
+    return []; // flows/ directory doesn't exist yet
+  }
 
+  const results: DiscoveredFlow[] = [];
   for (const entry of entries) {
-    const fullPath = await join(dir, entry.name);
-    if (entry.isDirectory) {
-      // Skip the results directory
-      if (entry.name === RESULTS_DIR) continue;
-      results.push(...await scanForFlowFiles(fullPath, rootDir));
-    } else if (entry.name.endsWith(FLOW_EXTENSION)) {
-      try {
-        const content = await readTextFile(fullPath);
-        const flow = parseFlowFile(content);
-        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
-        results.push({ absolutePath: fullPath, relativePath, flow });
-      } catch {
-        // Skip malformed flow files
-      }
+    if (entry.isDirectory) continue;
+    if (!entry.name.endsWith(FLOW_EXTENSION)) continue;
+    try {
+      const fullPath = await join(flowsDir, entry.name);
+      const content = await readTextFile(fullPath);
+      const flow = parseFlowFile(content);
+      const relativePath = `${FLOWS_DIR}/${entry.name}`;
+      results.push({ absolutePath: fullPath, relativePath, flow });
+    } catch {
+      // Skip malformed flow files
     }
   }
   return results;

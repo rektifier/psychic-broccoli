@@ -37,7 +37,7 @@
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
-  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord } from './lib/flowIO';
+  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, FLOWS_DIR } from './lib/flowIO';
   import { runFlow } from './lib/flowRunner';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
@@ -738,8 +738,10 @@
     const { createEmptyFlow, writeFlowFile } = await import('./lib/flowIO');
     const flow = createEmptyFlow(name);
     const safeName = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
-    const absolutePath = await join(rootPath, `${safeName}.pb-flow.json`);
-    const relativePath = `${safeName}.pb-flow.json`;
+    const flowsDir = await join(rootPath, FLOWS_DIR);
+    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
+    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
+    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
 
     await writeFlowFile(absolutePath, flow);
     flows.update(f => ({ ...f, [relativePath]: flow }));
@@ -836,8 +838,10 @@
     const newName = `${sourceFlow.name} (copy)`;
     const newFlow = { ...sourceFlow, name: newName, steps: sourceFlow.steps.map(s => ({ ...s, id: crypto.randomUUID() })) };
     const safeName = newName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
-    const absolutePath = await join(rootPath, `${safeName}.pb-flow.json`);
-    const relativePath = `${safeName}.pb-flow.json`;
+    const flowsDir = await join(rootPath, FLOWS_DIR);
+    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
+    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
+    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
 
     await writeFlowFile(absolutePath, newFlow);
     flows.update(f => ({ ...f, [relativePath]: newFlow }));
@@ -857,7 +861,9 @@
         absolutePath = await join(absolutePath, seg);
       }
       await remove(absolutePath);
-    } catch { /* file may already be gone */ }
+    } catch (err) {
+      console.warn('Could not delete flow file:', path, err);
+    }
 
     flows.update(f => {
       const updated = { ...f };
