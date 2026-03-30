@@ -3,7 +3,8 @@
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
   import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode } from '../lib/types';
-  import { getAllFileNodes } from '../lib/parser';
+  import { getAllFileNodes, substituteAll } from '../lib/parser';
+  import { resolvedEnvVars, namedResults, dotenvVariables } from '../lib/stores';
 
   export let flow: FlowDefinition;
   export let flowPath: string;
@@ -17,22 +18,26 @@
     save: { flowPath: string; flow: FlowDefinition };
     run: void;
     abort: void;
+    clearHistory: void;
   }>();
 
   $: isRunning = runState?.status === 'running';
   $: allFiles = getAllFileNodes(tree);
 
-  /** Check if a step's target file and request still exist in the workspace. */
-  function isStepBroken(step: FlowStep): boolean {
+  /** Find the FileNode matching a step's filePath. */
+  function findFileForStep(step: FlowStep): FileNode | undefined {
     const normalized = step.filePath.replaceAll('\\', '/');
-    const file = allFiles.find(f => {
+    return allFiles.find(f => {
       const rel = f.path.substring(rootPath.length + 1).replaceAll('\\', '/');
       return rel === normalized;
     });
+  }
+
+  /** Check if a step's target file and request still exist in the workspace. */
+  function isStepBroken(step: FlowStep): boolean {
+    const file = findFileForStep(step);
     if (!file) return true;
-    // Check index
     if (step.requestIndex >= 0 && step.requestIndex < file.requests.length) return false;
-    // Fallback: varName
     if (step.varName && file.requests.some(r => r.varName === step.varName)) return false;
     return true;
   }
@@ -221,6 +226,33 @@
     const m = label.match(/^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\s+(.*)/);
     return m ? m[1] : label;
   }
+
+  /** Resolve a raw URL using current environment/variables. Returns '' if no change. */
+  function resolveStepUrl(rawUrl: string, file: FileNode | undefined): string {
+    if (!rawUrl || !rawUrl.includes('{{')) return '';
+    const resolved = substituteAll(rawUrl, {
+      fileVariables: file?.variables ?? [],
+      environmentVariables: $resolvedEnvVars,
+      namedResults: $namedResults,
+      dotenvVariables: $dotenvVariables,
+    });
+    return resolved !== rawUrl ? resolved : '';
+  }
+
+  /** Compute URL suffixes for requests in a file, stripping common prefix segments. */
+  function computeFileSuffixes(requests: { url: string }[]): string[] {
+    if (requests.length === 0) return [];
+    if (requests.length === 1) return [requests[0].url];
+    const split = requests.map(r => r.url.split('/'));
+    const minLen = Math.min(...split.map(s => s.length));
+    let common = 0;
+    for (let i = 0; i < minLen; i++) {
+      if (split.every(s => s[i] === split[0][i])) common = i + 1;
+      else break;
+    }
+    if (common === 0) return requests.map(r => r.url);
+    return split.map(s => '/' + s.slice(common).join('/'));
+  }
 </script>
 
 <div class="flow-editor">
@@ -299,6 +331,13 @@
           {/if}
           {@const sr = getStepStatus(step.id)}
           {@const broken = isStepBroken(step)}
+          {@const file = findFileForStep(step)}
+          {@const suffixes = file ? computeFileSuffixes(file.requests) : null}
+          {@const displayUrl = (suffixes && step.requestIndex >= 0 && step.requestIndex < suffixes.length) ? suffixes[step.requestIndex] : getUrl(step.label)}
+          {@const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0) ? file.requests[step.requestIndex] : null}
+          {@const rawUrl = req ? req.url : getUrl(step.label)}
+          {@const requestName = req?.name ?? ''}
+          {@const resolvedUrl = resolveStepUrl(rawUrl, file)}
           <div
             class="step-card"
             class:step-passed={sr?.status === 'passed'}
@@ -331,42 +370,59 @@
               </svg>
             </span>
             <span class="step-number">{i + 1}</span>
-            {#if getMethod(step.label)}
-              <span class="step-method" style="color: {MC[getMethod(step.label)] || '#888'}">{getMethod(step.label).slice(0, 3)}</span>
-            {/if}
-            <span class="step-label" title={step.label}>{getUrl(step.label)}</span>
-            <span class="step-file" title={step.filePath}>{step.filePath}</span>
-            {#if broken}
-              <span class="step-broken-badge">missing</span>
-            {/if}
-            <button
-              class="btn-continue-toggle"
-              class:active={step.continueOnFailure}
-              on:click={() => toggleContinueOnFailure(i)}
-              title={step.continueOnFailure ? 'Continues on failure (click to stop on failure)' : 'Stops on failure (click to continue on failure)'}
-            >
-              {step.continueOnFailure ? 'skip' : 'stop'}
-            </button>
-            {#if sr}
-              <span class="step-status-info">
-                {#if sr.status === 'running'}
-                  <span class="step-status-icon running">...</span>
-                {:else if sr.status === 'passed'}
-                  <span class="step-status-icon passed">&#10003;</span>
-                {:else if sr.status === 'failed'}
-                  <span class="step-status-icon failed">&#10005;</span>
-                {:else if sr.status === 'skipped'}
-                  <span class="step-status-icon skipped">-</span>
+            <div class="step-content">
+              <div class="step-top-row">
+                <span class="step-file" title={step.filePath}>{step.filePath.replace(/\.[^.]+$/, '').split('/').pop()}</span>
+                {#if broken}
+                  <span class="step-broken-badge">missing</span>
                 {/if}
-                {#if sr.response}
-                  <span class="step-http-status" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
+              </div>
+              {#if requestName}
+                <span class="step-request-name">{requestName}</span>
+              {/if}
+              <div class="step-url-row">
+                {#if getMethod(step.label)}
+                  <span class="step-method" style="color: {MC[getMethod(step.label)] || '#888'}">{getMethod(step.label).slice(0, 3)}</span>
                 {/if}
-                {#if sr.durationMs > 0}
-                  <span class="step-duration">{sr.durationMs}ms</span>
-                {/if}
-              </span>
-            {/if}
-            <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step">&times;</button>
+                <span class="step-label" title={getUrl(step.label)}>{displayUrl}</span>
+              </div>
+              {#if resolvedUrl}
+                <div class="step-resolved-url">
+                  <span class="resolved-arrow">&rarr;</span>
+                  <span class="resolved-value">{resolvedUrl}</span>
+                </div>
+              {/if}
+            </div>
+            <div class="step-actions">
+              <button
+                class="btn-continue-toggle"
+                class:active={step.continueOnFailure}
+                on:click={() => toggleContinueOnFailure(i)}
+                title={step.continueOnFailure ? 'Continues on failure (click to stop on failure)' : 'Stops on failure (click to continue on failure)'}
+              >
+                {step.continueOnFailure ? 'skip' : 'stop'}
+              </button>
+              {#if sr}
+                <span class="step-status-info">
+                  {#if sr.status === 'running'}
+                    <span class="step-status-icon running">...</span>
+                  {:else if sr.status === 'passed'}
+                    <span class="step-status-icon passed">&#10003;</span>
+                  {:else if sr.status === 'failed'}
+                    <span class="step-status-icon failed">&#10005;</span>
+                  {:else if sr.status === 'skipped'}
+                    <span class="step-status-icon skipped">-</span>
+                  {/if}
+                  {#if sr.response}
+                    <span class="step-http-status" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
+                  {/if}
+                  {#if sr.durationMs > 0}
+                    <span class="step-duration">{sr.durationMs}ms</span>
+                  {/if}
+                </span>
+              {/if}
+              <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step">&times;</button>
+            </div>
           </div>
         {/each}
         {#if insertSlot === flow.steps.length}
@@ -384,6 +440,7 @@
         runRecord={lastRunRecord}
         history={runHistory}
         flowFilePath={flowPath}
+        on:clearHistory={() => dispatch('clearHistory')}
       />
     </div>
   {/if}
@@ -544,20 +601,21 @@
   .steps-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
   }
   .step-card {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
     background: #FAFAFA;
     border: 1px solid #E4E4EA;
-    border-radius: 6px;
-    transition: border-color 0.15s;
+    border-radius: 8px;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
   .step-card:hover {
     border-color: #D4D4D8;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   }
   .drag-handle {
     display: flex;
@@ -567,6 +625,7 @@
     flex-shrink: 0;
     color: #CCC;
     cursor: grab;
+    margin-top: 4px;
     transition: color 0.15s;
   }
   .step-card:hover .drag-handle {
@@ -602,49 +661,104 @@
     border-radius: 2px;
   }
   .step-number {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     color: #8040A8;
-    background: #8040A810;
-    width: 20px;
-    height: 20px;
+    background: #8040A80D;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
     flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .step-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .step-top-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 1px;
+  }
+  .step-file {
+    font-size: 10.5px;
+    color: #AAA;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .step-request-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #2A2A32;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.3;
+  }
+  .step-url-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
   }
   .step-method {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.5px;
-    min-width: 28px;
+    letter-spacing: 0.3px;
+    min-width: 30px;
     flex-shrink: 0;
   }
   .step-label {
     font-size: 12px;
-    color: #333340;
-    font-weight: 500;
-    flex: 1;
+    color: #777;
+    font-weight: 400;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .step-file {
-    font-size: 10px;
-    color: #AAA;
+  .step-resolved-url {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+    padding-left: 36px;
+  }
+  .step-resolved-url .resolved-arrow {
+    font-size: 11px;
+    color: #BBB;
     flex-shrink: 0;
-    max-width: 180px;
+  }
+  .step-resolved-url .resolved-value {
+    font-size: 11px;
+    color: #3D8B45;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    opacity: 0.8;
+  }
+  .step-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-top: 3px;
   }
   .btn-continue-toggle {
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 3px;
+    padding: 3px 8px;
+    border-radius: 4px;
     border: 1px solid #DCDCE2;
     background: transparent;
     color: #999;
@@ -658,7 +772,7 @@
     color: #D4900A;
   }
   .btn-remove-step {
-    width: 20px; height: 20px;
+    width: 22px; height: 22px;
     border: none;
     border-radius: 4px;
     background: transparent;
