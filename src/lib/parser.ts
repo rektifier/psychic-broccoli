@@ -34,8 +34,9 @@ const SEPARATOR_RE = /^###\s*(.*)?$/;
 /** Comment line: # ... or // ... */
 const COMMENT_RE = /^(#(?!##)|\/\/)/;
 
-/** Request variable name: # @name foo  or  // @name foo */
-const NAME_DIRECTIVE_RE = /^(?:#|\/\/)\s*@name\s+(\S+)\s*$/;
+/** Request variable name: # @name foo  or  // @name foo
+ *  Allowed characters: letters, digits, underscore, hyphen (aligns with JetBrains HTTP Client spec). */
+const NAME_DIRECTIVE_RE = /^(?:#|\/\/)\s*@name\s+([\w-]+)\s*$/;
 
 /** Pb directive: # @pb.set("key", expr) or # @pb.global("key", expr) or # @pb.assert(expr, "label") */
 const PB_DIRECTIVE_RE = /^(?:#|\/\/)\s*@pb\.(\w+)\((.+)\)\s*$/;
@@ -49,8 +50,9 @@ const BARE_PB_RE = /^pb\.(\w+)\((.+)\)\s*$/;
 /** Dynamic variable: {{$something ...}} */
 const DYNAMIC_VAR_RE = /\{\{\$(\w+)(?:\s+(.+?))?\}\}/g;
 
-/** Request variable ref: {{reqName.response.body.$.path}} etc. */
-const REQUEST_VAR_RE = /\{\{(\w+)\.(request|response)\.(body|headers)\.(.+?)\}\}/g;
+/** Request variable ref: {{reqName.response.body.$.path}} etc.
+ *  Name portion allows hyphens to match NAME_DIRECTIVE_RE. */
+const REQUEST_VAR_RE = /\{\{([\w-]+)\.(request|response)\.(body|headers)\.(.+?)\}\}/g;
 
 /** Standard variable ref: {{name}} (but not dynamic or request vars) */
 const SIMPLE_VAR_RE = /\{\{([^${}][^{}]*?)\}\}/g;
