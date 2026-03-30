@@ -21,6 +21,10 @@
       "identifier": "fs:allow-mkdir",
       "allow": [{ "path": "**" }]
     },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [{ "path": "**" }]
+    },
     "http:default",
     {
       "identifier": "http:allow-fetch",
