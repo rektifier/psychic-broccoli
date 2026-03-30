@@ -64,8 +64,8 @@ export async function runFlow(
       continue;
     }
 
-    const request = resolveRequest(file, step);
-    if (!request) {
+    const baseRequest = resolveRequest(file, step);
+    if (!baseRequest) {
       const result = makeErrorResult(step.id, `Request not found at index ${step.requestIndex} in ${step.filePath}`);
       stepResults.push(result);
       callbacks.onStepComplete(step.id, result);
@@ -76,6 +76,15 @@ export async function runFlow(
       }
       continue;
     }
+
+    // Apply per-step overrides (without modifying the original request)
+    const request = step.overrides ? {
+      ...baseRequest,
+      ...(step.overrides.url !== undefined ? { url: step.overrides.url } : {}),
+      ...(step.overrides.headers !== undefined ? { headers: step.overrides.headers } : {}),
+      ...(step.overrides.body !== undefined ? { body: step.overrides.body } : {}),
+      ...(step.overrides.directives !== undefined ? { directives: step.overrides.directives } : {}),
+    } : baseRequest;
 
     // Build substitution context with flow-local state
     const ctx: SubstitutionContext = {
@@ -170,8 +179,9 @@ async function executeStep(
       const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
       for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
 
+      const enabledDirectives = request.directives.filter(d => d.enabled !== false);
       const pbResult = executePbDirectives(
-        request.directives, response, sentRequest, mergedVars, localNamedResults,
+        enabledDirectives, response, sentRequest, mergedVars, localNamedResults,
       );
 
       assertionResults = pbResult.assertionResults;

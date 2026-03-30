@@ -148,9 +148,9 @@ export interface ImportResult {
 
 /** A parsed `# @pb.*` directive attached to a request. */
 export type PbDirective =
-  | { type: 'set'; key: string; expr: string }
-  | { type: 'global'; key: string; expr: string }
-  | { type: 'assert'; expr: string; label: string };
+  | { type: 'set'; key: string; expr: string; enabled?: boolean }
+  | { type: 'global'; key: string; expr: string; enabled?: boolean }
+  | { type: 'assert'; expr: string; label: string; enabled?: boolean };
 
 /** Result of a single pb.assert() assertion. */
 export interface PbAssertionResult {
@@ -173,6 +173,14 @@ export interface NamedRequestResult {
 
 // ─── Test Flows ──────────────────────────────────────────────────────────────
 
+/** Per-step overrides that replace corresponding fields from the base request. */
+export interface FlowStepOverrides {
+  url?: string;
+  headers?: HttpHeader[];
+  body?: string;
+  directives?: PbDirective[];
+}
+
 /** A single step in a test flow, referencing a request in a .http file. */
 export interface FlowStep {
   /** Unique identifier for this step within the flow */
@@ -187,6 +195,8 @@ export interface FlowStep {
   label: string;
   /** If true, the runner continues to the next step even if this step fails */
   continueOnFailure: boolean;
+  /** Optional per-step overrides that replace base request fields without modifying the .http file */
+  overrides?: FlowStepOverrides;
 }
 
 /** A test flow definition stored as a .pb-flow.json file. */

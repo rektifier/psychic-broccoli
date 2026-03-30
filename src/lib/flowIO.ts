@@ -1,6 +1,6 @@
 import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps/plugin-fs';
 import { join, basename } from '@tauri-apps/api/path';
-import type { FlowDefinition, FlowRunRecord, FlowStep } from './types';
+import type { FlowDefinition, FlowRunRecord, FlowStep, FlowStepOverrides } from './types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -22,6 +22,16 @@ export function parseFlowFile(content: string): FlowDefinition {
   };
 }
 
+function parseOverrides(raw: any): FlowStepOverrides | undefined {
+  if (!raw) return undefined;
+  const o: FlowStepOverrides = {};
+  if (raw.url !== undefined) o.url = raw.url;
+  if (Array.isArray(raw.headers)) o.headers = raw.headers;
+  if (raw.body !== undefined) o.body = raw.body;
+  if (Array.isArray(raw.directives)) o.directives = raw.directives;
+  return Object.keys(o).length > 0 ? o : undefined;
+}
+
 function parseFlowStep(raw: any): FlowStep {
   return {
     id: raw.id ?? crypto.randomUUID(),
@@ -30,6 +40,7 @@ function parseFlowStep(raw: any): FlowStep {
     varName: raw.varName ?? null,
     label: raw.label ?? '',
     continueOnFailure: raw.continueOnFailure ?? false,
+    overrides: parseOverrides(raw.overrides),
   };
 }
 
