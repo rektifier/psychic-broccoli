@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode } from '../lib/types';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective } from '../lib/types';
   import { getAllFileNodes, substituteAll } from '../lib/parser';
   import { resolvedEnvVars, namedResults, dotenvVariables } from '../lib/stores';
 
@@ -253,6 +253,85 @@
     if (common === 0) return requests.map(r => r.url);
     return split.map(s => '/' + s.slice(common).join('/'));
   }
+
+  // ─── Override editing ───────────────────────────────────────────────────────
+
+  let expandedStepId: string | null = null;
+  /** Tracks which sections are collapsed, keyed as "stepId:section" */
+  let collapsedKeys: Record<string, boolean> = {};
+
+  function toggleSection(stepId: string, section: string) {
+    const key = `${stepId}:${section}`;
+    collapsedKeys = { ...collapsedKeys, [key]: !collapsedKeys[key] };
+  }
+
+  function toggleOverridePanel(stepId: string) {
+    expandedStepId = expandedStepId === stepId ? null : stepId;
+  }
+
+  function hasOverrides(step: FlowStep): boolean {
+    if (!step.overrides) return false;
+    const o = step.overrides;
+    return o.url !== undefined || o.headers !== undefined || o.body !== undefined || o.directives !== undefined;
+  }
+
+  function updateStepOverride(index: number, field: keyof FlowStepOverrides, value: any) {
+    const steps = [...flow.steps];
+    const step = { ...steps[index] };
+    const overrides = { ...(step.overrides || {}) };
+
+    if (value === undefined || value === '') {
+      delete (overrides as any)[field];
+    } else {
+      (overrides as any)[field] = value;
+    }
+
+    step.overrides = Object.keys(overrides).length > 0 ? overrides : undefined;
+    steps[index] = step;
+    flow = { ...flow, steps };
+    save();
+  }
+
+  function addOverrideHeader(index: number, baseHeaders: HttpHeader[]) {
+    const current = flow.steps[index].overrides?.headers ?? baseHeaders.map(h => ({ ...h }));
+    updateStepOverride(index, 'headers', [...current, { key: '', value: '', enabled: true }]);
+  }
+
+  function removeOverrideHeader(stepIndex: number, headerIndex: number, baseHeaders: HttpHeader[]) {
+    const current = flow.steps[stepIndex].overrides?.headers ?? baseHeaders.map(h => ({ ...h }));
+    const updated = current.filter((_, i) => i !== headerIndex);
+    updateStepOverride(stepIndex, 'headers', updated.length > 0 ? updated : undefined);
+  }
+
+  function updateOverrideHeader(stepIndex: number, headerIndex: number, field: keyof HttpHeader, value: any, baseHeaders: HttpHeader[]) {
+    const current = (flow.steps[stepIndex].overrides?.headers ?? baseHeaders.map(h => ({ ...h }))).map(h => ({ ...h }));
+    current[headerIndex] = { ...current[headerIndex], [field]: value };
+    updateStepOverride(stepIndex, 'headers', current);
+  }
+
+  function addOverrideDirective(stepIndex: number, baseDirectives: PbDirective[]) {
+    const current = flow.steps[stepIndex].overrides?.directives ?? baseDirectives.map(d => ({ ...d }));
+    updateStepOverride(stepIndex, 'directives', [...current, { type: 'assert' as const, expr: '', label: '' }]);
+  }
+
+  function removeOverrideDirective(stepIndex: number, dirIndex: number, baseDirectives: PbDirective[]) {
+    const current = flow.steps[stepIndex].overrides?.directives ?? baseDirectives.map(d => ({ ...d }));
+    const updated = current.filter((_, i) => i !== dirIndex);
+    updateStepOverride(stepIndex, 'directives', updated.length > 0 ? updated : undefined);
+  }
+
+  function updateOverrideDirective(stepIndex: number, dirIndex: number, field: string, value: any, baseDirectives: PbDirective[]) {
+    const current = (flow.steps[stepIndex].overrides?.directives ?? baseDirectives.map(d => ({ ...d }))).map(d => ({ ...d }));
+    (current[dirIndex] as any)[field] = value;
+    updateStepOverride(stepIndex, 'directives', current);
+  }
+
+  function resetOverrides(index: number) {
+    const steps = [...flow.steps];
+    steps[index] = { ...steps[index], overrides: undefined };
+    flow = { ...flow, steps };
+    save();
+  }
 </script>
 
 <div class="flow-editor">
@@ -338,6 +417,8 @@
           {@const rawUrl = req ? req.url : getUrl(step.label)}
           {@const requestName = req?.name ?? ''}
           {@const resolvedUrl = resolveStepUrl(rawUrl, file)}
+          {@const baseHeaders = req?.headers ?? []}
+          {@const baseDirectives = req?.directives ?? []}
           <div
             class="step-card"
             class:step-passed={sr?.status === 'passed'}
@@ -352,77 +433,234 @@
             on:dragend={onDragEnd}
             role="listitem"
           >
-            <span
-              class="drag-handle"
-              title="Drag to reorder"
-              role="button"
-              tabindex="0"
-              aria-label="Reorder step {i + 1}, use arrow keys"
-              on:keydown={(e) => onStepKeydown(e, i)}
-            >
-              <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
-                <circle cx="3" cy="2.5" r="1.2" fill="currentColor"/>
-                <circle cx="7" cy="2.5" r="1.2" fill="currentColor"/>
-                <circle cx="3" cy="7" r="1.2" fill="currentColor"/>
-                <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
-                <circle cx="3" cy="11.5" r="1.2" fill="currentColor"/>
-                <circle cx="7" cy="11.5" r="1.2" fill="currentColor"/>
-              </svg>
-            </span>
-            <span class="step-number">{i + 1}</span>
-            <div class="step-content">
-              <div class="step-top-row">
-                <span class="step-file" title={step.filePath}>{step.filePath.replace(/\.[^.]+$/, '').split('/').pop()}</span>
-                {#if broken}
-                  <span class="step-broken-badge">missing</span>
-                {/if}
-              </div>
-              {#if requestName}
-                <span class="step-request-name">{requestName}</span>
-              {/if}
-              <div class="step-url-row">
-                {#if getMethod(step.label)}
-                  <span class="step-method" style="color: {MC[getMethod(step.label)] || '#888'}">{getMethod(step.label).slice(0, 3)}</span>
-                {/if}
-                <span class="step-label" title={getUrl(step.label)}>{displayUrl}</span>
-              </div>
-              {#if resolvedUrl}
-                <div class="step-resolved-url">
-                  <span class="resolved-arrow">&rarr;</span>
-                  <span class="resolved-value">{resolvedUrl}</span>
-                </div>
-              {/if}
-            </div>
-            <div class="step-actions">
-              <button
-                class="btn-continue-toggle"
-                class:active={step.continueOnFailure}
-                on:click={() => toggleContinueOnFailure(i)}
-                title={step.continueOnFailure ? 'Continues on failure (click to stop on failure)' : 'Stops on failure (click to continue on failure)'}
+            <div class="step-card-row">
+              <span
+                class="drag-handle"
+                title="Drag to reorder"
+                role="button"
+                tabindex="0"
+                aria-label="Reorder step {i + 1}, use arrow keys"
+                on:keydown={(e) => onStepKeydown(e, i)}
               >
-                {step.continueOnFailure ? 'skip' : 'stop'}
-              </button>
-              {#if sr}
-                <span class="step-status-info">
-                  {#if sr.status === 'running'}
-                    <span class="step-status-icon running">...</span>
-                  {:else if sr.status === 'passed'}
-                    <span class="step-status-icon passed">&#10003;</span>
-                  {:else if sr.status === 'failed'}
-                    <span class="step-status-icon failed">&#10005;</span>
-                  {:else if sr.status === 'skipped'}
-                    <span class="step-status-icon skipped">-</span>
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
+                  <circle cx="3" cy="2.5" r="1.2" fill="currentColor"/>
+                  <circle cx="7" cy="2.5" r="1.2" fill="currentColor"/>
+                  <circle cx="3" cy="7" r="1.2" fill="currentColor"/>
+                  <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+                  <circle cx="3" cy="11.5" r="1.2" fill="currentColor"/>
+                  <circle cx="7" cy="11.5" r="1.2" fill="currentColor"/>
+                </svg>
+              </span>
+              <span class="step-number">{i + 1}</span>
+              <div class="step-content">
+                <div class="step-top-row">
+                  <span class="step-file" title={step.filePath}>{step.filePath.replace(/\.[^.]+$/, '').split('/').pop()}</span>
+                  {#if broken}
+                    <span class="step-broken-badge">missing</span>
                   {/if}
-                  {#if sr.response}
-                    <span class="step-http-status" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
+                </div>
+                {#if requestName}
+                  <span class="step-request-name">{requestName}</span>
+                {/if}
+                <div class="step-url-row">
+                  {#if getMethod(step.label)}
+                    <span class="step-method" style="color: {MC[getMethod(step.label)] || '#888'}">{getMethod(step.label).slice(0, 3)}</span>
                   {/if}
-                  {#if sr.durationMs > 0}
-                    <span class="step-duration">{sr.durationMs}ms</span>
-                  {/if}
-                </span>
-              {/if}
-              <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step">&times;</button>
+                  <span class="step-label" title={getUrl(step.label)}>{displayUrl}</span>
+                </div>
+                {#if resolvedUrl}
+                  <div class="step-resolved-url">
+                    <span class="resolved-arrow">&rarr;</span>
+                    <span class="resolved-value">{resolvedUrl}</span>
+                  </div>
+                {/if}
+              </div>
+              <div class="step-actions">
+                <button
+                  class="btn-override-toggle"
+                  class:active={hasOverrides(step)}
+                  class:expanded={expandedStepId === step.id}
+                  on:click={() => toggleOverridePanel(step.id)}
+                  title={hasOverrides(step) ? 'Edit overrides (has customizations)' : 'Customize request for this step'}
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                    <path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                    <path d="M9.5 3.5l3 3" stroke="currentColor" stroke-width="1.4"/>
+                  </svg>
+                </button>
+                <button
+                  class="btn-continue-toggle"
+                  class:active={step.continueOnFailure}
+                  on:click={() => toggleContinueOnFailure(i)}
+                  title={step.continueOnFailure ? 'Continues on failure (click to stop on failure)' : 'Stops on failure (click to continue on failure)'}
+                >
+                  {step.continueOnFailure ? 'skip' : 'stop'}
+                </button>
+                {#if sr}
+                  <span class="step-status-info">
+                    {#if sr.status === 'running'}
+                      <span class="step-status-icon running">...</span>
+                    {:else if sr.status === 'passed'}
+                      <span class="step-status-icon passed">&#10003;</span>
+                    {:else if sr.status === 'failed'}
+                      <span class="step-status-icon failed">&#10005;</span>
+                    {:else if sr.status === 'skipped'}
+                      <span class="step-status-icon skipped">-</span>
+                    {/if}
+                    {#if sr.response}
+                      <span class="step-http-status" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
+                    {/if}
+                    {#if sr.durationMs > 0}
+                      <span class="step-duration">{sr.durationMs}ms</span>
+                    {/if}
+                  </span>
+                {/if}
+                <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step">&times;</button>
+              </div>
             </div>
+
+            {#if expandedStepId === step.id}
+              <div class="override-panel">
+                <div class="override-section">
+                  <div class="override-row">
+                    <span class="override-label">URL</span>
+                    <input
+                      class="override-input"
+                      type="text"
+                      value={step.overrides?.url ?? ''}
+                      placeholder={req?.url ?? getUrl(step.label)}
+                      on:input={(e) => updateStepOverride(i, 'url', e.currentTarget.value || undefined)}
+                      spellcheck="false"
+                    />
+                  </div>
+                </div>
+
+                <div class="override-section">
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'headers')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'headers'); }}>
+                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:headers`]}>&#9656;</span>
+                    <span class="override-label">Headers</span>
+                    <span class="override-count">{(step.overrides?.headers ?? baseHeaders).length}</span>
+                    {#if !collapsedKeys[`${step.id}:headers`]}
+                      <button class="override-add-btn" on:click|stopPropagation={() => addOverrideHeader(i, baseHeaders)}>+ Add</button>
+                    {/if}
+                  </div>
+                  {#if !collapsedKeys[`${step.id}:headers`]}
+                    {#each (step.overrides?.headers ?? baseHeaders) as h, hi}
+                      <div class="override-header-row">
+                        <input
+                          type="checkbox"
+                          checked={h.enabled}
+                          on:change={() => updateOverrideHeader(i, hi, 'enabled', !h.enabled, baseHeaders)}
+                          class="override-header-check"
+                        />
+                        <input
+                          class="override-header-key"
+                          type="text"
+                          value={h.key}
+                          placeholder="Header name"
+                          on:input={(e) => updateOverrideHeader(i, hi, 'key', e.currentTarget.value, baseHeaders)}
+                          spellcheck="false"
+                        />
+                        <input
+                          class="override-header-value"
+                          type="text"
+                          value={h.value}
+                          placeholder="Value"
+                          on:input={(e) => updateOverrideHeader(i, hi, 'value', e.currentTarget.value, baseHeaders)}
+                          spellcheck="false"
+                        />
+                        <button class="override-header-remove" on:click={() => removeOverrideHeader(i, hi, baseHeaders)}>&times;</button>
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+
+                <div class="override-section">
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'body')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'body'); }}>
+                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:body`]}>&#9656;</span>
+                    <span class="override-label">Body</span>
+                  </div>
+                  {#if !collapsedKeys[`${step.id}:body`]}
+                    <textarea
+                      class="override-body"
+                      value={step.overrides?.body ?? ''}
+                      placeholder={req?.body || 'No body'}
+                      on:input={(e) => updateStepOverride(i, 'body', e.currentTarget.value || undefined)}
+                      spellcheck="false"
+                      rows="4"
+                    ></textarea>
+                  {/if}
+                </div>
+
+                <div class="override-section">
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'assertions')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'assertions'); }}>
+                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:assertions`]}>&#9656;</span>
+                    <span class="override-label">Assertions</span>
+                    <span class="override-count">{(step.overrides?.directives ?? baseDirectives).length}</span>
+                    {#if !collapsedKeys[`${step.id}:assertions`]}
+                      <button class="override-add-btn" on:click|stopPropagation={() => addOverrideDirective(i, baseDirectives)}>+ Add</button>
+                    {/if}
+                  </div>
+                  {#if !collapsedKeys[`${step.id}:assertions`]}
+                    {#each (step.overrides?.directives ?? baseDirectives) as d, di}
+                      <div class="override-directive-row" class:disabled={d.enabled === false}>
+                        <input
+                          type="checkbox"
+                          checked={d.enabled !== false}
+                          on:change={() => updateOverrideDirective(i, di, 'enabled', d.enabled === false ? undefined : false, baseDirectives)}
+                          class="override-header-check"
+                        />
+                        {#if d.type === 'assert'}
+                          <input
+                            class="override-directive-expr"
+                            type="text"
+                            value={d.expr}
+                            placeholder="pb.response.status == 200"
+                            on:input={(e) => updateOverrideDirective(i, di, 'expr', e.currentTarget.value, baseDirectives)}
+                            spellcheck="false"
+                          />
+                          <input
+                            class="override-directive-label"
+                            type="text"
+                            value={d.label}
+                            placeholder="Label"
+                            on:input={(e) => updateOverrideDirective(i, di, 'label', e.currentTarget.value, baseDirectives)}
+                            spellcheck="false"
+                          />
+                        {:else}
+                          <input
+                            class="override-directive-key"
+                            type="text"
+                            value={d.key}
+                            placeholder="Variable name"
+                            on:input={(e) => updateOverrideDirective(i, di, 'key', e.currentTarget.value, baseDirectives)}
+                            spellcheck="false"
+                          />
+                          <input
+                            class="override-directive-expr"
+                            type="text"
+                            value={d.expr}
+                            placeholder="pb.response.body.$.token"
+                            on:input={(e) => updateOverrideDirective(i, di, 'expr', e.currentTarget.value, baseDirectives)}
+                            spellcheck="false"
+                          />
+                        {/if}
+                        <button class="override-header-remove" on:click={() => removeOverrideDirective(i, di, baseDirectives)}>&times;</button>
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+
+                {#if hasOverrides(step)}
+                  <div class="override-footer">
+                    <button class="override-reset-btn" on:click={() => resetOverrides(i)}>Reset all overrides</button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
           </div>
         {/each}
         {#if insertSlot === flow.steps.length}
@@ -605,9 +843,7 @@
   }
   .step-card {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px 14px;
+    flex-direction: column;
     background: #FAFAFA;
     border: 1px solid #E4E4EA;
     border-radius: 8px;
@@ -616,6 +852,12 @@
   .step-card:hover {
     border-color: #D4D4D8;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+  .step-card-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
   }
   .drag-handle {
     display: flex;
@@ -907,5 +1149,267 @@
     font-size: 13px;
     font-weight: 700;
     color: #333340;
+  }
+
+  /* Override toggle button */
+  .btn-override-toggle {
+    width: 24px; height: 24px;
+    border: 1px solid #DCDCE2;
+    border-radius: 4px;
+    background: transparent;
+    color: #BBB;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .btn-override-toggle:hover {
+    border-color: #8040A860;
+    color: #8040A8;
+    background: #8040A808;
+  }
+  .btn-override-toggle.active {
+    border-color: #8040A850;
+    background: #8040A80D;
+    color: #8040A8;
+  }
+  .btn-override-toggle.expanded {
+    border-color: #8040A8;
+    background: #8040A815;
+    color: #8040A8;
+  }
+
+  /* Override panel */
+  .override-panel {
+    border-top: 1px solid #E4E4EA;
+    padding: 12px 14px 12px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .override-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .override-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .override-section-header.collapsible {
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 0;
+  }
+  .override-section-header.collapsible:hover .override-label {
+    color: #666;
+  }
+  .override-collapse-icon {
+    font-size: 10px;
+    color: #AAA;
+    transition: transform 0.15s;
+    display: inline-block;
+    width: 10px;
+    flex-shrink: 0;
+  }
+  .override-collapse-icon.open {
+    transform: rotate(90deg);
+  }
+  .override-count {
+    font-size: 10px;
+    color: #AAA;
+    margin-right: auto;
+  }
+  .override-section-header .override-add-btn {
+    margin-left: auto;
+  }
+  .override-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .override-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .override-row .override-label {
+    min-width: 50px;
+    flex-shrink: 0;
+  }
+  .override-input {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid #DCDCE2;
+    border-radius: 5px;
+    background: #FFF;
+    font-family: inherit;
+    font-size: 12px;
+    color: #2A2A32;
+    outline: none;
+  }
+  .override-input:focus {
+    border-color: #8040A8;
+  }
+  .override-input::placeholder {
+    color: #CCC;
+  }
+  .override-add-btn {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid #DCDCE2;
+    border-radius: 4px;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .override-add-btn:hover {
+    border-color: #8040A860;
+    color: #8040A8;
+  }
+  .override-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .override-header-check {
+    flex-shrink: 0;
+    accent-color: #8040A8;
+  }
+  .override-header-key {
+    flex: 0 0 35%;
+    padding: 4px 8px;
+    border: 1px solid #DCDCE2;
+    border-radius: 4px;
+    background: #FFF;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: #2A2A32;
+    outline: none;
+  }
+  .override-header-key:focus {
+    border-color: #8040A8;
+  }
+  .override-header-value {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #DCDCE2;
+    border-radius: 4px;
+    background: #FFF;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: #2A2A32;
+    outline: none;
+  }
+  .override-header-value:focus {
+    border-color: #8040A8;
+  }
+  .override-header-key::placeholder,
+  .override-header-value::placeholder {
+    color: #CCC;
+  }
+  .override-header-remove {
+    width: 20px; height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #CCC;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .override-header-remove:hover {
+    background: #CC445518;
+    color: #CC4455;
+  }
+  .override-body {
+    padding: 6px 8px;
+    border: 1px solid #DCDCE2;
+    border-radius: 5px;
+    background: #FFF;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: #2A2A32;
+    outline: none;
+    resize: vertical;
+    min-height: 60px;
+  }
+  .override-body:focus {
+    border-color: #8040A8;
+  }
+  .override-body::placeholder {
+    color: #CCC;
+  }
+  .override-footer {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .override-directive-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .override-directive-row.disabled input[type="text"] {
+    opacity: 0.4;
+  }
+  .override-directive-expr {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #DCDCE2;
+    border-radius: 4px;
+    background: #FFF;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: #2A2A32;
+    outline: none;
+  }
+  .override-directive-expr:focus {
+    border-color: #8040A8;
+  }
+  .override-directive-label,
+  .override-directive-key {
+    flex: 0 0 25%;
+    padding: 4px 8px;
+    border: 1px solid #DCDCE2;
+    border-radius: 4px;
+    background: #FFF;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: #2A2A32;
+    outline: none;
+  }
+  .override-directive-label:focus,
+  .override-directive-key:focus {
+    border-color: #8040A8;
+  }
+  .override-directive-expr::placeholder,
+  .override-directive-label::placeholder,
+  .override-directive-key::placeholder {
+    color: #CCC;
+  }
+  .override-reset-btn {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border: 1px solid #CC445530;
+    border-radius: 4px;
+    background: transparent;
+    color: #CC4455;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .override-reset-btn:hover {
+    border-color: #CC4455;
+    background: #CC445510;
   }
 </style>
