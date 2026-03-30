@@ -24,6 +24,7 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 - [Environment System](#environment-system)
 - [Request Chaining](#request-chaining)
 - [Dynamic Variables](#dynamic-variables)
+- [Test Flows](#test-flows)
 - [Pb Script Engine](#pb-script-engine)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
@@ -51,6 +52,13 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 - Variable picker modal for inserting environment, dynamic, or response-data variables.
 - Resolved URL preview showing the fully substituted URL before sending.
 - Header autocomplete for common HTTP headers.
+
+**Test Flows**
+- Chain multiple requests into sequential test pipelines with pass/fail reporting.
+- Per-step overrides for URL, headers, body, and directives — without modifying source files.
+- Variable chaining between steps using named request responses.
+- Drag-and-drop step reordering with keyboard accessibility.
+- Run history with auto-pruning and broken reference detection.
 
 **Interface**
 - Resizable panes with a draggable divider between the request editor and response viewer.
@@ -228,6 +236,69 @@ Offset units: `ms`, `s`, `m`, `h`, `d`, `w`, `M`, `y`.
 
 ---
 
+## Test Flows
+
+Test flows let you chain multiple requests into a sequential pipeline for end-to-end testing. Each flow is a reusable, shareable sequence of steps that reference requests from your `.http` files.
+
+### Creating a Flow
+
+Use the **Test Flows** section in the sidebar to create a new flow. Add steps by picking requests from any `.http` file in the workspace. Steps can be reordered via drag-and-drop or keyboard arrows.
+
+### Flow File Format
+
+Flows are stored as `.pb-flow.json` files in a `flows/` subdirectory at the workspace root:
+
+```
+workspace/
+├── flows/
+│   ├── login-and-fetch.pb-flow.json
+│   └── .results/          # Run history (auto-managed)
+├── api.http
+└── http-client.env.json
+```
+
+### Variable Chaining Between Steps
+
+Named requests (`# @name login`) in earlier steps make their responses available to later steps:
+
+```http
+// @name login
+POST {{BaseUrl}}/auth/token
+Content-Type: application/json
+
+{"username": "admin", "password": "secret"}
+
+###
+
+GET {{BaseUrl}}/protected
+Authorization: Bearer {{login.response.body.$.token}}
+```
+
+Each flow run maintains isolated variable state — no cross-flow contamination.
+
+### Per-Step Overrides
+
+Override a step's URL, headers, body, or directives directly in the flow editor without modifying the original `.http` file. This allows the same request to be reused with different parameters across steps.
+
+### Failure Handling
+
+Each step has a **continue on failure** toggle:
+
+- **Stop** (default) — abort the flow and mark remaining steps as skipped.
+- **Continue** — log the failure and proceed to the next step.
+
+A step fails when the HTTP status is ≥ 400 or any `@pb.assert` directive fails.
+
+### Run History
+
+Results are persisted under `flows/.results/` and accessible from the flow editor. History is auto-pruned to the 50 most recent runs per flow.
+
+### Broken Reference Detection
+
+If a request referenced by a step is deleted or moved, the editor shows a warning and disables the Run button until the reference is fixed.
+
+---
+
 ## Pb Script Engine
 
 Psychic Broccoli includes a built-in scripting system using `# @pb.*` comment directives in `.http` files. Directives are attached to requests and executed after the response is received.
@@ -278,15 +349,30 @@ src/
 ├── lib/
 │   ├── types.ts                TypeScript interfaces
 │   ├── parser.ts               .http parser, serializer, variable engine
-│   └── stores.ts               Svelte stores (workspace, env, results)
+│   ├── parser.test.ts          Parser unit tests (vitest)
+│   ├── stores.ts               Svelte stores (workspace, env, results, flows)
+│   ├── flowIO.ts               Flow file I/O, discovery, and history persistence
+│   ├── flowRunner.ts           Sequential flow execution engine
+│   ├── detect.ts               Collection format detection
+│   ├── openapi.ts              OpenAPI/Swagger importer
+│   ├── postman.ts              Postman collection importer
+│   └── insomnia.ts             Insomnia collection importer
 └── components/
-    ├── TreeSidebar.svelte      Folder picker, env selector, file tree
+    ├── TreeSidebar.svelte      Folder picker, env selector, file tree, flows
     ├── TreeNode.svelte         Recursive tree item (folder / file / request)
+    ├── TabBar.svelte           Request and flow tab management
     ├── RequestEditor.svelte    URL bar, headers, body editor
     ├── ResponseViewer.svelte   Response body, headers, raw request tabs
     ├── EnvironmentEditor.svelte  Environment variable editor
+    ├── FlowEditor.svelte       Flow step builder with drag-and-drop
+    ├── FlowResults.svelte      Flow run results and history viewer
+    ├── FlowStepPicker.svelte   Request picker modal for flow steps
     ├── DependencyBar.svelte    Request dependency indicators
-    └── VariablePicker.svelte   Variable insertion modal
+    ├── VariablePicker.svelte   Variable insertion modal
+    ├── VariableInspector.svelte  Variable resolution inspector
+    ├── ImportCollectionModal.svelte  Unified import modal
+    ├── HelpModal.svelte        Quick guide and help overlay
+    └── ToastContainer.svelte   Toast notification display
 
 src-tauri/
 ├── src/lib.rs                  Rust HTTP client (reqwest) via Tauri invoke
