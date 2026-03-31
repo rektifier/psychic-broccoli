@@ -10,6 +10,7 @@
   import ImportCollectionModal from './components/ImportCollectionModal.svelte';
   import type { ImportFormat } from './lib/detect';
   import TabBar from './components/TabBar.svelte';
+  import FlowEditor from './components/FlowEditor.svelte';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -21,6 +22,8 @@
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
+    flows, flowRunHistory, flowRunState, flowTabs, activeFlowTabPath,
+    openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
   } from './lib/stores';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
@@ -34,6 +37,9 @@
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
+  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, FLOWS_DIR } from './lib/flowIO';
+  import { runFlow } from './lib/flowRunner';
+  import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
@@ -250,6 +256,25 @@
 
       // Auto-discover env files from workspace root
       await tryLoadEnvFiles(rootPath as string);
+
+      // Discover test flows and load run history
+      try {
+        const discoveredFlows = await scanForFlowFiles(rootPath as string, rootPath as string);
+        const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
+        for (const df of discoveredFlows) {
+          flowMap[df.relativePath] = df.flow;
+        }
+        flows.set(flowMap);
+      } catch { /* no flows yet */ }
+
+      try {
+        const history = await loadFlowHistory(rootPath as string);
+        flowRunHistory.set(history);
+      } catch { /* no history yet */ }
+
+      // Reset flow tabs
+      flowTabs.set([]);
+      activeFlowTabPath.set(null);
     } catch (e: any) {
       addToast(`Failed to open folder: ${e.message || e}`, 'error');
     }
@@ -559,6 +584,9 @@
       saveEnvFile($envFile);
       showEnvEditor = false;
     }
+    // Deactivate any flow tab when selecting a request
+    activeFlowTabPath.set(null);
+    activeFlowPath.set(null);
     const loc = e.detail;
     const hasTab = $tabs.some(t => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex);
     if (hasTab) {
@@ -584,6 +612,9 @@
       saveEnvFile($envFile);
       showEnvEditor = false;
     }
+    // Deactivate any flow tab when switching to a request tab
+    activeFlowTabPath.set(null);
+    activeFlowPath.set(null);
     activateTab(e.detail);
   }
 
@@ -689,6 +720,158 @@
     }
     updateRequestInTree(filePath, requestIndex, { ...req, varName: varName || null });
   }
+
+  // ─── Flow Handlers ───
+
+  function handleOpenFlow(e: CustomEvent<string>) {
+    const path = e.detail;
+    const flow = $flows[path];
+    if (!flow) return;
+    openFlowTab(path, flow.name);
+  }
+
+  async function handleCreateFlow(e: CustomEvent<string>) {
+    const name = e.detail;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const { createEmptyFlow, writeFlowFile } = await import('./lib/flowIO');
+    const flow = createEmptyFlow(name);
+    const safeName = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
+    const flowsDir = await join(rootPath, FLOWS_DIR);
+    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
+    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
+    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
+
+    await writeFlowFile(absolutePath, flow);
+    flows.update(f => ({ ...f, [relativePath]: flow }));
+    openFlowTab(relativePath, flow.name);
+  }
+
+  let flowAbortController: AbortController | null = null;
+  let lastFlowRunRecord: FlowRunRecord | null = null;
+
+  async function handleRunFlow() {
+    const flow = $activeFlow;
+    const flowPathVal = $activeFlowTabPath;
+    const rootPath = $workspace.rootPath;
+    if (!flow || !flowPathVal || !rootPath) return;
+
+    // Abort any previous run
+    flowAbortController?.abort();
+    flowAbortController = new AbortController();
+
+    flowRunState.set({ status: 'running', stepResults: [] });
+
+    const record = await runFlow(
+      flow,
+      rootPath,
+      $workspace.tree,
+      $resolvedEnvVars,
+      $dotenvVariables,
+      $activeEnvironment,
+      {
+        onStepStart(stepId: string) {
+          flowRunState.update(s => s ? {
+            ...s,
+            stepResults: [...s.stepResults, {
+              stepId, status: 'running', response: null, sentRequest: null,
+              assertionResults: [], durationMs: 0, error: null,
+            }],
+          } : s);
+        },
+        onStepComplete(stepId: string, result: FlowStepResult) {
+          flowRunState.update(s => s ? {
+            ...s,
+            stepResults: s.stepResults.map(r => r.stepId === stepId ? result : r),
+          } : s);
+        },
+      },
+      flowAbortController.signal,
+    );
+
+    record.flowFilePath = flowPathVal;
+    lastFlowRunRecord = record;
+    flowRunState.set({ status: record.status, stepResults: record.stepResults });
+
+    // Persist and update history
+    try {
+      await saveFlowRunRecord(rootPath, record);
+      flowRunHistory.update(h => [record, ...h]);
+    } catch { /* save failed silently */ }
+
+    flowAbortController = null;
+  }
+
+  function handleAbortFlow() {
+    flowAbortController?.abort();
+  }
+
+  async function handleSaveFlow(e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>) {
+    const { flowPath, flow } = e.detail;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const { writeFlowFile } = await import('./lib/flowIO');
+    const segments = flowPath.split('/');
+    let absolutePath = rootPath;
+    for (const seg of segments) {
+      absolutePath = await join(absolutePath, seg);
+    }
+    await writeFlowFile(absolutePath, flow);
+    flows.update(f => ({ ...f, [flowPath]: flow }));
+
+    // Update tab label if the name changed
+    flowTabs.update(ts => ts.map(t =>
+      t.flowPath === flowPath ? { ...t, label: flow.name } : t
+    ));
+  }
+
+  async function handleDuplicateFlow(e: CustomEvent<string>) {
+    const sourcePath = e.detail;
+    const sourceFlow = $flows[sourcePath];
+    if (!sourceFlow) return;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const { writeFlowFile } = await import('./lib/flowIO');
+    const newName = `${sourceFlow.name} (copy)`;
+    const newFlow = { ...sourceFlow, name: newName, steps: sourceFlow.steps.map(s => ({ ...s, id: crypto.randomUUID() })) };
+    const safeName = newName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
+    const flowsDir = await join(rootPath, FLOWS_DIR);
+    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
+    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
+    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
+
+    await writeFlowFile(absolutePath, newFlow);
+    flows.update(f => ({ ...f, [relativePath]: newFlow }));
+    openFlowTab(relativePath, newFlow.name);
+  }
+
+  async function handleDeleteFlow(e: CustomEvent<string>) {
+    const path = e.detail;
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    try {
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      const segments = path.split('/');
+      let absolutePath = rootPath;
+      for (const seg of segments) {
+        absolutePath = await join(absolutePath, seg);
+      }
+      await remove(absolutePath);
+    } catch (err) {
+      console.warn('Could not delete flow file:', path, err);
+    }
+
+    flows.update(f => {
+      const updated = { ...f };
+      delete updated[path];
+      return updated;
+    });
+    closeFlowTab(path);
+  }
 </script>
 
 <ToastContainer />
@@ -741,6 +924,8 @@
         hasWorkspace={!!$workspace.rootPath}
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
+        flows={$flows}
+        activeFlowPath={$activeFlowTabPath}
         on:openFolder={openFolder}
         on:importCollection={() => showImportCollectionModal = true}
         on:select={handleSelect}
@@ -754,6 +939,10 @@
         on:openVarInspector={() => showVarInspector = true}
         on:openHelp={() => showHelp = true}
         on:nameRequest={handleNameRequest}
+        on:openFlow={handleOpenFlow}
+        on:createFlow={handleCreateFlow}
+        on:duplicateFlow={handleDuplicateFlow}
+        on:deleteFlow={handleDeleteFlow}
       />
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -765,8 +954,12 @@
         activeLocation={$selectedLocation}
         isPreview={$isPreview}
         previewLabel={$activeRequest?.name ?? ''}
+        flowTabs={$flowTabs}
+        activeFlowPath={$activeFlowTabPath}
         on:activate={handleTabActivate}
         on:close={handleTabClose}
+        on:activateFlowTab={(e) => activateFlowTab(e.detail)}
+        on:closeFlowTab={(e) => closeFlowTab(e.detail)}
       />
       <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
         {#if showEnvEditor && $envFile && $activeEnvironment}
@@ -782,6 +975,20 @@
               on:close={() => showEnvEditor = false}
             />
           </div>
+        {:else if $activeFlowTabPath && $activeFlow}
+          <FlowEditor
+            flow={$activeFlow}
+            flowPath={$activeFlowTabPath}
+            tree={$workspace.tree}
+            rootPath={$workspace.rootPath ?? ''}
+            runState={$flowRunState}
+            lastRunRecord={lastFlowRunRecord}
+            runHistory={$flowRunHistory}
+            on:save={handleSaveFlow}
+            on:run={handleRunFlow}
+            on:abort={handleAbortFlow}
+            on:clearHistory={() => flowRunHistory.set($flowRunHistory.filter(r => r.flowFilePath !== $activeFlowTabPath))}
+          />
         {:else if $activeRequest && $selectedLocation}
           <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
             <RequestEditor

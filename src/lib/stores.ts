@@ -3,6 +3,7 @@ import type {
   HttpFile, HttpRequest, HttpResponse, Variable,
   EnvironmentFile, NamedRequestResult, PbAssertionResult,
   Workspace, TreeNode, FileNode, FolderNode, RequestLocation,
+  FlowDefinition, FlowRunRecord, FlowRunStatus, FlowStepResult,
 } from './types';
 import { createEmptyRequest, resolveEnvironmentVariables, getEnvironmentNames, serializeHttpFile } from './parser';
 
@@ -362,4 +363,85 @@ export function addToast(message: string, type: Toast['type'] = 'error', duratio
 
 export function dismissToast(id: number) {
   toasts.update(t => t.filter(toast => toast.id !== id));
+}
+
+// ─── Test Flows ──────────────────────────────────────────────────────────────
+
+/** All discovered flow definitions keyed by relative file path. */
+export const flows = writable<Record<string, FlowDefinition>>({});
+
+/** Relative path to the currently open flow file (null when no flow is open). */
+export const activeFlowPath = writable<string | null>(null);
+
+/** The active FlowDefinition, derived from flows + activeFlowPath. */
+export const activeFlow = derived(
+  [flows, activeFlowPath],
+  ([$flows, $path]) => ($path ? $flows[$path] ?? null : null),
+);
+
+/** Live execution state for the currently running (or last-run) flow. */
+export const flowRunState = writable<{
+  status: FlowRunStatus;
+  stepResults: FlowStepResult[];
+} | null>(null);
+
+/** Persisted history of flow run records, loaded from disk on workspace open. */
+export const flowRunHistory = writable<FlowRunRecord[]>([]);
+
+// ─── Flow Tabs ───────────────────────────────────────────────────────────────
+
+export interface FlowTab {
+  /** Relative path to the .pb-flow.json file (serves as unique key) */
+  flowPath: string;
+  /** Display label for the tab */
+  label: string;
+}
+
+/** Open flow tabs (parallel to the request `tabs` store). */
+export const flowTabs = writable<FlowTab[]>([]);
+
+/** Path of the active flow tab (null when a request tab is active). */
+export const activeFlowTabPath = writable<string | null>(null);
+
+/** Open a flow as a tab. If already open, just activate it. */
+export function openFlowTab(flowPath: string, label: string) {
+  flowTabs.update(ts => {
+    if (ts.some(t => t.flowPath === flowPath)) return ts;
+    return [...ts, { flowPath, label }];
+  });
+  activateFlowTab(flowPath);
+}
+
+/** Activate an existing flow tab. Deactivates any active request tab. */
+export function activateFlowTab(flowPath: string) {
+  // Save current request tab response before switching away
+  cacheCurrentTabResponse();
+  activeFlowTabPath.set(flowPath);
+  activeFlowPath.set(flowPath);
+  // Deactivate request tab selection
+  activeTabKey.set(null);
+  selectedLocation.set(null);
+  currentResponse.set(null);
+  currentSentRequest.set(null);
+}
+
+/** Close a flow tab. If active, activate an adjacent tab or clear. */
+export function closeFlowTab(flowPath: string) {
+  const current = get(flowTabs);
+  const idx = current.findIndex(t => t.flowPath === flowPath);
+  if (idx === -1) return;
+
+  const wasActive = get(activeFlowTabPath) === flowPath;
+  flowTabs.update(ts => ts.filter(t => t.flowPath !== flowPath));
+
+  if (wasActive) {
+    const remaining = get(flowTabs);
+    if (remaining.length > 0) {
+      const nextIdx = Math.min(idx, remaining.length - 1);
+      activateFlowTab(remaining[nextIdx].flowPath);
+    } else {
+      activeFlowTabPath.set(null);
+      activeFlowPath.set(null);
+    }
+  }
 }
