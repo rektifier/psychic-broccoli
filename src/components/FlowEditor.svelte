@@ -13,12 +13,14 @@
   export let runState: { status: FlowRunStatus; stepResults: FlowStepResult[] } | null = null;
   export let lastRunRecord: FlowRunRecord | null = null;
   export let runHistory: FlowRunRecord[] = [];
+  export let uiState: { expandedStepId: string | null; collapsedKeys: Record<string, boolean> } | null = null;
 
   const dispatch = createEventDispatcher<{
     save: { flowPath: string; flow: FlowDefinition };
     run: void;
     abort: void;
     clearHistory: void;
+    uiStateChange: { expandedStepId: string | null; collapsedKeys: Record<string, boolean> };
   }>();
 
   $: isRunning = runState?.status === 'running';
@@ -261,13 +263,18 @@
 
   // ─── Override editing ───────────────────────────────────────────────────────
 
-  let expandedStepId: string | null = null;
+  let expandedStepId: string | null = uiState?.expandedStepId ?? null;
   /** Tracks which sections are collapsed, keyed as "stepId:section" */
-  let collapsedKeys: Record<string, boolean> = {};
+  let collapsedKeys: Record<string, boolean> = uiState?.collapsedKeys ?? {};
+
+  function emitUIState() {
+    dispatch('uiStateChange', { expandedStepId, collapsedKeys });
+  }
 
   function toggleSection(stepId: string, section: string) {
     const key = `${stepId}:${section}`;
     collapsedKeys = { ...collapsedKeys, [key]: !collapsedKeys[key] };
+    emitUIState();
   }
 
   const sections = ['headers', 'body', 'assertions', 'beforeSend', 'afterReceive'] as const;
@@ -285,6 +292,7 @@
         collapsedKeys = { ...collapsedKeys, ...init };
       }
     }
+    emitUIState();
   }
 
   function hasOverrides(step: FlowStep): boolean {
@@ -539,7 +547,7 @@
               <div class="override-panel">
                 <div class="override-section">
                   <div class="override-row">
-                    <span class="override-label">URL</span>
+                    <span class="override-label">URL{#if step.overrides?.url !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                     <input
                       class="override-input"
                       class:showing-base={step.overrides?.url === undefined && !!(req?.url ?? getUrl(step.label))}
@@ -560,7 +568,7 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'headers')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'headers'); }}>
                     <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:headers`]}>&#9656;</span>
-                    <span class="override-label">Headers</span>
+                    <span class="override-label">Headers{#if step.overrides?.headers !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                     <span class="override-count">{(step.overrides?.headers ?? baseHeaders).length}</span>
                     {#if !collapsedKeys[`${step.id}:headers`]}
                       <button class="override-add-btn" on:click|stopPropagation={() => addOverrideHeader(i, baseHeaders)}>+ Add</button>
@@ -601,7 +609,7 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'body')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'body'); }}>
                     <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:body`]}>&#9656;</span>
-                    <span class="override-label">Body</span>
+                    <span class="override-label">Body{#if step.overrides?.body !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                   </div>
                   {#if !collapsedKeys[`${step.id}:body`]}
                     <textarea
@@ -623,7 +631,7 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'assertions')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'assertions'); }}>
                     <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:assertions`]}>&#9656;</span>
-                    <span class="override-label">Assertions</span>
+                    <span class="override-label">Assertions{#if step.overrides?.directives !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                     <span class="override-count">{(step.overrides?.directives ?? baseDirectives).length}</span>
                     {#if !collapsedKeys[`${step.id}:assertions`]}
                       <button class="override-add-btn" on:click|stopPropagation={() => addOverrideDirective(i, baseDirectives)}>+ Add</button>
@@ -683,7 +691,7 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'beforeSend')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'beforeSend'); }}>
                     <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:beforeSend`]}>&#9656;</span>
-                    <span class="override-label">Before Send</span>
+                    <span class="override-label">Before Send{#if step.overrides?.beforeSend !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                   </div>
                   {#if !collapsedKeys[`${step.id}:beforeSend`]}
                     <textarea
@@ -705,7 +713,7 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'afterReceive')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'afterReceive'); }}>
                     <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:afterReceive`]}>&#9656;</span>
-                    <span class="override-label">After Receive</span>
+                    <span class="override-label">After Receive{#if step.overrides?.afterReceive !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                   </div>
                   {#if !collapsedKeys[`${step.id}:afterReceive`]}
                     <textarea
@@ -1287,6 +1295,17 @@
     color: #888;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+  }
+  .modified-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #8040A8;
+    margin-left: 5px;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
   }
   .override-row {
     display: flex;

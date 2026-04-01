@@ -758,6 +758,9 @@
   let lastFlowRunRecords: Record<string, FlowRunRecord> = {};
   let runningFlowPath: string | null = null;
 
+  /** Persisted UI state for flow editors, keyed by flow path. */
+  let flowUIState: Record<string, { expandedStepId: string | null; collapsedKeys: Record<string, boolean> }> = {};
+
   async function handleRunFlow() {
     const flow = $activeFlow;
     const flowPathVal = $activeFlowTabPath;
@@ -893,6 +896,7 @@
       delete updated[path];
       return updated;
     });
+    delete flowUIState[path];
     closeFlowTab(path);
   }
 </script>
@@ -982,7 +986,7 @@
         on:activate={handleTabActivate}
         on:close={handleTabClose}
         on:activateFlowTab={(e) => activateFlowTab(e.detail)}
-        on:closeFlowTab={(e) => closeFlowTab(e.detail)}
+        on:closeFlowTab={(e) => { delete flowUIState[e.detail]; closeFlowTab(e.detail); }}
       />
       <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
         {#if showEnvEditor && $envFile && $activeEnvironment}
@@ -1007,6 +1011,8 @@
             runState={runningFlowPath === $activeFlowTabPath ? $flowRunState : null}
             lastRunRecord={lastFlowRunRecords[$activeFlowTabPath] ?? null}
             runHistory={$flowRunHistory.filter(r => r.flowFilePath === $activeFlowTabPath)}
+            uiState={flowUIState[$activeFlowTabPath] ?? null}
+            on:uiStateChange={(e) => { flowUIState[$activeFlowTabPath] = e.detail; flowUIState = flowUIState; }}
             on:save={handleSaveFlow}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
