@@ -62,8 +62,14 @@
   /** Cached card positions from drag start - prevents layout-feedback flicker */
   let cachedRects: { top: number; height: number }[] = [];
   const HYSTERESIS = 8; // px deadzone before switching slots
+  let handleGrabbed = false;
 
   function onDragStart(e: DragEvent, index: number) {
+    // Only allow drag from the drag handle
+    if (!handleGrabbed) {
+      e.preventDefault();
+      return;
+    }
     draggingIndex = index;
     // Snapshot card positions before any visual changes
     const card = e.currentTarget as HTMLElement;
@@ -138,6 +144,7 @@
     draggingIndex = -1;
     insertSlot = -1;
     cachedRects = [];
+    handleGrabbed = false;
   }
 
   function onListDragLeave(e: DragEvent) {
@@ -506,6 +513,8 @@
                 tabindex="0"
                 aria-label="Reorder step {i + 1}, use arrow keys"
                 on:keydown={(e) => onStepKeydown(e, i)}
+                on:mousedown={() => handleGrabbed = true}
+                on:mouseup={() => handleGrabbed = false}
               >
                 <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
                   <circle cx="3" cy="2.5" r="1.2" fill="currentColor"/>
@@ -584,7 +593,8 @@
             </div>
 
             {#if expandedStepId === step.id}
-              <div class="override-panel">
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="override-panel" on:mousedown|stopPropagation on:dragstart|preventDefault|stopPropagation>
                 <div class="override-section">
                   <div class="override-row">
                     <span class="override-label">URL{#if step.overrides?.url !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
