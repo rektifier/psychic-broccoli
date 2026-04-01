@@ -10,6 +10,7 @@
 
   let selectedRunId: string | null = null;
   let expandedStep: string | null = null;
+  let stepsOpen: boolean = true;
 
   $: relevantHistory = history.filter(r => r.flowFilePath === flowFilePath);
   $: displayRecord = selectedRunId
@@ -50,91 +51,100 @@
 
 <div class="flow-results">
   {#if displayRecord}
-    <!-- Summary bar -->
-    <div class="results-summary">
-      <div class="summary-stats">
-        <span class="stat passed">{displayRecord.summary.passed} passed</span>
-        <span class="stat failed">{displayRecord.summary.failed} failed</span>
-        {#if displayRecord.summary.skipped > 0}
-          <span class="stat skipped">{displayRecord.summary.skipped} skipped</span>
-        {/if}
-        <span class="stat total">of {displayRecord.summary.total}</span>
-      </div>
-      <div class="summary-meta">
-        {#if displayRecord.environment}
-          <span class="meta-chip env">{displayRecord.environment}</span>
-        {/if}
-        <span class="meta-chip time">{totalDuration(displayRecord)}ms</span>
-        <span class="meta-chip date">{formatTime(displayRecord.startedAt)}</span>
-      </div>
-    </div>
+    <div class="results-card">
+      <!-- Summary bar (toggles step results) -->
+      <button class="results-summary" on:click={() => stepsOpen = !stepsOpen}>
+        <span class="summary-chevron" class:open={stepsOpen}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="summary-stats">
+          <span class="stat passed">{displayRecord.summary.passed} passed</span>
+          <span class="stat failed">{displayRecord.summary.failed} failed</span>
+          {#if displayRecord.summary.skipped > 0}
+            <span class="stat skipped">{displayRecord.summary.skipped} skipped</span>
+          {/if}
+          <span class="stat total">of {displayRecord.summary.total}</span>
+        </div>
+        <div class="summary-meta">
+          {#if displayRecord.environment}
+            <span class="meta-chip env">{displayRecord.environment}</span>
+          {/if}
+          <span class="meta-chip time">{totalDuration(displayRecord)}ms</span>
+          <span class="meta-chip date">{formatTime(displayRecord.startedAt)}</span>
+        </div>
+      </button>
 
-    <!-- Step results -->
-    <div class="results-steps">
-      {#each displayRecord.stepResults as sr, i}
-        {@const step = sr}
-        <div class="result-step">
-          <button class="result-step-header" on:click={() => toggleStep(sr.stepId)}>
-            <span class="result-status-icon" style="color: {statusColor(sr.status)}">
-              {#if sr.status === 'passed'}&#10003;{:else if sr.status === 'failed'}&#10005;{:else if sr.status === 'running'}...{:else}-{/if}
-            </span>
-            <span class="result-step-num">{i + 1}</span>
-            {#if sr.sentRequest}
-              <span class="result-method" style="color: {statusColor(sr.status === 'passed' ? 'passed' : sr.status === 'failed' ? 'failed' : '')}">{sr.sentRequest.method.slice(0, 3)}</span>
-              <span class="result-url">{sr.sentRequest.url}</span>
-            {:else}
-              <span class="result-url">{sr.error || 'Skipped'}</span>
-            {/if}
-            {#if sr.response}
-              <span class="result-http-code" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
-            {/if}
-            {#if sr.durationMs > 0}
-              <span class="result-dur">{sr.durationMs}ms</span>
-            {/if}
-            <span class="result-chevron" class:open={expandedStep === sr.stepId}>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </span>
-          </button>
-
-          {#if expandedStep === sr.stepId}
-            <div class="result-detail">
-              {#if sr.error}
-                <div class="detail-section">
-                  <span class="detail-label">Error</span>
-                  <pre class="detail-pre error">{sr.error}</pre>
-                </div>
-              {/if}
-              {#if sr.assertionResults.length > 0}
-                <div class="detail-section">
-                  <span class="detail-label">Assertions ({sr.assertionResults.filter(a => a.passed).length}/{sr.assertionResults.length})</span>
-                  <div class="assertions-list">
-                    {#each sr.assertionResults as ar}
-                      <div class="assertion-row" class:pass={ar.passed} class:fail={!ar.passed}>
-                        <span class="assertion-icon">{ar.passed ? '\u2713' : '\u2717'}</span>
-                        <span class="assertion-label">{ar.label}</span>
-                      </div>
-                    {/each}
-                  </div>
-                </div>
+      <!-- Step results (inside summary toggle) -->
+      {#if stepsOpen}
+      <div class="results-steps">
+        {#each displayRecord.stepResults as sr, i}
+          {@const step = sr}
+          <div class="result-step">
+            <button class="result-step-header" on:click={() => toggleStep(sr.stepId)}>
+              <span class="result-status-icon" style="color: {statusColor(sr.status)}">
+                {#if sr.status === 'passed'}&#10003;{:else if sr.status === 'failed'}&#10005;{:else if sr.status === 'running'}...{:else}-{/if}
+              </span>
+              <span class="result-step-num">{i + 1}</span>
+              {#if sr.sentRequest}
+                <span class="result-method" style="color: {statusColor(sr.status === 'passed' ? 'passed' : sr.status === 'failed' ? 'failed' : '')}">{sr.sentRequest.method.slice(0, 3)}</span>
+                <span class="result-url">{sr.sentRequest.url}</span>
+              {:else}
+                <span class="result-url">{sr.error || 'Skipped'}</span>
               {/if}
               {#if sr.response}
-                <div class="detail-section">
-                  <span class="detail-label">Response body</span>
-                  <pre class="detail-pre">{truncateBody(sr.response.body)}</pre>
-                </div>
+                <span class="result-http-code" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
               {/if}
-            </div>
-          {/if}
-        </div>
-      {/each}
+              {#if sr.durationMs > 0}
+                <span class="result-dur">{sr.durationMs}ms</span>
+              {/if}
+              <span class="result-chevron" class:open={expandedStep === sr.stepId}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </button>
+
+            {#if expandedStep === sr.stepId}
+              <div class="result-detail">
+                {#if sr.error}
+                  <div class="detail-section">
+                    <span class="detail-label">Error</span>
+                    <pre class="detail-pre error">{sr.error}</pre>
+                  </div>
+                {/if}
+                {#if sr.assertionResults.length > 0}
+                  <div class="detail-section">
+                    <span class="detail-label">Assertions ({sr.assertionResults.filter(a => a.passed).length}/{sr.assertionResults.length})</span>
+                    <div class="assertions-list">
+                      {#each sr.assertionResults as ar}
+                        <div class="assertion-row" class:pass={ar.passed} class:fail={!ar.passed}>
+                          <span class="assertion-icon">{ar.passed ? '\u2713' : '\u2717'}</span>
+                          <span class="assertion-label">{ar.label}</span>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+                {#if sr.response}
+                  <div class="detail-section">
+                    <span class="detail-label">Response body</span>
+                    <pre class="detail-pre">{truncateBody(sr.response.body)}</pre>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
     </div>
   {:else}
     <div class="results-empty">Run the flow to see results here.</div>
   {/if}
 
-  <!-- History -->
+  <!-- History (outside and below results) -->
   {#if relevantHistory.length > 0}
     <div class="results-history">
       <div class="history-header">
@@ -168,22 +178,46 @@
     gap: 16px;
   }
 
+  /* Results card */
+  .results-card {
+    border: 1px solid #E4E4EA;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #FAFAFA;
+  }
+
   /* Summary */
   .results-summary {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
     gap: 8px;
+    width: 100%;
     padding: 10px 14px;
     background: #FAFAFA;
-    border: 1px solid #E4E4EA;
-    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: background 0.1s;
+  }
+  .results-summary:hover {
+    background: #F0F0F4;
+  }
+  .summary-chevron {
+    display: flex;
+    align-items: center;
+    color: #BBB;
+    transition: transform 0.15s;
+    flex-shrink: 0;
+  }
+  .summary-chevron.open {
+    transform: rotate(90deg);
   }
   .summary-stats {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex: 1;
   }
   .stat {
     font-size: 12px;
@@ -215,11 +249,9 @@
   .results-steps {
     display: flex;
     flex-direction: column;
-    gap: 2px;
   }
   .result-step {
-    border: 1px solid #E4E4EA;
-    border-radius: 6px;
+    border-top: 1px solid #E4E4EA;
     overflow: hidden;
   }
   .result-step-header {

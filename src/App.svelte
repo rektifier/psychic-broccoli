@@ -794,6 +794,20 @@
     lastFlowRunRecord = record;
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
 
+    // Propagate flow variables back to app stores
+    if (record.variables) {
+      if (Object.keys(record.variables.setVars).length > 0) {
+        pbEnvOverrides.update(ev => ({ ...ev, ...record.variables!.setVars }));
+      }
+      if (Object.keys(record.variables.globalVars).length > 0) {
+        pbGlobals.update(g => ({ ...g, ...record.variables!.globalVars }));
+        pbEnvOverrides.update(ev => ({ ...ev, ...record.variables!.globalVars }));
+      }
+      if (Object.keys(record.variables.namedResults).length > 0) {
+        namedResults.update(nr => ({ ...nr, ...record.variables!.namedResults }));
+      }
+    }
+
     // Persist and update history
     try {
       await saveFlowRunRecord(rootPath, record);

@@ -179,6 +179,8 @@ export interface FlowStepOverrides {
   headers?: HttpHeader[];
   body?: string;
   directives?: PbDirective[];
+  beforeSend?: string;
+  afterReceive?: string;
 }
 
 /** A single step in a test flow, referencing a request in a .http file. */
@@ -254,5 +256,11 @@ export interface FlowRunRecord {
     passed: number;
     failed: number;
     skipped: number;
+  };
+  /** Variables collected during the flow run (set/global directives) */
+  variables?: {
+    setVars: Record<string, string>;
+    globalVars: Record<string, string>;
+    namedResults: Record<string, NamedRequestResult>;
   };
 }

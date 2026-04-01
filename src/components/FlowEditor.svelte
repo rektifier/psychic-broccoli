@@ -4,7 +4,7 @@
   import FlowResults from './FlowResults.svelte';
   import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective } from '../lib/types';
   import { getAllFileNodes, substituteAll } from '../lib/parser';
-  import { resolvedEnvVars, namedResults, dotenvVariables } from '../lib/stores';
+  import { baseEnvVars, namedResults, dotenvVariables } from '../lib/stores';
 
   export let flow: FlowDefinition;
   export let flowPath: string;
@@ -230,10 +230,15 @@
   /** Resolve a raw URL using current environment/variables. Returns '' if no change. */
   function resolveStepUrl(rawUrl: string, file: FileNode | undefined): string {
     if (!rawUrl || !rawUrl.includes('{{')) return '';
+    // Only resolve environment variables; runtime/file-scoped variables stay as {{placeholders}}
+    const nonEmptyEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries($baseEnvVars)) {
+      if (v) nonEmptyEnv[k] = v;
+    }
     const resolved = substituteAll(rawUrl, {
-      fileVariables: file?.variables ?? [],
-      environmentVariables: $resolvedEnvVars,
-      namedResults: $namedResults,
+      fileVariables: [],
+      environmentVariables: nonEmptyEnv,
+      namedResults: {},
       dotenvVariables: $dotenvVariables,
     });
     return resolved !== rawUrl ? resolved : '';
@@ -272,7 +277,7 @@
   function hasOverrides(step: FlowStep): boolean {
     if (!step.overrides) return false;
     const o = step.overrides;
-    return o.url !== undefined || o.headers !== undefined || o.body !== undefined || o.directives !== undefined;
+    return o.url !== undefined || o.headers !== undefined || o.body !== undefined || o.directives !== undefined || o.beforeSend !== undefined || o.afterReceive !== undefined;
   }
 
   function updateStepOverride(index: number, field: keyof FlowStepOverrides, value: any) {
@@ -451,6 +456,17 @@
                   <circle cx="7" cy="11.5" r="1.2" fill="currentColor"/>
                 </svg>
               </span>
+              <button
+                class="btn-override-toggle"
+                class:active={hasOverrides(step)}
+                class:expanded={expandedStepId === step.id}
+                on:click|stopPropagation={() => toggleOverridePanel(step.id)}
+                title={hasOverrides(step) ? 'Edit overrides (has customizations)' : 'Customize request for this step'}
+              >
+                <svg class="toggle-arrow" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
               <span class="step-number">{i + 1}</span>
               <div class="step-content">
                 <div class="step-top-row">
@@ -476,18 +492,6 @@
                 {/if}
               </div>
               <div class="step-actions">
-                <button
-                  class="btn-override-toggle"
-                  class:active={hasOverrides(step)}
-                  class:expanded={expandedStepId === step.id}
-                  on:click={() => toggleOverridePanel(step.id)}
-                  title={hasOverrides(step) ? 'Edit overrides (has customizations)' : 'Customize request for this step'}
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-                    <path d="M9.5 3.5l3 3" stroke="currentColor" stroke-width="1.4"/>
-                  </svg>
-                </button>
                 <button
                   class="btn-continue-toggle"
                   class:active={step.continueOnFailure}
@@ -526,10 +530,15 @@
                     <span class="override-label">URL</span>
                     <input
                       class="override-input"
+                      class:showing-base={step.overrides?.url === undefined && !!(req?.url ?? getUrl(step.label))}
                       type="text"
-                      value={step.overrides?.url ?? ''}
-                      placeholder={req?.url ?? getUrl(step.label)}
-                      on:input={(e) => updateStepOverride(i, 'url', e.currentTarget.value || undefined)}
+                      value={step.overrides?.url ?? req?.url ?? getUrl(step.label)}
+                      placeholder="No URL"
+                      on:input={(e) => {
+                        const val = e.currentTarget.value;
+                        const base = req?.url ?? getUrl(step.label);
+                        updateStepOverride(i, 'url', val === base ? undefined : val || undefined);
+                      }}
                       spellcheck="false"
                     />
                   </div>
@@ -585,9 +594,13 @@
                   {#if !collapsedKeys[`${step.id}:body`]}
                     <textarea
                       class="override-body"
-                      value={step.overrides?.body ?? ''}
-                      placeholder={req?.body || 'No body'}
-                      on:input={(e) => updateStepOverride(i, 'body', e.currentTarget.value || undefined)}
+                      class:showing-base={step.overrides?.body === undefined && !!req?.body}
+                      value={step.overrides?.body ?? req?.body ?? ''}
+                      placeholder="No body"
+                      on:input={(e) => {
+                        const val = e.currentTarget.value;
+                        updateStepOverride(i, 'body', val === (req?.body ?? '') ? undefined : val || undefined);
+                      }}
                       spellcheck="false"
                       rows="4"
                     ></textarea>
@@ -651,6 +664,50 @@
                         <button class="override-header-remove" on:click={() => removeOverrideDirective(i, di, baseDirectives)}>&times;</button>
                       </div>
                     {/each}
+                  {/if}
+                </div>
+
+                <div class="override-section">
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'beforeSend')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'beforeSend'); }}>
+                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:beforeSend`]}>&#9656;</span>
+                    <span class="override-label">Before Send</span>
+                  </div>
+                  {#if !collapsedKeys[`${step.id}:beforeSend`]}
+                    <textarea
+                      class="override-body"
+                      class:showing-base={step.overrides?.beforeSend === undefined && !!req?.beforeSend}
+                      value={step.overrides?.beforeSend ?? req?.beforeSend ?? ''}
+                      placeholder="No before-send script"
+                      on:input={(e) => {
+                        const val = e.currentTarget.value;
+                        updateStepOverride(i, 'beforeSend', val === (req?.beforeSend ?? '') ? undefined : val || undefined);
+                      }}
+                      spellcheck="false"
+                      rows="4"
+                    ></textarea>
+                  {/if}
+                </div>
+
+                <div class="override-section">
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'afterReceive')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'afterReceive'); }}>
+                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:afterReceive`]}>&#9656;</span>
+                    <span class="override-label">After Receive</span>
+                  </div>
+                  {#if !collapsedKeys[`${step.id}:afterReceive`]}
+                    <textarea
+                      class="override-body"
+                      class:showing-base={step.overrides?.afterReceive === undefined && !!req?.afterReceive}
+                      value={step.overrides?.afterReceive ?? req?.afterReceive ?? ''}
+                      placeholder="No after-receive script"
+                      on:input={(e) => {
+                        const val = e.currentTarget.value;
+                        updateStepOverride(i, 'afterReceive', val === (req?.afterReceive ?? '') ? undefined : val || undefined);
+                      }}
+                      spellcheck="false"
+                      rows="4"
+                    ></textarea>
                   {/if}
                 </div>
 
@@ -1154,7 +1211,7 @@
   /* Override toggle button */
   .btn-override-toggle {
     width: 24px; height: 24px;
-    border: 1px solid #DCDCE2;
+    border: none;
     border-radius: 4px;
     background: transparent;
     color: #BBB;
@@ -1165,19 +1222,20 @@
     flex-shrink: 0;
     transition: all 0.15s;
   }
+  .btn-override-toggle .toggle-arrow {
+    transition: transform 0.15s;
+  }
+  .btn-override-toggle.expanded .toggle-arrow {
+    transform: rotate(90deg);
+  }
   .btn-override-toggle:hover {
-    border-color: #8040A860;
     color: #8040A8;
     background: #8040A808;
   }
   .btn-override-toggle.active {
-    border-color: #8040A850;
-    background: #8040A80D;
     color: #8040A8;
   }
   .btn-override-toggle.expanded {
-    border-color: #8040A8;
-    background: #8040A815;
     color: #8040A8;
   }
 
@@ -1349,6 +1407,12 @@
   }
   .override-body::placeholder {
     color: #CCC;
+  }
+  .showing-base {
+    color: #999;
+  }
+  .showing-base:focus {
+    color: inherit;
   }
   .override-footer {
     display: flex;
