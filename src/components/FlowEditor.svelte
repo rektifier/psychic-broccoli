@@ -270,8 +270,21 @@
     collapsedKeys = { ...collapsedKeys, [key]: !collapsedKeys[key] };
   }
 
+  const sections = ['headers', 'body', 'assertions', 'beforeSend', 'afterReceive'] as const;
+
   function toggleOverridePanel(stepId: string) {
-    expandedStepId = expandedStepId === stepId ? null : stepId;
+    if (expandedStepId === stepId) {
+      expandedStepId = null;
+    } else {
+      expandedStepId = stepId;
+      // Start all sub-sections collapsed on first expand
+      const key0 = `${stepId}:${sections[0]}`;
+      if (!(key0 in collapsedKeys)) {
+        const init: Record<string, boolean> = {};
+        for (const s of sections) init[`${stepId}:${s}`] = true;
+        collapsedKeys = { ...collapsedKeys, ...init };
+      }
+    }
   }
 
   function hasOverrides(step: FlowStep): boolean {
