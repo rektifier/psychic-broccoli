@@ -17,6 +17,14 @@
     ? relevantHistory.find(r => r.id === selectedRunId) ?? runRecord
     : runRecord;
 
+  // Reset collapse state when the displayed record changes
+  let prevDisplayId: string | null = null;
+  $: if (displayRecord?.id !== prevDisplayId) {
+    prevDisplayId = displayRecord?.id ?? null;
+    stepsOpen = true;
+    expandedStep = null;
+  }
+
   function selectRun(id: string) {
     selectedRunId = selectedRunId === id ? null : id;
   }
