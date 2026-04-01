@@ -399,7 +399,6 @@
     {#if flow.steps.length === 0}
       <div class="steps-empty">
         <span class="steps-empty-text">No steps yet.</span>
-        <button class="steps-empty-btn" on:click={() => showPicker = true}>Add a request</button>
       </div>
     {:else}
       <div
@@ -877,21 +876,6 @@
   .steps-empty-text {
     font-size: 12px;
     color: #999;
-  }
-  .steps-empty-btn {
-    padding: 6px 16px;
-    border: 1px solid #8040A840;
-    border-radius: 6px;
-    background: #8040A810;
-    color: #8040A8;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .steps-empty-btn:hover {
-    background: #8040A820;
-    border-color: #8040A8;
   }
   .steps-list {
     display: flex;
