@@ -759,7 +759,7 @@
   let runningFlowPath: string | null = null;
 
   /** Persisted UI state for flow editors, keyed by flow path. */
-  let flowUIState: Record<string, { expandedStepId: string | null; collapsedKeys: Record<string, boolean> }> = {};
+  let flowUIState: Record<string, { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> }> = {};
 
   async function handleRunFlow() {
     const flow = $activeFlow;
