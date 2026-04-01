@@ -319,8 +319,11 @@ export const availableEnvironments = derived(
   }
 );
 
-/** Overrides injected by pb.set / pb.global directives at runtime. */
-export const pbEnvOverrides = writable<Record<string, string>>({});
+/** File-scoped overrides injected by pb.set directives at runtime, keyed by file path. */
+export const pbFileOverrides = writable<Record<string, Record<string, string>>>({});
+
+/** Workspace-global variables set via `# @pb.global(...)`. Persist across requests and files. */
+export const pbGlobals = writable<Record<string, string>>({});
 
 /** Environment variables only (no runtime overrides). */
 export const baseEnvVars = derived(
@@ -330,10 +333,19 @@ export const baseEnvVars = derived(
   }
 );
 
+/** Active file's pb.set overrides (file-scoped). */
+export const activeFileOverrides = derived(
+  [pbFileOverrides, selectedLocation],
+  ([$overrides, $loc]) => {
+    if (!$loc) return {};
+    return $overrides[$loc.filePath] ?? {};
+  }
+);
+
 export const resolvedEnvVars = derived(
-  [baseEnvVars, pbEnvOverrides],
-  ([$base, $overrides]) => {
-    return { ...$base, ...$overrides };
+  [baseEnvVars, pbGlobals, activeFileOverrides],
+  ([$base, $globals, $fileOverrides]) => {
+    return { ...$base, ...$globals, ...$fileOverrides };
   }
 );
 
@@ -346,9 +358,6 @@ export const dotenvVariables = writable<Record<string, string>>({});
 
 /** Assertion results from the most recent request's pb directives. */
 export const pbAssertionResults = writable<PbAssertionResult[]>([]);
-
-/** Workspace-global variables set via `# @pb.global(...)`. Persist across requests and files. */
-export const pbGlobals = writable<Record<string, string>>({});
 
 // ─── Error / Toast Notifications ────────────────────────────────────────────
 
