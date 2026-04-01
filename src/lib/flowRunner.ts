@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { substituteAll, executePbDirectives, getAllFileNodes } from './parser';
+import { substituteAll, executePbDirectives, getAllFileNodes, parseScriptText, applyRequestMutations } from './parser';
 import type { SubstitutionContext } from './parser';
 import type {
   FlowDefinition, FlowStep, FlowStepResult, FlowStepStatus,
@@ -84,11 +84,19 @@ export async function runFlow(
       ...(step.overrides.headers !== undefined ? { headers: step.overrides.headers } : {}),
       ...(step.overrides.body !== undefined ? { body: step.overrides.body } : {}),
       ...(step.overrides.directives !== undefined ? { directives: step.overrides.directives } : {}),
+      ...(step.overrides.beforeSend !== undefined ? { beforeSend: step.overrides.beforeSend } : {}),
+      ...(step.overrides.afterReceive !== undefined ? { afterReceive: step.overrides.afterReceive } : {}),
     } : baseRequest;
 
     // Build substitution context with flow-local state
+    // Override file variables with flow-local runtime values so that
+    // variables set by earlier steps (via pb.set / pb.global) take
+    // precedence over empty or stale file-level defaults.
+    const localVars = { ...localEnvOverrides, ...localGlobals };
     const ctx: SubstitutionContext = {
-      fileVariables: file.variables,
+      fileVariables: file.variables.map(v =>
+        v.key in localVars ? { ...v, value: localVars[v.key] } : v
+      ),
       environmentVariables: { ...environmentVariables, ...localEnvOverrides, ...localGlobals },
       namedResults: localNamedResults,
       dotenvVariables,
@@ -120,6 +128,11 @@ export async function runFlow(
     status,
     stepResults,
     summary,
+    variables: {
+      setVars: localEnvOverrides,
+      globalVars: localGlobals,
+      namedResults: localNamedResults,
+    },
   };
 }
 
@@ -136,12 +149,42 @@ async function executeStep(
   const startTime = performance.now();
 
   try {
-    const url = substituteAll(request.url, ctx);
-    const body = substituteAll(request.body, ctx);
-    const headers: Record<string, string> = {};
+    let url = substituteAll(request.url, ctx);
+    let body = substituteAll(request.body, ctx);
+    let headers: Record<string, string> = {};
     for (const h of request.headers) {
       if (h.enabled) {
         headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
+      }
+    }
+
+    // Execute beforeSend scripts
+    const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
+    if (beforeSendDirectives.length > 0) {
+      const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
+      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
+
+      const dummyResponse: HttpResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
+      const bsResult = executePbDirectives(
+        beforeSendDirectives, dummyResponse,
+        { url, method: request.method, headers, body },
+        mergedVars, localNamedResults,
+      );
+
+      const mutated = applyRequestMutations(
+        { url, method: request.method, headers, body },
+        bsResult.requestMutations,
+      );
+      url = mutated.url;
+      headers = mutated.headers;
+      body = mutated.body;
+
+      if (Object.keys(bsResult.setVars).length > 0) {
+        Object.assign(localEnvOverrides, bsResult.setVars);
+      }
+      if (Object.keys(bsResult.globalVars).length > 0) {
+        Object.assign(localGlobals, bsResult.globalVars);
+        Object.assign(localEnvOverrides, bsResult.globalVars);
       }
     }
 
@@ -173,15 +216,20 @@ async function executeStep(
       localNamedResults[request.varName] = { request: sentRequest, response };
     }
 
-    // Execute pb directives
+    // Execute pb directives + afterReceive scripts
+    const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
+    const allDirectives = [
+      ...(request.directives || []).filter(d => d.enabled !== false),
+      ...afterReceiveDirectives,
+    ];
+
     let assertionResults: PbAssertionResult[] = [];
-    if (request.directives && request.directives.length > 0) {
+    if (allDirectives.length > 0) {
       const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
       for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
 
-      const enabledDirectives = request.directives.filter(d => d.enabled !== false);
       const pbResult = executePbDirectives(
-        enabledDirectives, response, sentRequest, mergedVars, localNamedResults,
+        allDirectives, response, sentRequest, mergedVars, localNamedResults,
       );
 
       assertionResults = pbResult.assertionResults;

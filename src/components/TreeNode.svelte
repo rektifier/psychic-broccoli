@@ -8,6 +8,7 @@
   export let displayMode: 'name' | 'url' = 'name';
   export let sortByUrl: boolean = false;
   export let usedNames: string[] = [];
+  export let forceExpand: boolean = false;
 
   const dispatch = createEventDispatcher();
 
@@ -117,6 +118,7 @@
           {displayMode}
           {sortByUrl}
           {usedNames}
+          {forceExpand}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -160,7 +162,7 @@
     <span class="req-count">{node.requests.length}</span>
   </div>
 
-  {#if fileExpanded}
+  {#if fileExpanded || forceExpand}
     <div class="children">
       {#each sortedIndices as i}
         {@const req = node.requests[i]}

@@ -20,12 +20,14 @@
   const dispatch = createEventDispatcher();
 
   let displayMode: 'name' | 'url' = 'name';
-  let flowsExpanded = true;
+  let flowsExpanded = false;
   let showNewFlow = false;
   let newFlowName = '';
   let newFlowInputEl: HTMLInputElement;
   let confirmDeleteFlow: string | null = null;
   let sortByUrl = false;
+  let filterText = '';
+  let filterInputEl: HTMLInputElement;
   let showAddEnv = false;
   let newEnvName = '';
   let inputEl: HTMLInputElement;
@@ -43,10 +45,35 @@
     if (e.key === 'Escape') showAddEnv = false;
   }
 
+  function filterTree(nodes: TNode[], query: string): TNode[] {
+    const q = query.toLowerCase();
+    const result: TNode[] = [];
+    for (const node of nodes) {
+      if (node.type === 'file') {
+        const fileMatch = node.name.toLowerCase().includes(q);
+        const reqMatch = node.requests.some(r =>
+          r.name.toLowerCase().includes(q) ||
+          r.url.toLowerCase().includes(q) ||
+          r.method.toLowerCase().includes(q) ||
+          (r.varName && r.varName.toLowerCase().includes(q))
+        );
+        if (fileMatch || reqMatch) result.push(node);
+      } else {
+        const filteredChildren = filterTree(node.children, query);
+        if (filteredChildren.length > 0) {
+          result.push({ ...node, children: filteredChildren, expanded: true });
+        }
+      }
+    }
+    return result;
+  }
+
   $: usedNames = getAllFileNodes(tree)
     .flatMap(f => f.requests)
     .map(r => r.varName)
     .filter((n): n is string => !!n);
+
+  $: displayTree = filterText.trim() ? filterTree(tree, filterText.trim()) : tree;
 
   $: if (showAddEnv && inputEl) inputEl.focus();
   $: if (showNewFlow && newFlowInputEl) newFlowInputEl.focus();
@@ -228,6 +255,23 @@
 
   <!-- Tree -->
   <div class="tree-toolbar">
+    <div class="filter-wrap">
+      <svg class="filter-icon" width="12" height="12" viewBox="0 0 16 16" fill="none">
+        <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <input
+        bind:this={filterInputEl}
+        bind:value={filterText}
+        class="filter-input"
+        placeholder="Filter..."
+        spellcheck="false"
+        on:keydown={(e) => { if (e.key === 'Escape') { filterText = ''; filterInputEl.blur(); } }}
+      />
+      {#if filterText}
+        <button class="filter-clear" on:click={() => { filterText = ''; }} title="Clear filter">&times;</button>
+      {/if}
+    </div>
     <button
       class="btn-display-mode"
       class:active={sortByUrl}
@@ -264,8 +308,12 @@
         <span class="empty-text">Open a folder to browse .http files</span>
         <button class="btn-open" on:click={() => dispatch('openFolder')}>Open Folder</button>
       </div>
+    {:else if displayTree.length === 0}
+      <div class="empty-filter">
+        <span class="empty-filter-text">No matching requests</span>
+      </div>
     {:else}
-      {#each tree as node}
+      {#each displayTree as node}
         <TreeNode
           {node}
           {selected}
@@ -273,6 +321,7 @@
           {displayMode}
           {sortByUrl}
           {usedNames}
+          forceExpand={!!filterText.trim()}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -686,9 +735,70 @@
   /* Tree */
   .tree-toolbar {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
     padding: 4px 12px 0;
     flex-shrink: 0;
+  }
+  .filter-wrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .filter-icon {
+    position: absolute;
+    left: 7px;
+    color: #999;
+    pointer-events: none;
+  }
+  .filter-input {
+    width: 100%;
+    padding: 4px 22px 4px 24px;
+    border: 1px solid #D4D4D8;
+    border-radius: 5px;
+    background: #FFFFFF;
+    color: #333340;
+    font-family: inherit;
+    font-size: 11px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .filter-input:focus {
+    border-color: #D4900A;
+  }
+  .filter-input::placeholder {
+    color: #BBB;
+  }
+  .filter-clear {
+    position: absolute;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: #999;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .filter-clear:hover {
+    color: #666;
+    background: #F0F0F4;
+  }
+  .empty-filter {
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+  .empty-filter-text {
+    font-size: 11px;
+    color: #AAA;
   }
   .btn-display-mode {
     width: 24px; height: 24px;

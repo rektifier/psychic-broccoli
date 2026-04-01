@@ -3,8 +3,8 @@
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
   import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective } from '../lib/types';
-  import { getAllFileNodes, substituteAll } from '../lib/parser';
-  import { resolvedEnvVars, namedResults, dotenvVariables } from '../lib/stores';
+  import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
+  import { baseEnvVars, namedResults, dotenvVariables } from '../lib/stores';
 
   export let flow: FlowDefinition;
   export let flowPath: string;
@@ -13,12 +13,14 @@
   export let runState: { status: FlowRunStatus; stepResults: FlowStepResult[] } | null = null;
   export let lastRunRecord: FlowRunRecord | null = null;
   export let runHistory: FlowRunRecord[] = [];
+  export let uiState: { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> } | null = null;
 
   const dispatch = createEventDispatcher<{
     save: { flowPath: string; flow: FlowDefinition };
     run: void;
     abort: void;
     clearHistory: void;
+    uiStateChange: { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> };
   }>();
 
   $: isRunning = runState?.status === 'running';
@@ -60,8 +62,14 @@
   /** Cached card positions from drag start - prevents layout-feedback flicker */
   let cachedRects: { top: number; height: number }[] = [];
   const HYSTERESIS = 8; // px deadzone before switching slots
+  let handleGrabbed = false;
 
   function onDragStart(e: DragEvent, index: number) {
+    // Only allow drag from the drag handle
+    if (!handleGrabbed) {
+      e.preventDefault();
+      return;
+    }
     draggingIndex = index;
     // Snapshot card positions before any visual changes
     const card = e.currentTarget as HTMLElement;
@@ -136,6 +144,7 @@
     draggingIndex = -1;
     insertSlot = -1;
     cachedRects = [];
+    handleGrabbed = false;
   }
 
   function onListDragLeave(e: DragEvent) {
@@ -230,10 +239,15 @@
   /** Resolve a raw URL using current environment/variables. Returns '' if no change. */
   function resolveStepUrl(rawUrl: string, file: FileNode | undefined): string {
     if (!rawUrl || !rawUrl.includes('{{')) return '';
+    // Only resolve environment variables; runtime/file-scoped variables stay as {{placeholders}}
+    const nonEmptyEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries($baseEnvVars)) {
+      if (v) nonEmptyEnv[k] = v;
+    }
     const resolved = substituteAll(rawUrl, {
-      fileVariables: file?.variables ?? [],
-      environmentVariables: $resolvedEnvVars,
-      namedResults: $namedResults,
+      fileVariables: [],
+      environmentVariables: nonEmptyEnv,
+      namedResults: {},
       dotenvVariables: $dotenvVariables,
     });
     return resolved !== rawUrl ? resolved : '';
@@ -256,23 +270,57 @@
 
   // ─── Override editing ───────────────────────────────────────────────────────
 
-  let expandedStepId: string | null = null;
-  /** Tracks which sections are collapsed, keyed as "stepId:section" */
-  let collapsedKeys: Record<string, boolean> = {};
+  let expandedStepId: string | null = uiState?.expandedStepId ?? null;
+  /** Tracks which sections are collapsed, keyed as "stepId:section" (only used for Headers now) */
+  let collapsedKeys: Record<string, boolean> = uiState?.collapsedKeys ?? {};
+  /** Active tab per step in the override panel */
+  let activeOverrideTabs: Record<string, string> = uiState?.activeOverrideTabs ?? {};
+
+  // Sync local UI state when the parent passes a new uiState (e.g. switching flow tabs)
+  let prevUiState = uiState;
+  $: if (uiState !== prevUiState) {
+    prevUiState = uiState;
+    expandedStepId = uiState?.expandedStepId ?? null;
+    collapsedKeys = uiState?.collapsedKeys ?? {};
+    activeOverrideTabs = uiState?.activeOverrideTabs ?? {};
+  }
+
+  /** Reactive lookup: which tab is active for each step. Falls back to 'body'. */
+  $: activeTabLookup = (stepId: string) => activeOverrideTabs[stepId] ?? 'body';
+
+  function setActiveTab(stepId: string, tab: string) {
+    activeOverrideTabs = { ...activeOverrideTabs, [stepId]: tab };
+    emitUIState();
+  }
+
+  function emitUIState() {
+    dispatch('uiStateChange', { expandedStepId, collapsedKeys, activeOverrideTabs });
+  }
 
   function toggleSection(stepId: string, section: string) {
     const key = `${stepId}:${section}`;
     collapsedKeys = { ...collapsedKeys, [key]: !collapsedKeys[key] };
+    emitUIState();
   }
 
   function toggleOverridePanel(stepId: string) {
-    expandedStepId = expandedStepId === stepId ? null : stepId;
+    if (expandedStepId === stepId) {
+      expandedStepId = null;
+    } else {
+      expandedStepId = stepId;
+      // Start headers collapsed on first expand
+      const headersKey = `${stepId}:headers`;
+      if (!(headersKey in collapsedKeys)) {
+        collapsedKeys = { ...collapsedKeys, [headersKey]: true };
+      }
+    }
+    emitUIState();
   }
 
   function hasOverrides(step: FlowStep): boolean {
     if (!step.overrides) return false;
     const o = step.overrides;
-    return o.url !== undefined || o.headers !== undefined || o.body !== undefined || o.directives !== undefined;
+    return o.url !== undefined || o.headers !== undefined || o.body !== undefined || o.directives !== undefined || o.beforeSend !== undefined || o.afterReceive !== undefined;
   }
 
   function updateStepOverride(index: number, field: keyof FlowStepOverrides, value: any) {
@@ -309,21 +357,46 @@
     updateStepOverride(stepIndex, 'headers', current);
   }
 
-  function addOverrideDirective(stepIndex: number, baseDirectives: PbDirective[]) {
-    const current = flow.steps[stepIndex].overrides?.directives ?? baseDirectives.map(d => ({ ...d }));
-    updateStepOverride(stepIndex, 'directives', [...current, { type: 'assert' as const, expr: '', label: '' }]);
+  function directivesToText(directives: PbDirective[]): string {
+    return directives.map(d => {
+      if (d.type === 'assert') return d.label ? `${d.expr} | ${d.label}` : d.expr;
+      if (d.type === 'set') return `pb.set("${d.key}", ${d.expr})`;
+      if (d.type === 'global') return `pb.global("${d.key}", ${d.expr})`;
+      return '';
+    }).join('\n');
   }
 
-  function removeOverrideDirective(stepIndex: number, dirIndex: number, baseDirectives: PbDirective[]) {
-    const current = flow.steps[stepIndex].overrides?.directives ?? baseDirectives.map(d => ({ ...d }));
-    const updated = current.filter((_, i) => i !== dirIndex);
-    updateStepOverride(stepIndex, 'directives', updated.length > 0 ? updated : undefined);
+  function textToDirectives(text: string): PbDirective[] {
+    if (!text.trim()) return [];
+    // First try parseScriptText for pb.set/pb.global/# @pb.* syntax
+    const parsed = parseScriptText(text);
+    if (parsed.length > 0) return parsed;
+    // Fall back to simple assert format: expr | label
+    return text.split('\n').filter(l => l.trim()).map(line => {
+      const pipeIndex = line.indexOf(' | ');
+      if (pipeIndex >= 0) return { type: 'assert' as const, expr: line.slice(0, pipeIndex), label: line.slice(pipeIndex + 3) };
+      return { type: 'assert' as const, expr: line, label: '' };
+    });
   }
 
-  function updateOverrideDirective(stepIndex: number, dirIndex: number, field: string, value: any, baseDirectives: PbDirective[]) {
-    const current = (flow.steps[stepIndex].overrides?.directives ?? baseDirectives.map(d => ({ ...d }))).map(d => ({ ...d }));
-    (current[dirIndex] as any)[field] = value;
-    updateStepOverride(stepIndex, 'directives', current);
+  function onDirectivesTextInput(stepIndex: number, text: string, baseDirectives: PbDirective[]) {
+    // Parse each line independently so mixed content works
+    const directives: PbDirective[] = [];
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const fromScript = parseScriptText(trimmed);
+      if (fromScript.length > 0) {
+        directives.push(...fromScript);
+      } else {
+        // Simple assert format: expr | label
+        const pipeIndex = trimmed.indexOf(' | ');
+        if (pipeIndex >= 0) directives.push({ type: 'assert' as const, expr: trimmed.slice(0, pipeIndex), label: trimmed.slice(pipeIndex + 3) });
+        else directives.push({ type: 'assert' as const, expr: trimmed, label: '' });
+      }
+    }
+    const baseText = directivesToText(baseDirectives);
+    updateStepOverride(stepIndex, 'directives', text === baseText ? undefined : directives);
   }
 
   function resetOverrides(index: number) {
@@ -394,7 +467,6 @@
     {#if flow.steps.length === 0}
       <div class="steps-empty">
         <span class="steps-empty-text">No steps yet.</span>
-        <button class="steps-empty-btn" on:click={() => showPicker = true}>Add a request</button>
       </div>
     {:else}
       <div
@@ -441,6 +513,8 @@
                 tabindex="0"
                 aria-label="Reorder step {i + 1}, use arrow keys"
                 on:keydown={(e) => onStepKeydown(e, i)}
+                on:mousedown={() => handleGrabbed = true}
+                on:mouseup={() => handleGrabbed = false}
               >
                 <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
                   <circle cx="3" cy="2.5" r="1.2" fill="currentColor"/>
@@ -451,6 +525,17 @@
                   <circle cx="7" cy="11.5" r="1.2" fill="currentColor"/>
                 </svg>
               </span>
+              <button
+                class="btn-override-toggle"
+                class:active={hasOverrides(step)}
+                class:expanded={expandedStepId === step.id}
+                on:click|stopPropagation={() => toggleOverridePanel(step.id)}
+                title={hasOverrides(step) ? 'Edit overrides (has customizations)' : 'Customize request for this step'}
+              >
+                <svg class="toggle-arrow" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
               <span class="step-number">{i + 1}</span>
               <div class="step-content">
                 <div class="step-top-row">
@@ -476,18 +561,6 @@
                 {/if}
               </div>
               <div class="step-actions">
-                <button
-                  class="btn-override-toggle"
-                  class:active={hasOverrides(step)}
-                  class:expanded={expandedStepId === step.id}
-                  on:click={() => toggleOverridePanel(step.id)}
-                  title={hasOverrides(step) ? 'Edit overrides (has customizations)' : 'Customize request for this step'}
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-                    <path d="M9.5 3.5l3 3" stroke="currentColor" stroke-width="1.4"/>
-                  </svg>
-                </button>
                 <button
                   class="btn-continue-toggle"
                   class:active={step.continueOnFailure}
@@ -520,16 +593,22 @@
             </div>
 
             {#if expandedStepId === step.id}
-              <div class="override-panel">
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="override-panel" on:mousedown|stopPropagation on:dragstart|preventDefault|stopPropagation>
                 <div class="override-section">
                   <div class="override-row">
-                    <span class="override-label">URL</span>
+                    <span class="override-label">URL{#if step.overrides?.url !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                     <input
                       class="override-input"
+                      class:showing-base={step.overrides?.url === undefined && !!(req?.url ?? getUrl(step.label))}
                       type="text"
-                      value={step.overrides?.url ?? ''}
-                      placeholder={req?.url ?? getUrl(step.label)}
-                      on:input={(e) => updateStepOverride(i, 'url', e.currentTarget.value || undefined)}
+                      value={step.overrides?.url ?? req?.url ?? getUrl(step.label)}
+                      placeholder="No URL"
+                      on:input={(e) => {
+                        const val = e.currentTarget.value;
+                        const base = req?.url ?? getUrl(step.label);
+                        updateStepOverride(i, 'url', val === base ? undefined : val || undefined);
+                      }}
                       spellcheck="false"
                     />
                   </div>
@@ -539,7 +618,7 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'headers')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'headers'); }}>
                     <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:headers`]}>&#9656;</span>
-                    <span class="override-label">Headers</span>
+                    <span class="override-label">Headers{#if step.overrides?.headers !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                     <span class="override-count">{(step.overrides?.headers ?? baseHeaders).length}</span>
                     {#if !collapsedKeys[`${step.id}:headers`]}
                       <button class="override-add-btn" on:click|stopPropagation={() => addOverrideHeader(i, baseHeaders)}>+ Add</button>
@@ -576,82 +655,80 @@
                   {/if}
                 </div>
 
-                <div class="override-section">
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'body')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'body'); }}>
-                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:body`]}>&#9656;</span>
-                    <span class="override-label">Body</span>
+                <div class="override-tab-panel">
+                  <div class="override-tabs">
+                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'body'} on:click={() => setActiveTab(step.id, 'body')}>
+                      Body
+                      {#if step.overrides?.body !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                    </button>
+                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'assertions'} on:click={() => setActiveTab(step.id, 'assertions')}>
+                      Assertions
+                      {#if (step.overrides?.directives ?? baseDirectives).length > 0}
+                        <span class="override-tab-count">{(step.overrides?.directives ?? baseDirectives).length}</span>
+                      {/if}
+                      {#if step.overrides?.directives !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                    </button>
+                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'beforeSend'} on:click={() => setActiveTab(step.id, 'beforeSend')}>
+                      Before Send
+                      {#if step.overrides?.beforeSend !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                    </button>
+                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'afterReceive'} on:click={() => setActiveTab(step.id, 'afterReceive')}>
+                      After Receive
+                      {#if step.overrides?.afterReceive !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                    </button>
                   </div>
-                  {#if !collapsedKeys[`${step.id}:body`]}
-                    <textarea
-                      class="override-body"
-                      value={step.overrides?.body ?? ''}
-                      placeholder={req?.body || 'No body'}
-                      on:input={(e) => updateStepOverride(i, 'body', e.currentTarget.value || undefined)}
-                      spellcheck="false"
-                      rows="4"
-                    ></textarea>
-                  {/if}
-                </div>
-
-                <div class="override-section">
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'assertions')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'assertions'); }}>
-                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:assertions`]}>&#9656;</span>
-                    <span class="override-label">Assertions</span>
-                    <span class="override-count">{(step.overrides?.directives ?? baseDirectives).length}</span>
-                    {#if !collapsedKeys[`${step.id}:assertions`]}
-                      <button class="override-add-btn" on:click|stopPropagation={() => addOverrideDirective(i, baseDirectives)}>+ Add</button>
+                  <div class="override-tab-content">
+                    {#if activeTabLookup(step.id) === 'body'}
+                      <textarea
+                        class="override-body"
+                        class:showing-base={step.overrides?.body === undefined && !!req?.body}
+                        value={step.overrides?.body ?? req?.body ?? ''}
+                        placeholder="No body"
+                        on:input={(e) => {
+                          const val = e.currentTarget.value;
+                          updateStepOverride(i, 'body', val === (req?.body ?? '') ? undefined : val || undefined);
+                        }}
+                        spellcheck="false"
+                        rows="8"
+                      ></textarea>
+                    {:else if activeTabLookup(step.id) === 'assertions'}
+                      <textarea
+                        class="override-body"
+                        class:showing-base={step.overrides?.directives === undefined && baseDirectives.length > 0}
+                        value={directivesToText(step.overrides?.directives ?? baseDirectives)}
+                        placeholder={"One assertion per line:\npb.response.status == 200 | Should return 200\npb.response.body.$.name != null | Name should exist"}
+                        on:input={(e) => onDirectivesTextInput(i, e.currentTarget.value, baseDirectives)}
+                        spellcheck="false"
+                        rows="8"
+                      ></textarea>
+                    {:else if activeTabLookup(step.id) === 'beforeSend'}
+                      <textarea
+                        class="override-body"
+                        class:showing-base={step.overrides?.beforeSend === undefined && !!req?.beforeSend}
+                        value={step.overrides?.beforeSend ?? req?.beforeSend ?? ''}
+                        placeholder="No before-send script"
+                        on:input={(e) => {
+                          const val = e.currentTarget.value;
+                          updateStepOverride(i, 'beforeSend', val === (req?.beforeSend ?? '') ? undefined : val || undefined);
+                        }}
+                        spellcheck="false"
+                        rows="8"
+                      ></textarea>
+                    {:else if activeTabLookup(step.id) === 'afterReceive'}
+                      <textarea
+                        class="override-body"
+                        class:showing-base={step.overrides?.afterReceive === undefined && !!req?.afterReceive}
+                        value={step.overrides?.afterReceive ?? req?.afterReceive ?? ''}
+                        placeholder="No after-receive script"
+                        on:input={(e) => {
+                          const val = e.currentTarget.value;
+                          updateStepOverride(i, 'afterReceive', val === (req?.afterReceive ?? '') ? undefined : val || undefined);
+                        }}
+                        spellcheck="false"
+                        rows="8"
+                      ></textarea>
                     {/if}
                   </div>
-                  {#if !collapsedKeys[`${step.id}:assertions`]}
-                    {#each (step.overrides?.directives ?? baseDirectives) as d, di}
-                      <div class="override-directive-row" class:disabled={d.enabled === false}>
-                        <input
-                          type="checkbox"
-                          checked={d.enabled !== false}
-                          on:change={() => updateOverrideDirective(i, di, 'enabled', d.enabled === false ? undefined : false, baseDirectives)}
-                          class="override-header-check"
-                        />
-                        {#if d.type === 'assert'}
-                          <input
-                            class="override-directive-expr"
-                            type="text"
-                            value={d.expr}
-                            placeholder="pb.response.status == 200"
-                            on:input={(e) => updateOverrideDirective(i, di, 'expr', e.currentTarget.value, baseDirectives)}
-                            spellcheck="false"
-                          />
-                          <input
-                            class="override-directive-label"
-                            type="text"
-                            value={d.label}
-                            placeholder="Label"
-                            on:input={(e) => updateOverrideDirective(i, di, 'label', e.currentTarget.value, baseDirectives)}
-                            spellcheck="false"
-                          />
-                        {:else}
-                          <input
-                            class="override-directive-key"
-                            type="text"
-                            value={d.key}
-                            placeholder="Variable name"
-                            on:input={(e) => updateOverrideDirective(i, di, 'key', e.currentTarget.value, baseDirectives)}
-                            spellcheck="false"
-                          />
-                          <input
-                            class="override-directive-expr"
-                            type="text"
-                            value={d.expr}
-                            placeholder="pb.response.body.$.token"
-                            on:input={(e) => updateOverrideDirective(i, di, 'expr', e.currentTarget.value, baseDirectives)}
-                            spellcheck="false"
-                          />
-                        {/if}
-                        <button class="override-header-remove" on:click={() => removeOverrideDirective(i, di, baseDirectives)}>&times;</button>
-                      </div>
-                    {/each}
-                  {/if}
                 </div>
 
                 {#if hasOverrides(step)}
@@ -820,21 +897,6 @@
   .steps-empty-text {
     font-size: 12px;
     color: #999;
-  }
-  .steps-empty-btn {
-    padding: 6px 16px;
-    border: 1px solid #8040A840;
-    border-radius: 6px;
-    background: #8040A810;
-    color: #8040A8;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .steps-empty-btn:hover {
-    background: #8040A820;
-    border-color: #8040A8;
   }
   .steps-list {
     display: flex;
@@ -1154,7 +1216,7 @@
   /* Override toggle button */
   .btn-override-toggle {
     width: 24px; height: 24px;
-    border: 1px solid #DCDCE2;
+    border: none;
     border-radius: 4px;
     background: transparent;
     color: #BBB;
@@ -1165,19 +1227,20 @@
     flex-shrink: 0;
     transition: all 0.15s;
   }
+  .btn-override-toggle .toggle-arrow {
+    transition: transform 0.15s;
+  }
+  .btn-override-toggle.expanded .toggle-arrow {
+    transform: rotate(90deg);
+  }
   .btn-override-toggle:hover {
-    border-color: #8040A860;
     color: #8040A8;
     background: #8040A808;
   }
   .btn-override-toggle.active {
-    border-color: #8040A850;
-    background: #8040A80D;
     color: #8040A8;
   }
   .btn-override-toggle.expanded {
-    border-color: #8040A8;
-    background: #8040A815;
     color: #8040A8;
   }
 
@@ -1232,6 +1295,63 @@
     color: #888;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+  }
+  .modified-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #8040A8;
+    margin-left: 4px;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+  }
+
+  /* Override tab bar */
+  .override-tab-panel {
+    display: flex;
+    flex-direction: column;
+  }
+  .override-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border-bottom: 1px solid #E4E4EA;
+  }
+  .override-tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #999;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .override-tab:hover { color: #666; }
+  .override-tab.active {
+    color: #1A1A2E;
+    border-bottom-color: #D4900A;
+  }
+  .override-tab-count {
+    background: #E4E4EA;
+    color: #777;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 8px;
+  }
+.override-tab-content {
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
   .override-row {
     display: flex;
@@ -1342,7 +1462,7 @@
     color: #2A2A32;
     outline: none;
     resize: vertical;
-    min-height: 60px;
+    min-height: 120px;
   }
   .override-body:focus {
     border-color: #8040A8;
@@ -1350,52 +1470,15 @@
   .override-body::placeholder {
     color: #CCC;
   }
+  .showing-base {
+    color: #999;
+  }
+  .showing-base:focus {
+    color: inherit;
+  }
   .override-footer {
     display: flex;
     justify-content: flex-end;
-  }
-  .override-directive-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .override-directive-row.disabled input[type="text"] {
-    opacity: 0.4;
-  }
-  .override-directive-expr {
-    flex: 1;
-    padding: 4px 8px;
-    border: 1px solid #DCDCE2;
-    border-radius: 4px;
-    background: #FFF;
-    font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
-    outline: none;
-  }
-  .override-directive-expr:focus {
-    border-color: #8040A8;
-  }
-  .override-directive-label,
-  .override-directive-key {
-    flex: 0 0 25%;
-    padding: 4px 8px;
-    border: 1px solid #DCDCE2;
-    border-radius: 4px;
-    background: #FFF;
-    font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
-    outline: none;
-  }
-  .override-directive-label:focus,
-  .override-directive-key:focus {
-    border-color: #8040A8;
-  }
-  .override-directive-expr::placeholder,
-  .override-directive-label::placeholder,
-  .override-directive-key::placeholder {
-    color: #CCC;
   }
   .override-reset-btn {
     font-size: 10.5px;

@@ -16,7 +16,7 @@
     workspace, selectedLocation, currentResponse, isLoading,
     activeFile, activeRequest, activeFileVariables,
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
-    resolvedEnvVars, pbEnvOverrides, namedResults, dotenvVariables,
+    resolvedEnvVars, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
@@ -482,13 +482,16 @@
         headers = mutated.headers;
         body = mutated.body;
 
-        // Apply set vars from beforeSend
+        // Apply set vars from beforeSend (file-scoped)
         if (Object.keys(bsResult.setVars).length > 0) {
-          pbEnvOverrides.update(ev => ({ ...ev, ...bsResult.setVars }));
+          const filePath = $selectedLocation!.filePath;
+          pbFileOverrides.update(ev => ({
+            ...ev,
+            [filePath]: { ...(ev[filePath] ?? {}), ...bsResult.setVars },
+          }));
         }
         if (Object.keys(bsResult.globalVars).length > 0) {
           pbGlobals.update(g => ({ ...g, ...bsResult.globalVars }));
-          pbEnvOverrides.update(ev => ({ ...ev, ...bsResult.globalVars }));
         }
       }
 
@@ -556,14 +559,17 @@
             }
             return updated;
           });
-          // Inject set vars into the environment so {{key}} works directly
-          pbEnvOverrides.update(ev => ({ ...ev, ...pbResult.setVars }));
+          // Inject set vars into file-scoped overrides so {{key}} works in this file
+          const filePath = $selectedLocation!.filePath;
+          pbFileOverrides.update(ev => ({
+            ...ev,
+            [filePath]: { ...(ev[filePath] ?? {}), ...pbResult.setVars },
+          }));
         }
 
-        // Apply global vars
+        // Apply global vars (workspace-scoped)
         if (Object.keys(pbResult.globalVars).length > 0) {
           pbGlobals.update(g => ({ ...g, ...pbResult.globalVars }));
-          pbEnvOverrides.update(ev => ({ ...ev, ...pbResult.globalVars }));
         }
       }
     } catch (e: any) {
@@ -749,7 +755,11 @@
   }
 
   let flowAbortController: AbortController | null = null;
-  let lastFlowRunRecord: FlowRunRecord | null = null;
+  let lastFlowRunRecords: Record<string, FlowRunRecord> = {};
+  let runningFlowPath: string | null = null;
+
+  /** Persisted UI state for flow editors, keyed by flow path. */
+  let flowUIState: Record<string, { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> }> = {};
 
   async function handleRunFlow() {
     const flow = $activeFlow;
@@ -761,6 +771,7 @@
     flowAbortController?.abort();
     flowAbortController = new AbortController();
 
+    runningFlowPath = flowPathVal;
     flowRunState.set({ status: 'running', stepResults: [] });
 
     const record = await runFlow(
@@ -791,8 +802,23 @@
     );
 
     record.flowFilePath = flowPathVal;
-    lastFlowRunRecord = record;
+    lastFlowRunRecords[flowPathVal] = record;
+    lastFlowRunRecords = lastFlowRunRecords; // trigger reactivity
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
+    runningFlowPath = null;
+
+    // Propagate flow variables back to app stores
+    // Note: flow set vars are not propagated - they are file-scoped and only
+    // meaningful within the flow's isolated execution context. Only globals
+    // and named results cross the boundary back to the workspace.
+    if (record.variables) {
+      if (Object.keys(record.variables.globalVars).length > 0) {
+        pbGlobals.update(g => ({ ...g, ...record.variables!.globalVars }));
+      }
+      if (Object.keys(record.variables.namedResults).length > 0) {
+        namedResults.update(nr => ({ ...nr, ...record.variables!.namedResults }));
+      }
+    }
 
     // Persist and update history
     try {
@@ -870,6 +896,7 @@
       delete updated[path];
       return updated;
     });
+    delete flowUIState[path];
     closeFlowTab(path);
   }
 </script>
@@ -880,14 +907,14 @@
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
-  pbOverrides={$pbEnvOverrides}
+  pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
   namedResults={$namedResults}
   activeEnv={$activeEnvironment}
   activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
   on:close={() => showVarInspector = false}
   on:clearRuntime={() => {
-    pbEnvOverrides.set({});
+    pbFileOverrides.set({});
     pbGlobals.set({});
     namedResults.set({});
   }}
@@ -959,7 +986,7 @@
         on:activate={handleTabActivate}
         on:close={handleTabClose}
         on:activateFlowTab={(e) => activateFlowTab(e.detail)}
-        on:closeFlowTab={(e) => closeFlowTab(e.detail)}
+        on:closeFlowTab={(e) => { delete flowUIState[e.detail]; closeFlowTab(e.detail); }}
       />
       <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
         {#if showEnvEditor && $envFile && $activeEnvironment}
@@ -981,9 +1008,11 @@
             flowPath={$activeFlowTabPath}
             tree={$workspace.tree}
             rootPath={$workspace.rootPath ?? ''}
-            runState={$flowRunState}
-            lastRunRecord={lastFlowRunRecord}
-            runHistory={$flowRunHistory}
+            runState={runningFlowPath === $activeFlowTabPath ? $flowRunState : null}
+            lastRunRecord={lastFlowRunRecords[$activeFlowTabPath] ?? null}
+            runHistory={$flowRunHistory.filter(r => r.flowFilePath === $activeFlowTabPath)}
+            uiState={flowUIState[$activeFlowTabPath] ?? null}
+            on:uiStateChange={(e) => { flowUIState[$activeFlowTabPath] = e.detail; flowUIState = flowUIState; }}
             on:save={handleSaveFlow}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
