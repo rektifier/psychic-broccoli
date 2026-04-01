@@ -20,7 +20,7 @@
   const dispatch = createEventDispatcher();
 
   let displayMode: 'name' | 'url' = 'name';
-  let flowsExpanded = true;
+  let flowsExpanded = false;
   let showNewFlow = false;
   let newFlowName = '';
   let newFlowInputEl: HTMLInputElement;
