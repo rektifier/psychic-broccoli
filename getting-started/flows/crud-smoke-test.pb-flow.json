@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "CRUD Smoke Test",
+  "description": "Runs the full create-read-update-delete cycle from 08-everything-together.http. Each step has assertions that validate the operation.",
+  "steps": [
+    {
+      "id": "step-verify-user",
+      "filePath": "08-everything-together.http",
+      "requestIndex": 0,
+      "varName": "verifyUser",
+      "label": "GET /users/:id - Verify user exists",
+      "continueOnFailure": false
+    },
+    {
+      "id": "step-create-post",
+      "filePath": "08-everything-together.http",
+      "requestIndex": 1,
+      "varName": "createPost",
+      "label": "POST /posts - Create a post",
+      "continueOnFailure": false
+    },
+    {
+      "id": "step-read-post",
+      "filePath": "08-everything-together.http",
+      "requestIndex": 2,
+      "varName": null,
+      "label": "GET /posts/:id - Read it back",
+      "continueOnFailure": false
+    },
+    {
+      "id": "step-update-post",
+      "filePath": "08-everything-together.http",
+      "requestIndex": 3,
+      "varName": null,
+      "label": "PATCH /posts/:id - Update title",
+      "continueOnFailure": false
+    },
+    {
+      "id": "step-delete-post",
+      "filePath": "08-everything-together.http",
+      "requestIndex": 4,
+      "varName": null,
+      "label": "DELETE /posts/:id - Delete post",
+      "continueOnFailure": false
+    },
+    {
+      "id": "step-confirm-roundtrip",
+      "filePath": "08-everything-together.http",
+      "requestIndex": 5,
+      "varName": null,
+      "label": "GET /get - Confirm round-trip",
+      "continueOnFailure": true
+    }
+  ]
+}

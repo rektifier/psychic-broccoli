@@ -1,0 +1,28 @@
+// File-level variables have the highest priority.
+// They override any value from http-client.env.json.
+@baseUrl = https://jsonplaceholder.typicode.com
+@userId = 7
+
+// Variables can reference earlier variables
+@postsUrl = {{baseUrl}}/posts
+
+### File-level variables in action
+GET {{postsUrl}}?userId={{userId}}
+
+### Environment variable from http-client.env.json
+// "Token" is defined in the env file, not here.
+// Select an environment (dev, staging, production) from the sidebar.
+GET {{baseUrl}}/posts/1
+Authorization: Bearer {{Token}}
+
+### Shared variables apply to all environments
+// "Timeout" lives under $shared so it resolves regardless of
+// which environment you pick.
+GET https://httpbin.org/get
+X-Timeout: {{Timeout}}
+
+### Override demonstration
+// "apiBase" exists in both $shared and the environment configs.
+// The environment-specific value wins over $shared.
+// A file-level @variable would win over everything.
+GET {{apiBase}}/posts/1

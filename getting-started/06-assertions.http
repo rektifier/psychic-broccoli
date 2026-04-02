@@ -1,0 +1,39 @@
+@baseUrl = https://jsonplaceholder.typicode.com
+
+### Equality and status checks
+# @name getPost
+GET {{baseUrl}}/posts/1
+
+# @pb.assert(pb.response.status == 200, "Status is 200 OK")
+# @pb.assert(pb.response.body.$.userId == 1, "Post belongs to user 1")
+# @pb.assert(pb.response.body.$.id != null, "Post ID exists")
+
+### Numeric comparisons
+# @name getAllPosts
+GET {{baseUrl}}/posts
+
+# @pb.assert(pb.response.status == 200, "Status is 200")
+# @pb.assert(pb.response.body.$.length > 0, "Response has posts")
+# @pb.assert(pb.response.body.$.length >= 1, "At least one post")
+# @pb.assert(pb.response.body.$.length <= 100, "Bounded result set")
+
+### String operators
+# @name getUser
+GET {{baseUrl}}/users/1
+
+# @pb.assert(pb.response.body.$.name startsWith "Leanne", "Name starts with Leanne")
+# @pb.assert(pb.response.body.$.email endsWith ".biz", "Email ends with .biz")
+# @pb.assert(pb.response.headers.Content-Type contains "json", "JSON content type")
+
+### Not-equal and null checks
+GET {{baseUrl}}/posts/1
+
+# @pb.assert(pb.response.status != 404, "Not a 404")
+# @pb.assert(pb.response.status != 500, "Not a server error")
+# @pb.assert(pb.response.body.$.title != null, "Title is present")
+
+### Response time check
+GET {{baseUrl}}/posts/1
+
+# @pb.assert(pb.response.status == 200, "Successful response")
+# @pb.assert(pb.response.time < 5000, "Responds within 5 seconds")

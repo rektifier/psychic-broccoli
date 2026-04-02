@@ -1,0 +1,16 @@
+@baseUrl = https://jsonplaceholder.typicode.com
+
+### Get all posts
+GET {{baseUrl}}/posts
+
+### Get a single post
+GET {{baseUrl}}/posts/1
+
+### Get comments for a post
+GET {{baseUrl}}/posts/1/comments
+
+### Get all users
+GET {{baseUrl}}/users
+
+### Get a user by ID
+GET {{baseUrl}}/users/3

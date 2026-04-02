@@ -1,0 +1,55 @@
+@baseUrl = https://jsonplaceholder.typicode.com
+@contentType = application/json
+
+### Store values with pb.set (file-scoped)
+# @name getFirstUser
+GET {{baseUrl}}/users/1
+
+# @pb.afterReceive
+# @pb.set("userName", pb.response.body.$.name)
+# @pb.set("userEmail", pb.response.body.$.email)
+
+### Use stored variables in a later request
+POST https://httpbin.org/post
+Content-Type: {{contentType}}
+
+{
+  "greeting": "Hello, {{userName}}!",
+  "contact": "{{userEmail}}"
+}
+
+### Store global variables (persist across files)
+# @name getPost
+GET {{baseUrl}}/posts/1
+
+# @pb.afterReceive
+# @pb.global("lastPostTitle", pb.response.body.$.title)
+# @pb.global("lastPostId", pb.response.body.$.id)
+
+### Mutate a request before sending (beforeSend)
+POST https://httpbin.org/post
+Content-Type: {{contentType}}
+
+{
+  "timestamp": "placeholder",
+  "requestId": "placeholder"
+}
+
+# @pb.beforeSend
+# @pb.set("request.header.X-Trace-Id", {{$randomInt 1000 9999}})
+
+### Extract and assert after receiving (afterReceive)
+# @name createAndValidate
+POST {{baseUrl}}/posts
+Content-Type: {{contentType}}
+
+{
+  "title": "Scripting demo",
+  "body": "Testing afterReceive",
+  "userId": 1
+}
+
+# @pb.afterReceive
+# @pb.set("createdId", pb.response.body.$.id)
+# @pb.assert(pb.response.status == 201, "Created successfully")
+# @pb.assert(pb.response.body.$.title == "Scripting demo", "Title matches")
