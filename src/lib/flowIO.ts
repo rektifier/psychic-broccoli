@@ -7,7 +7,7 @@ import type { FlowDefinition, FlowRunRecord, FlowStep, FlowStepOverrides } from 
 const FLOW_EXTENSION = '.pb-flow.json';
 export const FLOWS_DIR = 'flows';
 const RESULTS_DIR = `${FLOWS_DIR}/.results`;
-const MAX_HISTORY_PER_FLOW = 50;
+const MAX_HISTORY_PER_FLOW = 20;
 
 // ─── Flow File Parsing / Serialization ───────────────────────────────────────
 
@@ -150,6 +150,15 @@ async function pruneFlowHistory(resultsDir: string): Promise<void> {
       } catch { /* best effort */ }
     }
   } catch { /* best effort */ }
+}
+
+/** Delete all persisted run records for a given flow name. */
+export async function clearFlowRunHistory(rootDir: string, flowName: string): Promise<void> {
+  const dirName = sanitizeFlowName(flowName);
+  const resultsDir = await join(rootDir, RESULTS_DIR, dirName);
+  try {
+    await remove(resultsDir, { recursive: true });
+  } catch { /* directory may not exist */ }
 }
 
 /** Load all flow run history from .pb-flow-results/. Returns records sorted newest first. */

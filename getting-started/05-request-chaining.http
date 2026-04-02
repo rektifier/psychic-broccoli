@@ -1,0 +1,35 @@
+@baseUrl = https://jsonplaceholder.typicode.com
+@contentType = application/json
+
+### Create a new post
+// @name createPost
+POST {{baseUrl}}/posts
+Content-Type: {{contentType}}
+
+{
+  "title": "Chaining demo",
+  "body": "This post's ID will be used by the next request",
+  "userId": 1
+}
+
+### Fetch the post we just created
+// Use the ID returned by createPost - send createPost first!
+GET {{baseUrl}}/posts/{{createPost.response.body.$.id}}
+
+### Get a user to reference later
+# @name getUser
+GET {{baseUrl}}/users/1
+
+### Use a response header value
+// Reference the Content-Type header from the getUser response
+GET {{baseUrl}}/todos/1
+X-Previous-Content-Type: {{getUser.response.headers.Content-Type}}
+
+### Reference the full response body
+// body.* gives you the entire response body as a string
+POST https://httpbin.org/post
+Content-Type: {{contentType}}
+
+{
+  "echoedUser": {{getUser.response.body.*}}
+}

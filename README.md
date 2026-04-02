@@ -20,6 +20,7 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 
 - [Features](#features)
 - [Download](#download)
+- [Getting Started](#getting-started)
 - [`.http` File Syntax](#http-file-syntax)
 - [Environment System](#environment-system)
 - [Request Chaining](#request-chaining)
@@ -79,6 +80,23 @@ Grab the latest installer from [**GitHub Releases**](https://github.com/rektifie
 | macOS (Apple Silicon) | `.dmg`             |
 | macOS (Intel)        | `.dmg`              |
 | Linux                | `.deb` / `.AppImage` |
+
+---
+
+## Getting Started
+
+The [`getting-started/`](getting-started/) folder contains a hands-on tutorial that walks through every major feature using public APIs (JSONPlaceholder and httpbin.org). Open the folder as a workspace in Psychic Broccoli and work through the files in order:
+
+1. **Basics** - simple GET requests and file-level variables
+2. **Headers & Bodies** - POST, PUT, PATCH, DELETE with JSON payloads
+3. **Variables** - environment files, `$shared` defaults, and resolution priority
+4. **Dynamic Variables** - `$randomInt`, `$timestamp`, `$datetime`, and date offsets
+5. **Request Chaining** - named requests and `{{name.response.body.$.path}}` references
+6. **Assertions** - response validation with `@pb.assert` directives
+7. **Scripting** - `@pb.set`, `@pb.global`, and before/after hooks
+8. **Everything Together** - a full CRUD workflow combining all of the above
+
+The folder also includes an `http-client.env.json` with dev, staging, and production environments, and two test flows under `flows/` that run the tutorials as automated pipelines.
 
 ---
 

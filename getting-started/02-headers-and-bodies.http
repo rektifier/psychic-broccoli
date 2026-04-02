@@ -1,0 +1,50 @@
+@baseUrl = https://jsonplaceholder.typicode.com
+@contentType = application/json
+
+### Create a post
+POST {{baseUrl}}/posts
+Content-Type: {{contentType}}
+
+{
+  "title": "My first post",
+  "body": "Created from Psychic Broccoli!",
+  "userId": 1
+}
+
+### Replace a post (PUT)
+PUT {{baseUrl}}/posts/1
+Content-Type: {{contentType}}
+
+{
+  "id": 1,
+  "title": "Replaced title",
+  "body": "PUT replaces the entire resource",
+  "userId": 1
+}
+
+### Partial update (PATCH)
+PATCH {{baseUrl}}/posts/1
+Content-Type: {{contentType}}
+
+{
+  "title": "Only the title changed"
+}
+
+### Delete a post
+DELETE {{baseUrl}}/posts/1
+
+### Custom headers echoed back
+// httpbin.org mirrors your request so you can inspect what was sent
+GET https://httpbin.org/headers
+Accept: text/html
+X-Custom-Header: hello-from-psychic-broccoli
+X-Request-Source: getting-started
+
+### POST with Authorization header
+POST https://httpbin.org/post
+Content-Type: {{contentType}}
+Authorization: Bearer example-token-12345
+
+{
+  "message": "This request includes an auth header"
+}

@@ -1,0 +1,60 @@
+@baseUrl = https://jsonplaceholder.typicode.com
+@contentType = application/json
+@testUserId = {{$randomInt 1 10}}
+
+### Step 1 - Verify the user exists
+# @name verifyUser
+GET {{baseUrl}}/users/{{testUserId}}
+
+# @pb.afterReceive
+# @pb.set("authorName", pb.response.body.$.name)
+# @pb.assert(pb.response.status == 200, "User exists")
+# @pb.assert(pb.response.body.$.id != null, "User has an ID")
+
+### Step 2 - Create a post for that user
+# @name createPost
+POST {{baseUrl}}/posts
+Content-Type: {{contentType}}
+
+{
+  "title": "Post by {{authorName}}",
+  "body": "Written at {{$datetime iso8601}}",
+  "userId": {{testUserId}}
+}
+
+# @pb.beforeSend
+# @pb.set("request.header.X-Request-Id", {{$randomInt 10000 99999}})
+# @pb.afterReceive
+// JSONPlaceholder fakes the insert and returns id 101 which doesn't exist for
+// GET/PATCH/DELETE, so we hardcode a real post ID for the remaining steps.
+# @pb.set("newPostId", 1)
+# @pb.global("lastCreatedPostId", pb.response.body.$.id)
+# @pb.assert(pb.response.status == 201, "Post created")
+
+### Step 3 - Read the created post back
+GET {{baseUrl}}/posts/{{newPostId}}
+
+# @pb.assert(pb.response.status == 200, "Post is readable")
+
+### Step 4 - Update the post title
+PATCH {{baseUrl}}/posts/{{newPostId}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Updated: Post by {{authorName}}"
+}
+
+# @pb.assert(pb.response.status == 200, "Patch succeeded")
+# @pb.assert(pb.response.body.$.title startsWith "Updated:", "Title was updated")
+
+### Step 5 - Delete the post
+DELETE {{baseUrl}}/posts/{{newPostId}}
+
+# @pb.assert(pb.response.status == 200, "Delete succeeded")
+
+### Step 6 - Confirm the round-trip
+GET https://httpbin.org/get
+X-Deleted-Post-Id: {{newPostId}}
+X-Flow-Completed: {{$datetime iso8601}}
+
+# @pb.assert(pb.response.status == 200, "Echo confirms completion")

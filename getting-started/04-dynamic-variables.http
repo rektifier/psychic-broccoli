@@ -1,0 +1,45 @@
+@baseUrl = https://httpbin.org
+
+### Random integer (default range 0-1000)
+GET {{baseUrl}}/get
+X-Random: {{$randomInt}}
+
+### Random integer with custom range
+GET {{baseUrl}}/get
+X-Random-User-Id: {{$randomInt 1 10}}
+X-Random-Post-Id: {{$randomInt 1 100}}
+
+### Unix timestamp (UTC epoch seconds)
+GET {{baseUrl}}/get
+X-Timestamp: {{$timestamp}}
+
+### ISO 8601 UTC datetime
+GET {{baseUrl}}/get
+X-Date: {{$datetime iso8601}}
+
+### RFC 1123 datetime (HTTP date format)
+GET {{baseUrl}}/get
+X-Date: {{$datetime rfc1123}}
+
+### Custom date format
+GET {{baseUrl}}/get
+X-Date-Dashes: {{$datetime "yyyy-MM-dd"}}
+X-Date-EU: {{$datetime "dd-MM-yyyy"}}
+
+### Local timezone datetime
+GET {{baseUrl}}/get
+X-Local-Date: {{$localDatetime iso8601}}
+X-Local-Custom: {{$localDatetime "yyyy-MM-dd HH:mm:ss"}}
+
+### Date offsets (relative dates)
+// Offsets shift from "now" by the given amount
+POST {{baseUrl}}/post
+Content-Type: application/json
+
+{
+  "now": "{{$datetime iso8601}}",
+  "tomorrow": "{{$datetime iso8601 1 d}}",
+  "lastWeek": "{{$datetime iso8601 -7 d}}",
+  "nextHour": "{{$timestamp 1 h}}",
+  "thirtyDaysOut": "{{$timestamp 30 d}}"
+}
