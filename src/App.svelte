@@ -37,7 +37,7 @@
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
-  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, FLOWS_DIR } from './lib/flowIO';
+  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
   import { runFlow } from './lib/flowRunner';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
@@ -1016,7 +1016,14 @@
             on:save={handleSaveFlow}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
-            on:clearHistory={() => flowRunHistory.set($flowRunHistory.filter(r => r.flowFilePath !== $activeFlowTabPath))}
+            on:clearHistory={() => {
+              flowRunHistory.set($flowRunHistory.filter(r => r.flowFilePath !== $activeFlowTabPath));
+              delete lastFlowRunRecords[$activeFlowTabPath];
+              lastFlowRunRecords = lastFlowRunRecords;
+              if ($workspace.rootPath && $activeFlow) {
+                clearFlowRunHistory($workspace.rootPath, $activeFlow.name);
+              }
+            }}
           />
         {:else if $activeRequest && $selectedLocation}
           <div class="editor-pane" style="flex: 0 0 {editorWidthPercent}%">
