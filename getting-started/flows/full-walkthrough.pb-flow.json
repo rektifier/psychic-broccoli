@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "name": "Feature Walkthrough",
+  "description": "Runs one representative request from each tutorial file to verify the entire getting-started folder works correctly.",
+  "steps": [
+    {
+      "id": "walk-basics",
+      "filePath": "01-basics.http",
+      "requestIndex": 1,
+      "varName": null,
+      "label": "GET /posts/1 - Basic request",
+      "continueOnFailure": false
+    },
+    {
+      "id": "walk-post",
+      "filePath": "02-headers-and-bodies.http",
+      "requestIndex": 0,
+      "varName": null,
+      "label": "POST /posts - Headers and body",
+      "continueOnFailure": false
+    },
+    {
+      "id": "walk-env-var",
+      "filePath": "03-variables.http",
+      "requestIndex": 0,
+      "varName": null,
+      "label": "GET /posts - File-level variables",
+      "continueOnFailure": false
+    },
+    {
+      "id": "walk-dynamic",
+      "filePath": "04-dynamic-variables.http",
+      "requestIndex": 1,
+      "varName": null,
+      "label": "GET /get - Random integers",
+      "continueOnFailure": false
+    },
+    {
+      "id": "walk-chain-create",
+      "filePath": "05-request-chaining.http",
+      "requestIndex": 0,
+      "varName": "createPost",
+      "label": "POST /posts - Named request for chaining",
+      "continueOnFailure": false
+    },
+    {
+      "id": "walk-chain-use",
+      "filePath": "05-request-chaining.http",
+      "requestIndex": 1,
+      "varName": null,
+      "label": "GET /posts/:id - Use chained response",
+      "continueOnFailure": false,
+      "overrides": {
+        "url": "https://jsonplaceholder.typicode.com/posts/1"
+      }
+    },
+    {
+      "id": "walk-assertions",
+      "filePath": "06-assertions.http",
+      "requestIndex": 0,
+      "varName": "getPost",
+      "label": "GET /posts/1 - With assertions",
+      "continueOnFailure": false
+    },
+    {
+      "id": "walk-scripting",
+      "filePath": "07-scripting.http",
+      "requestIndex": 0,
+      "varName": "getFirstUser",
+      "label": "GET /users/1 - afterReceive scripting",
+      "continueOnFailure": false,
+      "overrides": {
+        "headers": [
+          { "key": "X-Walkthrough", "value": "true", "enabled": true }
+        ]
+      }
+    }
+  ]
+}
