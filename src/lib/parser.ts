@@ -419,6 +419,15 @@ export function substituteAll(input: string, ctx: SubstitutionContext): string {
     if (result === previous) break;
   }
 
+  // 4. Second pass: resolve any dynamic / request variables introduced by
+  //    simple variable expansion (e.g. @testUserId = {{$randomInt 1 10}})
+  result = result.replace(DYNAMIC_VAR_RE, (_match, funcName: string, args: string | undefined) => {
+    return resolveDynamicVariable(funcName, args?.trim());
+  });
+  result = result.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
+    return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
+  });
+
   return result;
 }
 
@@ -735,12 +744,16 @@ interface PbEvalContext {
 export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown {
   // Resolve {{variable}} references inline before evaluation
   let trimmed = expr.trim();
+  // Dynamic variables: {{$randomInt}}, {{$datetime}}, {{$timestamp}}, etc.
+  trimmed = trimmed.replace(DYNAMIC_VAR_RE, (_match, funcName: string, args: string | undefined) => {
+    return resolveDynamicVariable(funcName, args?.trim());
+  });
   // Named request refs: {{name.response.body.$.path}}, {{name.response.headers.X}}
   trimmed = trimmed.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
     return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
   });
   // Simple variables: {{varName}}
-  trimmed = trimmed.replace(/\{\{(.+?)\}\}/g, (_, name) => {
+  trimmed = trimmed.replace(SIMPLE_VAR_RE, (_, name) => {
     return ctx.variables[name] ?? `{{${name}}}`;
   });
 
@@ -959,10 +972,13 @@ export function executePbDirectives(
           const resolved = evaluatePbExpression(expr, ctx);
           return resolved == null ? '' : String(resolved);
         });
+        label = label.replace(DYNAMIC_VAR_RE, (_match, funcName: string, args: string | undefined) => {
+          return resolveDynamicVariable(funcName, args?.trim());
+        });
         label = label.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
           return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
         });
-        label = label.replace(/\{\{(.+?)\}\}/g, (_, name) => ctx.variables[name] ?? `{{${name}}}`);
+        label = label.replace(SIMPLE_VAR_RE, (_, name) => ctx.variables[name] ?? `{{${name}}}`);
         result.assertionResults.push({ label, passed: !!value });
         break;
       }
