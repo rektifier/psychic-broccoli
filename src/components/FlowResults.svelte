@@ -96,7 +96,7 @@
               </span>
               <span class="result-step-num">{i + 1}</span>
               {#if sr.sentRequest}
-                <span class="result-method" style="color: {statusColor(sr.status === 'passed' ? 'passed' : sr.status === 'failed' ? 'failed' : '')}">{sr.sentRequest.method.slice(0, 3)}</span>
+                <span class="result-method" style="color: {statusColor(sr.status === 'passed' ? 'passed' : sr.status === 'failed' ? 'failed' : '')}">{sr.sentRequest.method}</span>
                 <span class="result-url">{sr.sentRequest.url}</span>
               {:else}
                 <span class="result-url">{sr.error || 'Skipped'}</span>
@@ -296,7 +296,7 @@
     font-size: var(--text-xs);
     font-weight: var(--weight-bold);
     letter-spacing: 0.5px;
-    min-width: var(--space-7);
+    min-width: 52px;
     flex-shrink: 0;
   }
   .result-url {

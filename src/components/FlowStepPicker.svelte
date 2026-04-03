@@ -136,7 +136,7 @@
           {#if expanded}
             {#each file.requests as req, i (req.id)}
               <button class="picker-request" on:click={() => pickRequest(file, i)} title={displayMode === 'name' ? req.url : req.name}>
-                <span class="picker-method" style="color: {METHOD_COLORS[req.method] || '#888'}">{req.method.slice(0, 3)}</span>
+                <span class="picker-method" style="color: {METHOD_COLORS[req.method] || '#888'}">{req.method}</span>
                 <span class="picker-url">{displayMode === 'url' ? (suffixMap.get(file.path)?.[i] ?? req.url) : req.name}</span>
                 {#if req.varName}
                   <span class="picker-varname">{req.varName}</span>
@@ -314,7 +314,7 @@
     font-size: var(--text-xs);
     font-weight: var(--weight-bold);
     letter-spacing: 0.5px;
-    min-width: var(--space-7);
+    min-width: 52px;
     flex-shrink: 0;
   }
   .picker-url {
