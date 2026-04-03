@@ -11,6 +11,8 @@
   import type { ImportFormat } from './lib/detect';
   import TabBar from './components/TabBar.svelte';
   import FlowEditor from './components/FlowEditor.svelte';
+  import ThemeSwitcher from './components/ThemeSwitcher.svelte';
+  import { getStoredTheme, setTheme, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -51,6 +53,9 @@
   let showVarInspector = false;
 
   let showHelp = false;
+
+  // ─── Theme ───
+  let currentTheme: ThemeId = getStoredTheme();
 
   // ─── Import Collection Modal ───
   let showImportCollectionModal = false;
@@ -940,7 +945,13 @@
 />
 
 <main class="app">
-  <div class="titlebar" data-tauri-drag-region></div>
+  <div class="titlebar" data-tauri-drag-region>
+    <div></div>
+    <ThemeSwitcher
+      current={currentTheme}
+      onChange={(t) => { currentTheme = t; setTheme(t); }}
+    />
+  </div>
 
   <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
@@ -1063,27 +1074,27 @@
     margin: 0; padding: 0; box-sizing: border-box;
   }
   :global(body) {
-    font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
-    background: #F8F8FA; color: #333340;
-    overflow: hidden; font-size: 13px;
+    font-family: var(--font-ui);
+    background: var(--color-bg); color: var(--color-text);
+    overflow: hidden; font-size: var(--text-md);
   }
 
   .app {
     display: flex; flex-direction: column;
-    height: 100vh; background: #F8F8FA;
+    height: 100vh; background: var(--color-bg);
   }
 
   .titlebar {
     display: flex; justify-content: space-between; align-items: center;
     height: 28px;
-    background: #F0F0F4; border-bottom: 1px solid #DCDCE2;
+    background: var(--color-bg-sidebar); border-bottom: 1px solid var(--color-divider);
     -webkit-app-region: drag; user-select: none; flex-shrink: 0;
   }
   .layout { display: flex; flex: 1; overflow: hidden; }
 
   .sidebar-container {
     display: flex; flex-direction: column;
-    background: #F0F0F4;
+    background: var(--color-bg-sidebar);
     flex-shrink: 0; overflow: hidden;
   }
 
@@ -1091,11 +1102,11 @@
     width: 3px;
     flex-shrink: 0;
     cursor: col-resize;
-    background: #DCDCE2;
-    transition: background 0.15s;
+    background: var(--color-divider);
+    transition: background var(--duration-normal);
   }
   .sidebar-divider:hover, .sidebar-dragging .sidebar-divider {
-    background: #D4900A;
+    background: var(--color-primary);
   }
   .sidebar-dragging { cursor: col-resize; user-select: none; }
 
@@ -1109,11 +1120,11 @@
     width: 3px;
     flex-shrink: 0;
     cursor: col-resize;
-    background: #DCDCE2;
-    transition: background 0.15s;
+    background: var(--color-divider);
+    transition: background var(--duration-normal);
   }
   .divider:hover, .dragging .divider {
-    background: #D4900A;
+    background: var(--color-primary);
   }
   .env-editor-pane { flex: 1; overflow: auto; }
 

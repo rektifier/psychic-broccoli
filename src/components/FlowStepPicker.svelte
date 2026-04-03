@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import type { TreeNode, FileNode, FlowStep } from '../lib/types';
   import { getAllFileNodes } from '../lib/parser';
+  import { METHOD_COLORS } from '../lib/theme';
 
   export let tree: TreeNode[] = [];
   export let rootPath: string;
@@ -44,11 +45,6 @@
     dispatch('pick', step);
   }
 
-  const MC: Record<string, string> = {
-    GET: '#2B7FC5', POST: '#3D8B45', PUT: '#9A7520', PATCH: '#A06828',
-    DELETE: '#CC4455', HEAD: '#8040A8', OPTIONS: '#1A8898',
-    TRACE: '#666677', CONNECT: '#CC4455',
-  };
 
   /** Compute unique URL suffixes for requests in a file, stripping common prefix segments. */
   function computeUrlSuffixes(requests: { url: string }[]): string[] {
@@ -140,7 +136,7 @@
           {#if expanded}
             {#each file.requests as req, i (req.id)}
               <button class="picker-request" on:click={() => pickRequest(file, i)} title={displayMode === 'name' ? req.url : req.name}>
-                <span class="picker-method" style="color: {MC[req.method] || '#888'}">{req.method.slice(0, 3)}</span>
+                <span class="picker-method" style="color: {METHOD_COLORS[req.method] || '#888'}">{req.method.slice(0, 3)}</span>
                 <span class="picker-url">{displayMode === 'url' ? (suffixMap.get(file.path)?.[i] ?? req.url) : req.name}</span>
                 {#if req.varName}
                   <span class="picker-varname">{req.varName}</span>
@@ -169,10 +165,10 @@
   .picker-panel {
     width: 460px;
     max-height: 70vh;
-    background: #FFFFFF;
-    border: 1px solid #D4D4D8;
-    border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-modal);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -181,39 +177,39 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid #EDEDF0;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--gray-100);
   }
   .picker-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: #1A1A2E;
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    color: var(--color-text-heading);
   }
   .picker-display-toggle {
     width: 28px; height: 28px;
     border: 1px solid transparent;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
     margin-left: auto;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .picker-display-toggle:hover {
-    border-color: #D4D4D8;
-    color: #666;
-    background: #F0F0F4;
+    border-color: var(--color-border);
+    color: var(--slate-450);
+    background: var(--color-bg-sidebar);
   }
   .picker-close {
     width: 24px; height: 24px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     font-size: 18px;
     cursor: pointer;
     display: flex;
@@ -221,66 +217,66 @@
     justify-content: center;
   }
   .picker-close:hover {
-    background: #F0F0F4;
-    color: #333;
+    background: var(--color-bg-sidebar);
+    color: var(--color-text);
   }
   .picker-filter {
-    padding: 8px 16px;
-    border-bottom: 1px solid #EDEDF0;
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--gray-100);
   }
   .picker-filter-input {
     width: 100%;
-    padding: 7px 10px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
-    background: #FAFAFA;
-    color: #333340;
+    padding: 7px var(--space-2\.5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--gray-15);
+    color: var(--color-text);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-normal);
   }
   .picker-filter-input:focus {
-    border-color: #8040A8;
+    border-color: var(--color-accent-flow);
   }
   .picker-filter-input::placeholder {
-    color: #BBB;
+    color: var(--color-text-placeholder);
   }
   .picker-list {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 0;
+    padding: var(--space-2) 0;
   }
   .picker-file {
-    padding: 0 8px;
+    padding: 0 var(--space-2);
   }
   .picker-file + .picker-file {
-    margin-top: 4px;
+    margin-top: var(--space-1);
   }
   .picker-file-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
-    color: #888;
-    font-size: 11px;
-    font-weight: 500;
+    gap: var(--space-1\.5);
+    padding: 5px var(--space-2);
+    color: var(--slate-350);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
     cursor: pointer;
-    border-radius: 5px;
-    transition: background 0.1s;
+    border-radius: var(--radius-md);
+    transition: background var(--duration-fast);
   }
   .picker-file-header:hover {
-    background: #F0F0F4;
+    background: var(--color-bg-sidebar);
   }
   .picker-chevron {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
+    width: var(--space-3\.5);
+    height: var(--space-3\.5);
     flex-shrink: 0;
-    color: #BBB;
-    transition: transform 0.15s;
+    color: var(--color-text-placeholder);
+    transition: transform var(--duration-normal);
   }
   .picker-chevron.open {
     transform: rotate(90deg);
@@ -293,28 +289,28 @@
   .picker-request {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     width: 100%;
-    padding: 6px 8px 6px 26px;
+    padding: var(--space-1\.5) var(--space-2) var(--space-1\.5) 26px;
     border: none;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     background: transparent;
-    color: #555;
+    color: var(--color-text-secondary);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     text-align: left;
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background var(--duration-fast);
   }
   .picker-request:hover {
-    background: #E8E0F0;
-    color: #1A1A2E;
+    background: var(--color-accent-flow-bg);
+    color: var(--color-text-heading);
   }
   .picker-method {
-    font-size: 10px;
-    font-weight: 700;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
     letter-spacing: 0.5px;
-    min-width: 28px;
+    min-width: var(--space-7);
     flex-shrink: 0;
   }
   .picker-url {
@@ -325,19 +321,19 @@
     white-space: nowrap;
   }
   .picker-varname {
-    font-size: 9px;
-    font-weight: 600;
-    color: #2B7FC5;
-    background: #2B7FC512;
-    padding: 1px 6px;
-    border-radius: 100px;
-    border: 0.5px solid #2B7FC530;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-info);
+    background: color-mix(in srgb, var(--color-info) 7%, transparent);
+    padding: 1px var(--space-1\.5);
+    border-radius: var(--radius-full);
+    border: 0.5px solid color-mix(in srgb, var(--color-info) 19%, transparent);
     flex-shrink: 0;
   }
   .picker-empty {
-    padding: 20px;
+    padding: var(--space-5);
     text-align: center;
-    font-size: 12px;
-    color: #999;
+    font-size: var(--text-base);
+    color: var(--color-text-faint);
   }
 </style>

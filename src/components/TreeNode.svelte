@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { TreeNode as TNode, RequestLocation } from '../lib/types';
+  import { METHOD_COLORS } from '../lib/theme';
 
   export let node: TNode;
   export let selected: RequestLocation | null = null;
@@ -12,11 +13,6 @@
 
   const dispatch = createEventDispatcher();
 
-  const MC: Record<string, string> = {
-    GET:'#2B7FC5', POST:'#3D8B45', PUT:'#9A7520', PATCH:'#A06828',
-    DELETE:'#CC4455', HEAD:'#8040A8', OPTIONS:'#1A8898',
-    TRACE:'#666677', CONNECT:'#CC4455',
-  };
 
   let fileExpanded = false;
   let namingIndex: number = -1;
@@ -196,7 +192,7 @@
             role="button"
             tabindex="0"
           >
-            <span class="method-badge" style="color: {MC[req.method] || '#888'}">
+            <span class="method-badge" style="color: {METHOD_COLORS[req.method] || '#888'}">
               {req.method.slice(0, 3)}
             </span>
             <span class="req-name" title={displayMode === 'url' ? req.name : req.url}>{displayMode === 'url' ? urlSuffixes[i] : req.name}</span>
@@ -230,34 +226,34 @@
   .tree-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
     width: 100%;
-    padding: 5px 12px;
+    padding: 5px var(--space-3);
     border: none;
     background: transparent;
-    color: #666;
+    color: var(--slate-450);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     text-align: left;
     cursor: pointer;
-    transition: background 0.1s, color 0.1s;
+    transition: background var(--duration-fast), color var(--duration-fast);
     position: relative;
     white-space: nowrap;
   }
   .tree-row:hover {
-    background: #E4E4EA;
-    color: #333;
+    background: var(--color-bg-muted);
+    color: var(--color-text);
   }
 
   .chevron {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
+    width: var(--space-3\.5);
+    height: var(--space-3\.5);
     flex-shrink: 0;
-    color: #999;
-    transition: transform 0.15s;
+    color: var(--color-text-faint);
+    transition: transform var(--duration-normal);
     transform: rotate(0deg);
   }
   .chevron.open {
@@ -281,11 +277,11 @@
 
   /* Folder */
   .folder-row {
-    color: #444;
-    font-weight: 500;
+    color: var(--slate-250);
+    font-weight: var(--weight-medium);
   }
   .folder-row:hover {
-    color: #1A1A2E;
+    color: var(--color-text-heading);
   }
   .folder-icon {
     opacity: 0.8;
@@ -293,7 +289,7 @@
 
   /* File */
   .file-row {
-    color: #555;
+    color: var(--color-text-secondary);
   }
   .file-row:hover .btn-add-req {
     opacity: 1;
@@ -302,13 +298,13 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #D4900A;
+    background: var(--color-primary);
     flex-shrink: 0;
   }
   .req-count {
-    font-size: 10px;
-    color: #999;
-    padding: 0 4px;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
+    padding: 0 var(--space-1);
     flex-shrink: 0;
   }
   .btn-add-req {
@@ -318,29 +314,29 @@
     width: 18px;
     height: 18px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
-    font-size: 14px;
+    color: var(--color-text-faint);
+    font-size: var(--text-lg);
     cursor: pointer;
     flex-shrink: 0;
     opacity: 0;
-    transition: all 0.1s;
+    transition: all var(--duration-fast);
   }
   .btn-add-req:hover {
-    background: #D4900A18;
-    color: #D4900A;
+    background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+    color: var(--color-primary);
   }
 
   /* Request */
   .request-row {
-    color: #555;
-    padding-top: 4px;
-    padding-bottom: 4px;
+    color: var(--color-text-secondary);
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
   }
   .request-row.active {
     background: #DDE4F0;
-    color: #1A1A2E;
+    color: var(--color-text-heading);
   }
   .request-row.active::before {
     content: '';
@@ -349,15 +345,15 @@
     top: 2px;
     bottom: 2px;
     width: 2px;
-    background: #D4900A;
+    background: var(--color-primary);
     border-radius: 0 2px 2px 0;
   }
 
   .method-badge {
-    font-size: 10px;
-    font-weight: 700;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
     letter-spacing: 0.5px;
-    min-width: 28px;
+    min-width: var(--space-7);
     flex-shrink: 0;
   }
 
@@ -375,10 +371,10 @@
     width: 18px;
     height: 18px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
-    font-size: 14px;
+    color: var(--color-text-faint);
+    font-size: var(--text-lg);
     cursor: pointer;
     flex-shrink: 0;
     visibility: hidden;
@@ -387,100 +383,100 @@
     visibility: visible;
   }
   .btn-del-req:hover {
-    background: #CC445518;
-    color: #CC4455;
+    background: color-mix(in srgb, var(--color-error) 9%, transparent);
+    color: var(--color-error);
   }
 
   .confirm-delete-popup {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     flex-shrink: 0;
     margin-left: auto;
   }
   .confirm-delete-text {
-    font-size: 10px;
-    color: #CC4455;
-    font-weight: 500;
+    font-size: var(--text-xs);
+    color: var(--color-error);
+    font-weight: var(--weight-medium);
     white-space: nowrap;
   }
   .confirm-delete-yes {
-    padding: 1px 6px;
+    padding: 1px var(--space-1\.5);
     border: none;
-    border-radius: 4px;
-    background: #CC4455;
-    color: #FFFFFF;
+    border-radius: var(--radius-sm);
+    background: var(--color-error);
+    color: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 10px;
-    font-weight: 600;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
   }
   .confirm-delete-yes:hover {
     background: #B33344;
   }
   .confirm-delete-no {
-    padding: 1px 6px;
-    border: 1px solid #DCDCE2;
-    border-radius: 4px;
+    padding: 1px var(--space-1\.5);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #777;
+    color: var(--color-text-muted);
     font-family: inherit;
-    font-size: 10px;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
   .confirm-delete-no:hover {
-    border-color: #999;
-    color: #333;
+    border-color: var(--color-text-faint);
+    color: var(--color-text);
   }
 
   .varname-tag {
-    font-size: 9px;
-    font-weight: 600;
-    color: #2B7FC5;
-    background: #2B7FC512;
-    padding: 1px 6px;
-    border-radius: 100px;
-    border: 0.5px solid #2B7FC530;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-info);
+    background: color-mix(in srgb, var(--color-info) 7%, transparent);
+    padding: 1px var(--space-1\.5);
+    border-radius: var(--radius-full);
+    border: 0.5px solid color-mix(in srgb, var(--color-info) 19%, transparent);
     flex-shrink: 0;
-    line-height: 1.6;
+    line-height: var(--leading-relaxed);
   }
 
   .naming-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding-top: 4px;
-    padding-bottom: 4px;
+    gap: var(--space-1\.5);
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
   }
   .naming-label {
-    font-size: 9px;
-    font-weight: 600;
-    color: #2B7FC5;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-info);
     flex-shrink: 0;
   }
   .naming-input {
     flex: 1;
-    padding: 3px 8px;
-    border: 1px solid #2B7FC5;
-    border-radius: 4px;
-    background: #FFFFFF;
-    color: #2B7FC5;
+    padding: 3px var(--space-2);
+    border: 1px solid var(--color-info);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-info);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--text-sm);
     outline: none;
     min-width: 0;
   }
   .naming-input.naming-error {
-    border-color: #CC4455;
-    color: #CC4455;
+    border-color: var(--color-error);
+    color: var(--color-error);
   }
   .naming-input::placeholder {
-    color: #BBB;
+    color: var(--color-text-placeholder);
   }
   .naming-duplicate-hint {
-    font-size: 9px;
-    color: #CC4455;
-    font-weight: 500;
+    font-size: var(--text-2xs);
+    color: var(--color-error);
+    font-weight: var(--weight-medium);
     flex-shrink: 0;
     white-space: nowrap;
   }

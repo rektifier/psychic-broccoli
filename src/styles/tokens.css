@@ -1,0 +1,185 @@
+/* ============================================================
+   Design Tokens - Psychic Broccoli
+   Single source of truth for all visual properties.
+   To re-theme the app, modify only the semantic tokens below.
+   ============================================================ */
+
+:root {
+  /* ---- Raw Palette (immutable across themes) ---- */
+
+  /* Amber */
+  --amber-500: #D4900A;
+  --amber-400: #E09E18;
+  --amber-600: #C07D08;
+
+  /* Navy / Slate */
+  --navy-900: #1A1A2E;
+  --slate-700: #333340;
+  --slate-600: #4A4A58;
+  --slate-500: #555;
+  --slate-450: #666;
+  --slate-400: #777;
+  --slate-350: #888;
+  --slate-300: #999;
+  --slate-250: #444;
+
+  /* Zinc */
+  --zinc-300: #AAA;
+  --zinc-200: #BBB;
+  --zinc-100: #CCC;
+
+  /* Gray scale */
+  --gray-200: #DCDCE2;
+  --gray-175: #D4D4D8;
+  --gray-150: #E4E4EA;
+  --gray-125: #E8E8EC;
+  --gray-115: #E8E0F0;
+  --gray-100: #EDEDF0;
+  --gray-75: #F0F0F4;
+  --gray-50: #F5F5FA;
+  --gray-25: #F8F8FA;
+  --gray-15: #FAFAFA;
+
+  /* Semantic hues */
+  --green-600: #3D8B45;
+  --red-600: #CC4455;
+  --red-900: #991B1B;
+  --yellow-600: #9A7520;
+  --yellow-900: #92400E;
+  --blue-600: #2B7FC5;
+  --blue-700: #1E40AF;
+  --blue-400: #62AEF0;
+  --purple-600: #8040A8;
+  --orange-600: #A06828;
+  --teal-600: #1A8898;
+  --muted-600: #666677;
+
+  /* ---- Semantic Tokens (theme-switchable) ---- */
+
+  /* Primary */
+  --color-primary: var(--amber-500);
+  --color-primary-hover: var(--amber-400);
+  --color-primary-active: var(--amber-600);
+  --color-primary-fg: #FFFFFF;
+  --color-primary-subtle: rgba(212, 144, 10, 0.06);
+
+  /* Backgrounds */
+  --color-bg: var(--gray-25);
+  --color-bg-sidebar: var(--gray-75);
+  --color-bg-surface: #FFFFFF;
+  --color-bg-muted: var(--gray-150);
+  --color-bg-subtle: var(--gray-50);
+  --color-bg-hover: var(--gray-125);
+  --color-bg-input: #FFFFFF;
+
+  /* Text */
+  --color-text: var(--slate-700);
+  --color-text-heading: var(--navy-900);
+  --color-text-secondary: var(--slate-500);
+  --color-text-muted: var(--slate-400);
+  --color-text-faint: var(--slate-300);
+  --color-text-placeholder: var(--zinc-200);
+
+  /* Borders */
+  --color-border: var(--gray-175);
+  --color-border-focus: var(--color-primary);
+  --color-divider: var(--gray-200);
+
+  /* Status */
+  --color-success: var(--green-600);
+  --color-error: var(--red-600);
+  --color-warning: var(--yellow-600);
+  --color-info: var(--blue-600);
+
+  /* Flow accent */
+  --color-accent-flow: var(--purple-600);
+  --color-accent-flow-bg: var(--gray-115);
+
+  /* HTTP Method Colors */
+  --color-method-get: var(--blue-600);
+  --color-method-post: var(--green-600);
+  --color-method-put: var(--yellow-600);
+  --color-method-patch: var(--orange-600);
+  --color-method-delete: var(--red-600);
+  --color-method-head: var(--purple-600);
+  --color-method-options: var(--teal-600);
+  --color-method-trace: var(--muted-600);
+  --color-method-connect: var(--red-600);
+
+  /* Toast */
+  --toast-error-bg: #FEF2F2;
+  --toast-error-border: #FECACA;
+  --toast-error-text: #991B1B;
+  --toast-warning-bg: #FFFBEB;
+  --toast-warning-border: #FDE68A;
+  --toast-warning-text: #92400E;
+  --toast-info-bg: #EFF6FF;
+  --toast-info-border: #BFDBFE;
+  --toast-info-text: #1E40AF;
+
+  /* ---- Typography ---- */
+  --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+  --font-ui: var(--font-mono);
+
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
+  --text-xl: 16px;
+  --text-2xl: 20px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.4;
+  --leading-relaxed: 1.6;
+
+  /* ---- Spacing (4px base) ---- */
+  --space-0: 0px;
+  --space-0\.5: 2px;
+  --space-1: 4px;
+  --space-1\.5: 6px;
+  --space-2: 8px;
+  --space-2\.5: 10px;
+  --space-3: 12px;
+  --space-3\.5: 14px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-10: 40px;
+
+  /* ---- Border Radius ---- */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-default: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-full: 9999px;
+
+  /* ---- Shadows ---- */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-toast: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --shadow-dropdown: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.12);
+
+  /* ---- Transitions ---- */
+  --duration-fast: 0.1s;
+  --duration-normal: 0.15s;
+  --duration-slow: 0.2s;
+
+  /* ---- Z-index ---- */
+  --z-dropdown: 50;
+  --z-sticky: 75;
+  --z-modal: 100;
+  --z-toast: 9999;
+
+  /* ---- Overlay ---- */
+  --overlay-bg: rgba(0, 0, 0, 0.15);
+}

@@ -259,95 +259,62 @@
 {/if}
 
 <style>
-  .overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 100;
-    background: rgba(0,0,0,0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
+  /* Modal base from shared.css; only overrides here */
   .modal {
     width: 420px;
     max-width: 90vw;
-    max-height: 80vh;
-    background: #FFFFFF;
-    border: 1px solid #D4D4D8;
-    border-radius: 10px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.12);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
-
   .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid #DCDCE2;
     flex-shrink: 0;
   }
-  .modal-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #1A1A2E;
-  }
-  .btn-close {
-    width: 24px; height: 24px;
-    border: none; border-radius: 4px;
-    background: transparent; color: #999;
-    font-size: 16px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .btn-close:hover { background: #E4E4EA; color: #444; }
-
   .modal-body {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+    padding: 0;
   }
 
   .search-bar {
-    padding: 10px 16px 0 16px;
+    padding: var(--space-2\.5) var(--space-4) 0 var(--space-4);
     flex-shrink: 0;
   }
   .search-input {
     width: 100%;
-    padding: 7px 10px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
-    background: #FFFFFF;
-    color: #333340;
+    padding: 7px var(--space-2\.5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-bg-surface);
+    color: var(--color-text);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     outline: none;
     box-sizing: border-box;
   }
-  .search-input:focus { border-color: #D4900A; }
-  .search-input::placeholder { color: #BBB; }
+  .search-input:focus { border-color: var(--color-primary); }
+  .search-input::placeholder { color: var(--color-text-placeholder); }
 
   .sections {
     flex: 1;
     overflow-y: auto;
-    padding-top: 6px;
+    padding-top: var(--space-1\.5);
   }
 
   .group-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    font-size: 10px;
+    gap: var(--space-1\.5);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: #999;
-    background: #F0F0F4;
-    border-top: 1px solid #DCDCE2;
+    color: var(--color-text-faint);
+    background: var(--color-bg-sidebar);
+    border-top: 1px solid var(--color-divider);
     position: sticky;
     top: 0;
     z-index: 1;
@@ -356,48 +323,48 @@
     flex: 1;
   }
   .group-count {
-    font-size: 9px;
-    color: #BBB;
-    background: #E4E4EA;
+    font-size: var(--text-2xs);
+    color: var(--color-text-placeholder);
+    background: var(--color-bg-muted);
     padding: 0 5px;
-    border-radius: 6px;
+    border-radius: var(--radius-default);
     letter-spacing: 0;
     text-transform: none;
   }
 
   .status-badge {
-    font-size: 9px;
-    padding: 1px 6px;
-    border-radius: 4px;
+    font-size: var(--text-2xs);
+    padding: 1px var(--space-1\.5);
+    border-radius: var(--radius-sm);
     text-transform: none;
     letter-spacing: 0;
   }
-  .status-badge.success { background: #3D8B4518; color: #3D8B45; }
-  .status-badge.error { background: #CC445518; color: #CC4455; }
+  .status-badge.success { background: color-mix(in srgb, var(--color-success) 9%, transparent); color: var(--color-success); }
+  .status-badge.error { background: color-mix(in srgb, var(--color-error) 9%, transparent); color: var(--color-error); }
 
   .picker-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     width: 100%;
-    padding: 7px 16px;
+    padding: 7px var(--space-4);
     border: none;
     background: transparent;
-    color: #333340;
+    color: var(--color-text);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     cursor: pointer;
     text-align: left;
-    transition: background 0.1s;
+    transition: background var(--duration-fast);
   }
-  .picker-row:hover { background: #F5F5FA; }
+  .picker-row:hover { background: var(--color-bg-subtle); }
   .picker-row.inserted { background: #E8F5E9; }
 
   .row-key {
-    font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 11px;
-    color: #9A7520;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-warning);
+    font-weight: var(--weight-semibold);
     flex-shrink: 0;
     max-width: 160px;
     overflow: hidden;
@@ -405,9 +372,9 @@
     white-space: nowrap;
   }
   .row-value {
-    color: #999;
-    font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 11px;
+    color: var(--color-text-faint);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -417,24 +384,24 @@
   }
 
   .row-action {
-    font-size: 9px;
-    font-weight: 600;
-    color: #BBB;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-placeholder);
     flex-shrink: 0;
     white-space: nowrap;
     opacity: 0;
-    transition: opacity 0.1s;
+    transition: opacity var(--duration-fast);
   }
   .picker-row:hover .row-action { opacity: 1; }
   .picker-row.inserted .row-action {
     opacity: 1;
-    color: #3D8B45;
+    color: var(--color-success);
   }
 
   .empty-hint {
-    padding: 8px 16px;
-    font-size: 11px;
-    color: #BBB;
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--color-text-placeholder);
   }
 
   .empty-state {
@@ -442,19 +409,19 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px 20px;
+    padding: var(--space-10) var(--space-5);
     text-align: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
   }
   .empty-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #888;
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    color: var(--slate-350);
     margin: 0;
   }
   .empty-hint {
-    font-size: 11px;
-    color: #BBB;
+    font-size: var(--text-sm);
+    color: var(--color-text-placeholder);
     line-height: 1.5;
   }
 </style>

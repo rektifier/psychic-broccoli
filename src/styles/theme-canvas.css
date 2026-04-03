@@ -1,0 +1,85 @@
+/* ============================================================
+   Theme: Canvas
+   Warm, minimal aesthetic with a clean, paper-like feel.
+   Overrides semantic tokens from tokens.css.
+   ============================================================ */
+
+[data-theme="canvas"] {
+  /* Primary */
+  --color-primary: #0075de;
+  --color-primary-hover: #0066c3;
+  --color-primary-active: #005aab;
+  --color-primary-fg: #FFFFFF;
+  --color-primary-subtle: rgba(0, 117, 222, 0.06);
+
+  /* Backgrounds */
+  --color-bg: #FFFFFF;
+  --color-bg-sidebar: #f6f5f4;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-muted: #f1f0ef;
+  --color-bg-subtle: #f9f9f8;
+  --color-bg-hover: #eeeded;
+  --color-bg-input: #FFFFFF;
+
+  /* Text */
+  --color-text: rgba(0, 0, 0, 0.85);
+  --color-text-heading: rgba(0, 0, 0, 0.95);
+  --color-text-secondary: #615d59;
+  --color-text-muted: #a39e98;
+  --color-text-faint: #c4c1bc;
+  --color-text-placeholder: #c4c1bc;
+
+  /* Borders - whisper-weight */
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-focus: #0075de;
+  --color-divider: rgba(0, 0, 0, 0.08);
+
+  /* Status */
+  --color-success: #1aae39;
+  --color-error: #eb5757;
+  --color-warning: #dd5b00;
+  --color-info: #0075de;
+
+  /* Flow accent */
+  --color-accent-flow: #6b3fa0;
+  --color-accent-flow-bg: rgba(107, 63, 160, 0.06);
+
+  /* HTTP Method Colors */
+  --color-method-get: #0075de;
+  --color-method-post: #1aae39;
+  --color-method-put: #cf8b17;
+  --color-method-patch: #dd5b00;
+  --color-method-delete: #eb5757;
+  --color-method-head: #6b3fa0;
+  --color-method-options: #2a9d99;
+  --color-method-trace: #a39e98;
+  --color-method-connect: #eb5757;
+
+  /* Font - Sans-serif UI */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+  /* Border Radius - rounder */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-default: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /* Shadows - multi-layer subtle */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.03);
+  --shadow-toast: 0 2px 4px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-dropdown: 0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-modal: 0 4px 12px rgba(0, 0, 0, 0.05), 0 16px 48px rgba(0, 0, 0, 0.1);
+
+  /* Toast */
+  --toast-error-bg: #fdf2f2;
+  --toast-error-border: rgba(235, 87, 87, 0.2);
+  --toast-error-text: #c53030;
+  --toast-warning-bg: #fdf8f3;
+  --toast-warning-border: rgba(221, 91, 0, 0.2);
+  --toast-warning-text: #b44d00;
+  --toast-info-bg: #f0f7ff;
+  --toast-info-border: rgba(0, 117, 222, 0.2);
+  --toast-info-text: #005aab;
+}
