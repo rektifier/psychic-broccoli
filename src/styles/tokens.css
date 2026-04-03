@@ -116,6 +116,12 @@
   --toast-info-bg: #EFF6FF;
   --toast-info-border: #BFDBFE;
   --toast-info-text: #1E40AF;
+  --toast-success-bg: #F0FDF4;
+  --toast-success-border: #BBF7D0;
+  --toast-success-text: #166534;
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px rgba(212, 144, 10, 0.25);
 
   /* ---- Typography ---- */
   --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;

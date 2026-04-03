@@ -117,14 +117,14 @@
 }
 
 .btn-ghost {
-  background: transparent;
+  background: var(--color-ghost-bg, transparent);
   color: var(--color-text-faint);
   border: none;
 }
 
 .btn-ghost:hover {
   color: var(--color-primary);
-  background: var(--color-primary-subtle);
+  background: var(--color-ghost-bg-hover, var(--color-primary-subtle));
 }
 
 .btn-danger {
