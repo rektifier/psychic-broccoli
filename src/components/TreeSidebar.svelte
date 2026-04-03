@@ -333,6 +333,13 @@
     {/if}
   </div>
   <div class="sidebar-footer">
+    <button class="btn-help" on:click={() => dispatch('openSettings')} title="Settings">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M13.5 6.5h-1.2a4.5 4.5 0 00-.7-1.7l.8-.8-1.4-1.4-.8.8a4.5 4.5 0 00-1.7-.7V1.5h-2v1.2a4.5 4.5 0 00-1.7.7l-.8-.8L2.6 4l.8.8a4.5 4.5 0 00-.7 1.7H1.5v2h1.2c.1.6.4 1.2.7 1.7l-.8.8 1.4 1.4.8-.8c.5.3 1.1.6 1.7.7v1.2h2v-1.2c.6-.1 1.2-.4 1.7-.7l.8.8 1.4-1.4-.8-.8c.3-.5.6-1.1.7-1.7h1.2v-2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+      </svg>
+      <span>Settings</span>
+    </button>
     <button class="btn-help" on:click={() => dispatch('openHelp')} title="Help and keyboard shortcuts">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
@@ -354,187 +361,187 @@
   }
 
   .section {
-    padding: 10px 12px;
+    padding: var(--space-2\.5) var(--space-3);
     flex-shrink: 0;
   }
   .root-section {
     padding-bottom: 0;
   }
   .env-section {
-    padding-top: 8px;
-    border-bottom: 1px solid #DCDCE2;
+    padding-top: var(--space-2);
+    border-bottom: 1px solid var(--color-divider);
   }
 
   .root-row {
     display: flex;
-    gap: 6px;
+    gap: var(--space-1\.5);
     align-items: center;
   }
   .root-btn {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     flex: 1;
     min-width: 0;
-    padding: 6px 8px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
-    background: #FFFFFF;
-    color: #666;
+    padding: var(--space-1\.5) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-bg-surface);
+    color: var(--slate-450);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
     text-align: left;
   }
-  .root-btn:hover { border-color: #D4900A; color: #D4900A; }
-  .root-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .root-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .root-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-semibold); }
 
   .btn-import {
     width: 30px; height: 30px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
     background: transparent;
-    color: #888;
+    color: var(--slate-350);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
     padding: 0;
   }
   .btn-import:hover {
-    border-color: #D4900A; color: #D4900A; background: #D4900A10;
+    border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent);
   }
   .btn-import.disabled {
     opacity: 0.35;
     cursor: default;
   }
   .btn-import.disabled:hover {
-    border-color: #D4D4D8; color: #888; background: transparent;
+    border-color: var(--color-border); color: var(--slate-350); background: transparent;
   }
 
   /* Environment */
   .env-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
   }
   .env-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #3D8B45;
+    background: var(--color-success);
     flex-shrink: 0;
   }
   .env-select {
     flex: 1;
-    padding: 5px 24px 5px 8px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
-    background: #FFFFFF;
-    color: #3D8B45;
+    padding: 5px var(--space-6) 5px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-bg-surface);
+    color: var(--color-success);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
     outline: none;
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 8px center;
-    transition: border-color 0.15s;
+    background-position: right var(--space-2) center;
+    transition: border-color var(--duration-normal);
   }
-  .env-select:hover { border-color: #3D8B45; }
-  .env-select option { background: #FFFFFF; color: #333340; }
+  .env-select:hover { border-color: var(--color-success); }
+  .env-select option { background: var(--color-bg-surface); color: var(--color-text); }
 
   .btn-add-env {
     width: 26px; height: 26px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
     background: transparent;
-    color: #888;
-    font-size: 14px;
+    color: var(--slate-350);
+    font-size: var(--text-lg);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
-  .btn-add-env:hover { border-color: #3D8B45; color: #3D8B45; background: #3D8B4510; }
+  .btn-add-env:hover { border-color: var(--color-success); color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
 
   .btn-edit-env {
     width: 26px; height: 26px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
     padding: 0;
   }
-  .btn-edit-env:hover { border-color: #D4900A; color: #D4900A; background: #D4900A10; }
+  .btn-edit-env:hover { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 
   .add-env-form {
     display: flex;
-    gap: 4px;
-    margin-top: 6px;
+    gap: var(--space-1);
+    margin-top: var(--space-1\.5);
   }
   .add-env-input {
     flex: 1;
-    padding: 5px 8px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
-    background: #FFFFFF;
-    color: #333340;
+    padding: 5px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-bg-surface);
+    color: var(--color-text);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--text-sm);
     outline: none;
   }
-  .add-env-input:focus { border-color: #3D8B45; }
+  .add-env-input:focus { border-color: var(--color-success); }
   .btn-confirm-env {
-    padding: 5px 10px;
+    padding: 5px var(--space-2\.5);
     border: none;
-    border-radius: 6px;
-    background: #3D8B4518;
-    color: #3D8B45;
+    border-radius: var(--radius-default);
+    background: color-mix(in srgb, var(--color-success) 9%, transparent);
+    color: var(--color-success);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
   }
 
   /* Test Flows */
   .flow-section {
     padding: 0;
-    border-bottom: 1px solid #DCDCE2;
+    border-bottom: 1px solid var(--color-divider);
   }
   .flow-header {
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
     width: 100%;
-    padding: 7px 12px;
+    padding: 7px var(--space-3);
     border: none;
     background: transparent;
-    color: #555;
+    color: var(--color-text-secondary);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
     text-align: left;
     white-space: nowrap;
-    transition: background 0.1s;
+    transition: background var(--duration-fast);
   }
   .flow-header:hover {
-    background: #F0F0F4;
+    background: var(--color-bg-sidebar);
   }
   .chevron {
     display: flex;
@@ -543,15 +550,15 @@
     width: 14px;
     height: 14px;
     flex-shrink: 0;
-    color: #999;
-    transition: transform 0.15s;
+    color: var(--color-text-faint);
+    transition: transform var(--duration-normal);
     transform: rotate(0deg);
   }
   .chevron.open {
     transform: rotate(90deg);
   }
   .flow-icon {
-    color: #8040A8;
+    color: var(--color-accent-flow);
     flex-shrink: 0;
   }
   .flow-label {
@@ -559,58 +566,58 @@
     min-width: 0;
   }
   .flow-count {
-    font-size: 10px;
-    color: #999;
-    font-weight: 400;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
+    font-weight: var(--weight-regular);
     flex-shrink: 0;
   }
   .btn-new-flow {
     width: 20px; height: 20px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
-    font-size: 14px;
+    color: var(--color-text-faint);
+    font-size: var(--text-lg);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.1s;
+    transition: all var(--duration-fast);
   }
   .btn-new-flow:hover {
-    background: #8040A818;
-    color: #8040A8;
+    background: color-mix(in srgb, var(--color-accent-flow) 9%, transparent);
+    color: var(--color-accent-flow);
   }
   .new-flow-form {
     display: flex;
-    gap: 4px;
-    padding: 4px 12px 6px 32px;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3) var(--space-1\.5) 32px;
   }
   .new-flow-input {
     flex: 1;
-    padding: 4px 8px;
-    border: 1px solid #D4D4D8;
-    border-radius: 4px;
-    background: #FFFFFF;
-    color: #333340;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--text-sm);
     outline: none;
     min-width: 0;
   }
   .new-flow-input:focus {
-    border-color: #8040A8;
+    border-color: var(--color-accent-flow);
   }
   .btn-confirm-flow {
-    padding: 4px 8px;
+    padding: var(--space-1) var(--space-2);
     border: none;
-    border-radius: 4px;
-    background: #8040A818;
-    color: #8040A8;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-accent-flow) 9%, transparent);
+    color: var(--color-accent-flow);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
     flex-shrink: 0;
   }
@@ -618,27 +625,27 @@
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
     width: 100%;
-    padding: 5px 12px 5px 32px;
+    padding: 5px var(--space-3) 5px 32px;
     border: none;
     background: transparent;
-    color: #666;
+    color: var(--slate-450);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     text-align: left;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.1s;
+    transition: background var(--duration-fast);
     position: relative;
   }
   .flow-item:hover {
-    background: #E4E4EA;
-    color: #333;
+    background: var(--color-bg-muted);
+    color: var(--color-text);
   }
   .flow-item.active {
-    background: #E8E0F0;
-    color: #1A1A2E;
+    background: var(--color-accent-flow-bg);
+    color: var(--color-text-heading);
   }
   .flow-item.active::before {
     content: '';
@@ -647,7 +654,7 @@
     top: 2px;
     bottom: 2px;
     width: 2px;
-    background: #8040A8;
+    background: var(--color-accent-flow);
     border-radius: 0 2px 2px 0;
   }
   .flow-item-name {
@@ -663,9 +670,9 @@
     justify-content: center;
     width: 18px; height: 18px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     cursor: pointer;
     flex-shrink: 0;
     visibility: hidden;
@@ -675,8 +682,8 @@
     visibility: visible;
   }
   .btn-dup-flow:hover {
-    background: #8040A818;
-    color: #8040A8;
+    background: color-mix(in srgb, var(--color-accent-flow) 9%, transparent);
+    color: var(--color-accent-flow);
   }
   .btn-del-flow {
     display: flex;
@@ -684,10 +691,10 @@
     justify-content: center;
     width: 18px; height: 18px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
-    font-size: 14px;
+    color: var(--color-text-faint);
+    font-size: var(--text-lg);
     cursor: pointer;
     flex-shrink: 0;
     visibility: hidden;
@@ -696,8 +703,8 @@
     visibility: visible;
   }
   .btn-del-flow:hover {
-    background: #CC445518;
-    color: #CC4455;
+    background: color-mix(in srgb, var(--color-error) 9%, transparent);
+    color: var(--color-error);
   }
   .flow-confirm-delete {
     display: flex;
@@ -707,37 +714,37 @@
   .flow-del-yes {
     padding: 1px 5px;
     border: none;
-    border-radius: 3px;
-    background: #CC4455;
-    color: #FFFFFF;
+    border-radius: var(--radius-xs);
+    background: var(--color-error);
+    color: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 10px;
-    font-weight: 600;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
   }
   .flow-del-no {
     padding: 1px 5px;
-    border: 1px solid #DCDCE2;
-    border-radius: 3px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-xs);
     background: transparent;
-    color: #777;
+    color: var(--color-text-muted);
     font-family: inherit;
-    font-size: 10px;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
   .flow-empty {
     display: block;
-    padding: 4px 12px 8px 32px;
-    font-size: 11px;
-    color: #AAA;
+    padding: var(--space-1) var(--space-3) var(--space-2) 32px;
+    font-size: var(--text-sm);
+    color: var(--zinc-300);
   }
 
   /* Tree */
   .tree-toolbar {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 12px 0;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3) 0;
     flex-shrink: 0;
   }
   .filter-wrap {
@@ -750,26 +757,26 @@
   .filter-icon {
     position: absolute;
     left: 7px;
-    color: #999;
+    color: var(--color-text-faint);
     pointer-events: none;
   }
   .filter-input {
     width: 100%;
-    padding: 4px 22px 4px 24px;
-    border: 1px solid #D4D4D8;
-    border-radius: 5px;
-    background: #FFFFFF;
-    color: #333340;
+    padding: var(--space-1) 22px var(--space-1) var(--space-6);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    color: var(--color-text);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--text-sm);
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-normal);
   }
   .filter-input:focus {
-    border-color: #D4900A;
+    border-color: var(--color-primary);
   }
   .filter-input::placeholder {
-    color: #BBB;
+    color: var(--color-text-placeholder);
   }
   .filter-clear {
     position: absolute;
@@ -777,10 +784,10 @@
     width: 18px;
     height: 18px;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     background: transparent;
-    color: #999;
-    font-size: 14px;
+    color: var(--color-text-faint);
+    font-size: var(--text-lg);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -788,79 +795,80 @@
     padding: 0;
   }
   .filter-clear:hover {
-    color: #666;
-    background: #F0F0F4;
+    color: var(--slate-450);
+    background: var(--color-bg-sidebar);
   }
   .empty-filter {
     display: flex;
     justify-content: center;
-    padding: 20px;
+    padding: var(--space-5);
   }
   .empty-filter-text {
-    font-size: 11px;
-    color: #AAA;
+    font-size: var(--text-sm);
+    color: var(--zinc-300);
   }
   .btn-display-mode {
     width: 24px; height: 24px;
     border: 1px solid transparent;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .btn-display-mode:hover {
-    border-color: #D4D4D8;
-    color: #666;
-    background: #F0F0F4;
+    border-color: var(--color-border);
+    color: var(--slate-450);
+    background: var(--color-bg-sidebar);
   }
   .btn-display-mode.active {
-    border-color: #D4900A;
-    color: #D4900A;
-    background: #D4900A10;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
   }
-  .tree-scroll { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .tree-scroll { flex: 1; overflow-y: auto; padding: var(--space-1) 0; }
 
   .empty-tree {
     display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 10px; padding: 40px 20px; text-align: center;
+    justify-content: center; gap: var(--space-2\.5); padding: var(--space-10) var(--space-5); text-align: center;
   }
   .empty-icon { font-size: 28px; opacity: 0.4; }
-  .empty-text { font-size: 12px; color: #888; line-height: 1.5; }
+  .empty-text { font-size: var(--text-base); color: var(--slate-350); line-height: 1.5; }
   .btn-open {
-    padding: 6px 16px; border: 1px solid #D4900A40; border-radius: 6px;
-    background: #D4900A10; color: #D4900A; font-family: inherit;
-    font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 4px;
+    padding: var(--space-1\.5) var(--space-4); border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent); border-radius: var(--radius-default);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent); color: var(--color-primary); font-family: inherit;
+    font-size: var(--text-base); font-weight: var(--weight-semibold); cursor: pointer; margin-top: var(--space-1);
   }
-  .btn-open:hover { background: #D4900A20; border-color: #D4900A; }
+  .btn-open:hover { background: color-mix(in srgb, var(--color-primary) 12%, transparent); border-color: var(--color-primary); }
 
   /* Sidebar footer */
   .sidebar-footer {
+    display: flex;
+    gap: var(--space-2);
     flex-shrink: 0;
-    padding: 8px 12px;
-    border-top: 1px solid #EDEDF0;
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--gray-100);
   }
   .btn-help {
     display: flex;
     align-items: center;
-    gap: 6px;
-    width: 100%;
-    padding: 5px 8px;
+    gap: var(--space-1\.5);
+    padding: 5px var(--space-2);
     border: none;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     background: transparent;
-    color: #AAA;
+    color: var(--zinc-300);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--text-sm);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .btn-help:hover {
-    background: #F0F0F4;
-    color: #666;
+    background: var(--color-bg-sidebar);
+    color: var(--slate-450);
   }
 </style>

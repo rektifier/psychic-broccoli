@@ -102,74 +102,34 @@
 {/if}
 
 <style>
-  .overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 100;
-    background: rgba(0,0,0,0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
+  /* Modal base from shared.css; only overrides here */
   .modal {
     width: 420px;
-    max-height: 80vh;
-    overflow-y: auto;
-    background: #FFFFFF;
-    border: 1px solid #D4D4D8;
-    border-radius: 10px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.12);
-  }
-
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid #DCDCE2;
-  }
-  .modal-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #1A1A2E;
-  }
-  .btn-close {
-    width: 24px; height: 24px;
-    border: none; border-radius: 4px;
-    background: transparent; color: #999;
-    font-size: 16px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .btn-close:hover { background: #E4E4EA; color: #444; }
-
-  .modal-body {
-    padding: 14px 16px;
   }
 
   .description {
-    font-size: 12px;
-    color: #555;
+    font-size: var(--text-base);
+    color: var(--color-text-secondary);
     line-height: 1.5;
-    margin-bottom: 10px;
+    margin-bottom: var(--space-2\.5);
   }
 
   .var-list {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
-    margin-bottom: 14px;
+    margin-bottom: var(--space-3\.5);
     max-height: 120px;
     overflow-y: auto;
   }
   .var-tag {
-    font-size: 11px;
+    font-size: var(--text-sm);
     font-family: 'Consolas', 'Courier New', monospace;
-    background: #F0F0F4;
+    background: var(--color-bg-sidebar);
     border: 1px solid #E0E0E4;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 2px 7px;
-    color: #9A7520;
+    color: var(--color-warning);
   }
   .var-tag.has-value {
     background: #E8F5E9;
@@ -178,92 +138,85 @@
   }
 
   .target-section {
-    border-top: 1px solid #F0F0F4;
-    padding-top: 12px;
+    border-top: 1px solid var(--color-bg-sidebar);
+    padding-top: var(--space-3);
   }
   .target-label {
     display: block;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: #D4900A;
-    margin-bottom: 8px;
+    color: var(--color-primary);
+    margin-bottom: var(--space-2);
   }
 
   .radio-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     padding: 5px 0;
     cursor: pointer;
   }
   .radio-row input[type="radio"] {
-    accent-color: #D4900A;
+    accent-color: var(--color-primary);
   }
   .radio-label {
-    font-size: 12px;
-    color: #333340;
+    font-size: var(--text-base);
+    color: var(--color-text);
   }
 
   .hint {
-    font-size: 11px;
-    color: #888;
-    margin-bottom: 8px;
+    font-size: var(--text-sm);
+    color: var(--slate-350);
+    margin-bottom: var(--space-2);
   }
   .hint code {
     font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 11px;
-    background: #F0F0F4;
+    font-size: var(--text-sm);
+    background: var(--color-bg-sidebar);
     padding: 1px 5px;
-    border-radius: 3px;
-    color: #9A7520;
+    border-radius: var(--radius-xs);
+    color: var(--color-warning);
   }
 
   .env-name-input {
     width: 100%;
-    padding: 7px 10px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
-    background: #FFFFFF;
-    color: #333340;
+    padding: 7px var(--space-2\.5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-bg-surface);
+    color: var(--color-text);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     outline: none;
-    margin-top: 6px;
+    margin-top: var(--space-1\.5);
   }
-  .env-name-input:focus { border-color: #D4900A; }
+  .env-name-input:focus { border-color: var(--color-primary); }
 
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 10px 16px;
-    border-top: 1px solid #DCDCE2;
-  }
   .btn-skip {
-    padding: 6px 14px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
+    padding: var(--space-1\.5) var(--space-3\.5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
     background: transparent;
-    color: #666;
+    color: var(--slate-450);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
-  .btn-skip:hover { border-color: #999; color: #333; }
+  .btn-skip:hover { border-color: var(--color-text-faint); color: var(--color-text); }
   .btn-confirm {
-    padding: 6px 14px;
+    padding: var(--space-1\.5) var(--space-3\.5);
     border: none;
-    border-radius: 6px;
-    background: #D4900A;
-    color: #FFFFFF;
+    border-radius: var(--radius-default);
+    background: var(--color-primary);
+    color: var(--color-primary-fg);
     font-family: inherit;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background var(--duration-normal);
   }
-  .btn-confirm:hover { background: #C07D08; }
+  .btn-confirm:hover { background: var(--color-primary-active); }
 </style>
