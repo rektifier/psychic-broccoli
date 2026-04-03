@@ -545,7 +545,7 @@
                 {/if}
                 <div class="step-url-row">
                   {#if getMethod(step.label)}
-                    <span class="step-method" style="color: {METHOD_COLORS[getMethod(step.label)] || 'var(--color-text-muted)'}">{getMethod(step.label).slice(0, 3)}</span>
+                    <span class="step-method" style="color: {METHOD_COLORS[getMethod(step.label)] || 'var(--color-text-muted)'}">{getMethod(step.label)}</span>
                   {/if}
                   <span class="step-label" title={getUrl(step.label)}>{displayUrl}</span>
                 </div>
@@ -1016,7 +1016,6 @@
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
     letter-spacing: 0.3px;
-    min-width: 30px;
     flex-shrink: 0;
   }
   .step-label {
@@ -1356,7 +1355,7 @@
     gap: var(--space-2);
   }
   .override-row .override-label {
-    min-width: 50px;
+    min-width: 18px;
     flex-shrink: 0;
   }
   .override-input {
