@@ -3,6 +3,9 @@
  * CSS custom property references resolve at render time in the browser.
  */
 
+import { readTextFile, writeTextFile, mkdir } from '@tauri-apps/plugin-fs';
+import { appConfigDir, join } from '@tauri-apps/api/path';
+
 /** HTTP method color map using CSS variable references. */
 export const METHOD_COLORS: Record<string, string> = {
   GET: 'var(--color-method-get)',
@@ -30,18 +33,36 @@ export const THEMES: ThemeDefinition[] = [
   { id: 'canvas', label: 'Canvas' },
 ];
 
-const STORAGE_KEY = 'pb-theme';
+const SETTINGS_FILE = 'settings.json';
 
-export function getStoredTheme(): ThemeId {
+interface Settings {
+  theme?: ThemeId;
+}
+
+async function getSettingsPath(): Promise<string> {
+  const dir = await appConfigDir();
+  return join(dir, SETTINGS_FILE);
+}
+
+async function readSettings(): Promise<Settings> {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && THEMES.some(t => t.id === stored)) {
-      return stored as ThemeId;
-    }
+    const path = await getSettingsPath();
+    const content = await readTextFile(path);
+    return JSON.parse(content);
   } catch {
-    // localStorage may be unavailable
+    return {};
   }
-  return 'default';
+}
+
+async function writeSettings(settings: Settings): Promise<void> {
+  try {
+    const dir = await appConfigDir();
+    await mkdir(dir, { recursive: true });
+    const path = await join(dir, SETTINGS_FILE);
+    await writeTextFile(path, JSON.stringify(settings, null, 2));
+  } catch {
+    // Settings write failed silently
+  }
 }
 
 export function applyTheme(themeId: ThemeId): void {
@@ -55,12 +76,15 @@ export function applyTheme(themeId: ThemeId): void {
 
 export function setTheme(themeId: ThemeId): void {
   applyTheme(themeId);
-  try {
-    localStorage.setItem(STORAGE_KEY, themeId);
-  } catch {
-    // localStorage may be unavailable
-  }
+  readSettings().then(settings => {
+    writeSettings({ ...settings, theme: themeId });
+  });
 }
 
-// Apply stored theme immediately on module load (before Svelte mounts)
-applyTheme(getStoredTheme());
+/** Load theme from settings file and apply it. */
+export async function loadTheme(): Promise<ThemeId> {
+  const settings = await readSettings();
+  const themeId = settings.theme && THEMES.some(t => t.id === settings.theme) ? settings.theme : 'default';
+  applyTheme(themeId);
+  return themeId;
+}

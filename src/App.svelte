@@ -12,7 +12,7 @@
   import TabBar from './components/TabBar.svelte';
   import FlowEditor from './components/FlowEditor.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
-  import { getStoredTheme, setTheme, type ThemeId } from './lib/theme';
+  import { loadTheme, setTheme, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -55,8 +55,9 @@
   let showHelp = false;
 
   // ─── Theme / Settings ───
-  let currentTheme: ThemeId = getStoredTheme();
+  let currentTheme: ThemeId = 'default';
   let showSettings = false;
+  loadTheme().then(t => currentTheme = t);
 
   // ─── Import Collection Modal ───
   let showImportCollectionModal = false;
