@@ -1016,7 +1016,6 @@
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
     letter-spacing: 0.3px;
-    min-width: 52px;
     flex-shrink: 0;
   }
   .step-label {
@@ -1356,7 +1355,7 @@
     gap: var(--space-2);
   }
   .override-row .override-label {
-    min-width: 50px;
+    min-width: 18px;
     flex-shrink: 0;
   }
   .override-input {
