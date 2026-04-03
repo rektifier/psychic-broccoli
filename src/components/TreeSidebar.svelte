@@ -333,6 +333,13 @@
     {/if}
   </div>
   <div class="sidebar-footer">
+    <button class="btn-help" on:click={() => dispatch('openSettings')} title="Settings">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M13.5 6.5h-1.2a4.5 4.5 0 00-.7-1.7l.8-.8-1.4-1.4-.8.8a4.5 4.5 0 00-1.7-.7V1.5h-2v1.2a4.5 4.5 0 00-1.7.7l-.8-.8L2.6 4l.8.8a4.5 4.5 0 00-.7 1.7H1.5v2h1.2c.1.6.4 1.2.7 1.7l-.8.8 1.4 1.4.8-.8c.5.3 1.1.6 1.7.7v1.2h2v-1.2c.6-.1 1.2-.4 1.7-.7l.8.8 1.4-1.4-.8-.8c.3-.5.6-1.1.7-1.7h1.2v-2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+      </svg>
+      <span>Settings</span>
+    </button>
     <button class="btn-help" on:click={() => dispatch('openHelp')} title="Help and keyboard shortcuts">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
@@ -840,6 +847,8 @@
 
   /* Sidebar footer */
   .sidebar-footer {
+    display: flex;
+    gap: var(--space-2);
     flex-shrink: 0;
     padding: var(--space-2) var(--space-3);
     border-top: 1px solid var(--gray-100);
@@ -848,7 +857,6 @@
     display: flex;
     align-items: center;
     gap: var(--space-1\.5);
-    width: 100%;
     padding: 5px var(--space-2);
     border: none;
     border-radius: var(--radius-md);

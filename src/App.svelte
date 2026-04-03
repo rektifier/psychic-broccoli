@@ -11,7 +11,7 @@
   import type { ImportFormat } from './lib/detect';
   import TabBar from './components/TabBar.svelte';
   import FlowEditor from './components/FlowEditor.svelte';
-  import ThemeSwitcher from './components/ThemeSwitcher.svelte';
+  import SettingsModal from './components/SettingsModal.svelte';
   import { getStoredTheme, setTheme, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
@@ -54,8 +54,9 @@
 
   let showHelp = false;
 
-  // ─── Theme ───
+  // ─── Theme / Settings ───
   let currentTheme: ThemeId = getStoredTheme();
+  let showSettings = false;
 
   // ─── Import Collection Modal ───
   let showImportCollectionModal = false;
@@ -908,6 +909,12 @@
 
 <ToastContainer />
 <HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<SettingsModal
+  visible={showSettings}
+  currentTheme={currentTheme}
+  on:changeTheme={(e) => { currentTheme = e.detail; setTheme(e.detail); }}
+  on:close={() => showSettings = false}
+/>
 <VariableInspector
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
@@ -945,13 +952,7 @@
 />
 
 <main class="app">
-  <div class="titlebar" data-tauri-drag-region>
-    <div></div>
-    <ThemeSwitcher
-      current={currentTheme}
-      onChange={(t) => { currentTheme = t; setTheme(t); }}
-    />
-  </div>
+  <div class="titlebar" data-tauri-drag-region></div>
 
   <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
@@ -976,6 +977,7 @@
         on:editEnv={() => showEnvEditor = true}
         on:openVarInspector={() => showVarInspector = true}
         on:openHelp={() => showHelp = true}
+        on:openSettings={() => showSettings = true}
         on:nameRequest={handleNameRequest}
         on:openFlow={handleOpenFlow}
         on:createFlow={handleCreateFlow}

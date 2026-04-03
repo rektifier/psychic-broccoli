@@ -258,16 +258,21 @@
 
   <!-- URL Bar -->
   <div class="url-bar">
-    <select
-      class="method-select"
-      value={request.method}
-      style="color: {METHOD_COLORS[request.method]}"
-      on:change={(e) => update({ method: e.currentTarget.value as HttpMethod })}
-    >
-      {#each methods as method}
-        <option value={method} style="color: {METHOD_COLORS[method]}">{method}</option>
-      {/each}
-    </select>
+    <div class="method-wrapper">
+      <select
+        class="method-select"
+        value={request.method}
+        style="color: {METHOD_COLORS[request.method]}"
+        on:change={(e) => update({ method: e.currentTarget.value as HttpMethod })}
+      >
+        {#each methods as method}
+          <option value={method} style="color: {METHOD_COLORS[method]}">{method}</option>
+        {/each}
+      </select>
+      <svg class="method-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none">
+        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
 
     <input
       class="url-input"
@@ -516,18 +521,31 @@
     border-color: var(--color-primary);
   }
 
-  .method-select {
-    padding: var(--space-3) var(--space-3\.5);
-    border: none;
+  .method-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
     border-right: 1px solid var(--color-border);
     background: var(--color-bg-sidebar);
+  }
+  .method-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: var(--space-3) 30px var(--space-3) var(--space-2\.5);
+    border: none;
+    background: transparent;
     color: var(--color-info);
     font-family: inherit;
     font-size: var(--text-md);
     font-weight: var(--weight-bold);
     cursor: pointer;
     outline: none;
-    min-width: 90px;
+  }
+  .method-chevron {
+    position: absolute;
+    right: var(--space-2\.5);
+    pointer-events: none;
+    color: var(--color-text-muted);
   }
   .method-select option {
     background: var(--color-bg-surface);
@@ -535,7 +553,7 @@
 
   .url-input {
     flex: 1;
-    padding: var(--space-3) var(--space-3\.5);
+    padding: var(--space-3) var(--space-2\.5);
     border: none;
     background: transparent;
     color: var(--color-text-heading);
@@ -570,7 +588,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-1\.5);
-    padding: var(--space-2\.5) var(--space-5);
+    padding: var(--space-2\.5) var(--space-4);
     border: none;
     background: var(--color-primary);
     color: var(--color-primary-fg);
