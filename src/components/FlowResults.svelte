@@ -191,7 +191,7 @@
     border: 1px solid var(--color-bg-muted);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    background: var(--gray-15);
+    background: var(--color-bg-surface);
   }
 
   /* Summary */
@@ -201,7 +201,7 @@
     gap: var(--space-2);
     width: 100%;
     padding: var(--space-2\.5) var(--space-3\.5);
-    background: var(--gray-15);
+    background: var(--color-bg-surface);
     border: none;
     cursor: pointer;
     font-family: inherit;
@@ -234,7 +234,7 @@
   .stat.passed { color: var(--color-success); }
   .stat.failed { color: var(--color-error); }
   .stat.skipped { color: var(--color-text-faint); }
-  .stat.total { color: var(--slate-350); font-weight: var(--weight-regular); }
+  .stat.total { color: var(--color-text-muted); font-weight: var(--weight-regular); }
   .summary-meta {
     display: flex;
     align-items: center;
@@ -269,7 +269,7 @@
     width: 100%;
     padding: 7px var(--space-2\.5);
     border: none;
-    background: var(--gray-15);
+    background: var(--color-bg-surface);
     color: var(--color-text-secondary);
     font-family: inherit;
     font-size: var(--text-base);
@@ -289,7 +289,7 @@
   }
   .result-step-num {
     font-size: var(--text-xs);
-    color: var(--zinc-300);
+    color: var(--color-text-faint);
     flex-shrink: 0;
   }
   .result-method {
@@ -318,13 +318,13 @@
   .result-http-code.err { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 6%, transparent); }
   .result-dur {
     font-size: var(--text-xs);
-    color: var(--zinc-300);
+    color: var(--color-text-faint);
     flex-shrink: 0;
   }
   .result-chevron {
     display: flex;
     align-items: center;
-    color: var(--zinc-100);
+    color: var(--color-text-placeholder);
     transition: transform var(--duration-normal);
     transform: rotate(0deg);
     flex-shrink: 0;
@@ -336,7 +336,7 @@
   /* Detail */
   .result-detail {
     padding: var(--space-2) var(--space-3) var(--space-2\.5);
-    border-top: 1px solid var(--gray-100);
+    border-top: 1px solid var(--color-divider);
     display: flex;
     flex-direction: column;
     gap: var(--space-2\.5);
@@ -349,16 +349,16 @@
   .detail-label {
     font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
-    color: var(--slate-350);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
   .detail-pre {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-    color: var(--slate-250);
-    background: #F6F6FA;
-    border: 1px solid var(--gray-100);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-divider);
     border-radius: var(--radius-sm);
     padding: var(--space-2) var(--space-2\.5);
     white-space: pre-wrap;
@@ -410,7 +410,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1\.5);
-    border-top: 1px solid var(--gray-100);
+    border-top: 1px solid var(--color-divider);
     padding-top: var(--space-4);
   }
   .history-header {
@@ -421,7 +421,7 @@
   .history-title {
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
-    color: var(--slate-350);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -484,7 +484,7 @@
   .history-date {
     flex: 1;
     text-align: right;
-    color: var(--zinc-300);
+    color: var(--color-text-faint);
     font-size: var(--text-xs);
   }
 </style>

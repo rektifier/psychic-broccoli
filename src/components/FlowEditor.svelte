@@ -408,8 +408,8 @@
   <div class="flow-header">
     <div class="flow-title-row">
       <svg class="flow-icon" width="18" height="18" viewBox="0 0 16 16" fill="none">
-        <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="#8040A8" stroke-width="1.2" fill="#8040A8" fill-opacity="0.1"/>
-        <path d="M6 4.5h4M11.5 6v4" stroke="#8040A8" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.1"/>
+        <path d="M6 4.5h4M11.5 6v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
       {#if editingName}
         <input
@@ -453,8 +453,8 @@
     {#if hasAnyBroken}
       <div class="broken-warning">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-          <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="#D4900A" stroke-width="1.3" fill="#D4900A10"/>
-          <path d="M8 6v3M8 11v.5" stroke="#D4900A" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="currentColor" stroke-width="1.3" fill="currentColor" fill-opacity="0.06"/>
+          <path d="M8 6v3M8 11v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
         <span>{brokenCount} step{brokenCount === 1 ? '' : 's'} reference requests that no longer exist. Remove or re-add them.</span>
       </div>
@@ -545,7 +545,7 @@
                 {/if}
                 <div class="step-url-row">
                   {#if getMethod(step.label)}
-                    <span class="step-method" style="color: {METHOD_COLORS[getMethod(step.label)] || 'var(--slate-350)'}">{getMethod(step.label).slice(0, 3)}</span>
+                    <span class="step-method" style="color: {METHOD_COLORS[getMethod(step.label)] || 'var(--color-text-muted)'}">{getMethod(step.label).slice(0, 3)}</span>
                   {/if}
                   <span class="step-label" title={getUrl(step.label)}>{displayUrl}</span>
                 </div>
@@ -790,9 +790,10 @@
   }
   .flow-icon {
     flex-shrink: 0;
+    color: var(--color-accent-flow);
   }
   .flow-name {
-    font-size: 18px;
+    font-size: var(--text-2xl);
     font-weight: var(--weight-bold);
     color: var(--color-text-heading);
     margin: 0;
@@ -809,7 +810,7 @@
     border-color: var(--color-border);
   }
   .flow-name-input {
-    font-size: 18px;
+    font-size: var(--text-2xl);
     font-weight: var(--weight-bold);
     color: var(--color-text-heading);
     border: 1px solid var(--color-accent-flow);
@@ -824,7 +825,7 @@
     padding: var(--space-2) var(--space-2\.5);
     border: 1px solid var(--color-bg-muted);
     border-radius: var(--radius-default);
-    background: var(--gray-15);
+    background: var(--color-bg-surface);
     color: var(--color-text-secondary);
     font-family: inherit;
     font-size: var(--text-base);
@@ -902,7 +903,7 @@
   .step-card {
     display: flex;
     flex-direction: column;
-    background: var(--gray-15);
+    background: var(--color-bg-surface);
     border: 1px solid var(--color-bg-muted);
     border-radius: var(--radius-lg);
     transition: border-color var(--duration-normal), box-shadow var(--duration-normal);
@@ -923,13 +924,13 @@
     justify-content: center;
     width: 16px;
     flex-shrink: 0;
-    color: var(--zinc-100);
+    color: var(--color-text-placeholder);
     cursor: grab;
     margin-top: var(--space-1);
     transition: color var(--duration-normal);
   }
   .step-card:hover .drag-handle {
-    color: var(--zinc-300);
+    color: var(--color-text-faint);
   }
   .drag-handle:active {
     cursor: grabbing;
@@ -938,7 +939,7 @@
     outline: 2px solid var(--color-accent-flow);
     outline-offset: 2px;
     border-radius: var(--radius-xs);
-    color: var(--slate-350);
+    color: var(--color-text-muted);
   }
   .step-card.dragging {
     opacity: 0.35;
@@ -988,8 +989,8 @@
     margin-bottom: 1px;
   }
   .step-file {
-    font-size: 10.5px;
-    color: var(--zinc-300);
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
     letter-spacing: 0.2px;
     text-transform: uppercase;
     max-width: 280px;
@@ -1000,7 +1001,7 @@
   .step-request-name {
     font-size: var(--text-md);
     font-weight: var(--weight-semibold);
-    color: #2A2A32;
+    color: var(--color-text-heading);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1076,7 +1077,7 @@
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--zinc-100);
+    color: var(--color-text-placeholder);
     font-size: var(--text-xl);
     cursor: pointer;
     display: flex;
@@ -1158,7 +1159,7 @@
   .step-http-status.err { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 6%, transparent); }
   .step-duration {
     font-size: var(--text-xs);
-    color: var(--zinc-300);
+    color: var(--color-text-faint);
   }
 
   /* Broken references */
@@ -1200,7 +1201,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    border-top: 1px solid var(--gray-100);
+    border-top: 1px solid var(--color-divider);
     padding-top: var(--space-5);
   }
   .results-section-title {
@@ -1264,11 +1265,11 @@
     padding: 2px 0;
   }
   .override-section-header.collapsible:hover .override-label {
-    color: var(--slate-450);
+    color: var(--color-text-secondary);
   }
   .override-collapse-icon {
     font-size: var(--text-xs);
-    color: var(--zinc-300);
+    color: var(--color-text-faint);
     transition: transform var(--duration-normal);
     display: inline-block;
     width: 10px;
@@ -1279,16 +1280,16 @@
   }
   .override-count {
     font-size: var(--text-xs);
-    color: var(--zinc-300);
+    color: var(--color-text-faint);
     margin-right: auto;
   }
   .override-section-header .override-add-btn {
     margin-left: auto;
   }
   .override-label {
-    font-size: 10.5px;
+    font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
-    color: var(--slate-350);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
@@ -1331,7 +1332,7 @@
     transition: all var(--duration-normal);
     white-space: nowrap;
   }
-  .override-tab:hover { color: var(--slate-450); }
+  .override-tab:hover { color: var(--color-text-secondary); }
   .override-tab.active {
     color: var(--color-text-heading);
     border-bottom-color: var(--color-primary);
@@ -1366,14 +1367,14 @@
     background: var(--color-bg-surface);
     font-family: inherit;
     font-size: var(--text-base);
-    color: #2A2A32;
+    color: var(--color-text-heading);
     outline: none;
   }
   .override-input:focus {
     border-color: var(--color-accent-flow);
   }
   .override-input::placeholder {
-    color: var(--zinc-100);
+    color: var(--color-text-placeholder);
   }
   .override-add-btn {
     font-size: var(--text-xs);
@@ -1406,8 +1407,8 @@
     border-radius: var(--radius-sm);
     background: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
+    font-size: var(--text-sm);
+    color: var(--color-text-heading);
     outline: none;
   }
   .override-header-key:focus {
@@ -1420,8 +1421,8 @@
     border-radius: var(--radius-sm);
     background: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
+    font-size: var(--text-sm);
+    color: var(--color-text-heading);
     outline: none;
   }
   .override-header-value:focus {
@@ -1429,14 +1430,14 @@
   }
   .override-header-key::placeholder,
   .override-header-value::placeholder {
-    color: var(--zinc-100);
+    color: var(--color-text-placeholder);
   }
   .override-header-remove {
     width: 20px; height: 20px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--zinc-100);
+    color: var(--color-text-placeholder);
     font-size: var(--text-lg);
     cursor: pointer;
     display: flex;
@@ -1454,8 +1455,8 @@
     border-radius: var(--radius-md);
     background: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
+    font-size: var(--text-sm);
+    color: var(--color-text-heading);
     outline: none;
     resize: vertical;
     min-height: 120px;
@@ -1464,7 +1465,7 @@
     border-color: var(--color-accent-flow);
   }
   .override-body::placeholder {
-    color: var(--zinc-100);
+    color: var(--color-text-placeholder);
   }
   .showing-base {
     color: var(--color-text-faint);
@@ -1477,7 +1478,7 @@
     justify-content: flex-end;
   }
   .override-reset-btn {
-    font-size: 10.5px;
+    font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
     padding: 3px var(--space-2\.5);
     border: 1px solid color-mix(in srgb, var(--color-error) 19%, transparent);

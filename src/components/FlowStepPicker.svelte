@@ -127,9 +127,9 @@
                 <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </span>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-              <path d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" fill="#2B7FC518" stroke="#2B7FC5" stroke-width="1.2"/>
-              <path d="M9 2v4h4" stroke="#2B7FC5" stroke-width="1.2"/>
+            <svg class="picker-file-icon" width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M9 2v4h4" stroke="currentColor" stroke-width="1.2"/>
             </svg>
             <span class="picker-file-name">{file.name.replace(/\.(http|rest)$/, '')}</span>
           </div>
@@ -178,7 +178,7 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--gray-100);
+    border-bottom: 1px solid var(--color-divider);
   }
   .picker-title {
     font-size: var(--text-lg);
@@ -201,7 +201,7 @@
   }
   .picker-display-toggle:hover {
     border-color: var(--color-border);
-    color: var(--slate-450);
+    color: var(--color-text-secondary);
     background: var(--color-bg-sidebar);
   }
   .picker-close {
@@ -222,14 +222,14 @@
   }
   .picker-filter {
     padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--gray-100);
+    border-bottom: 1px solid var(--color-divider);
   }
   .picker-filter-input {
     width: 100%;
     padding: 7px var(--space-2\.5);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-default);
-    background: var(--gray-15);
+    background: var(--color-bg-surface);
     color: var(--color-text);
     font-family: inherit;
     font-size: var(--text-base);
@@ -258,7 +258,7 @@
     align-items: center;
     gap: var(--space-1\.5);
     padding: 5px var(--space-2);
-    color: var(--slate-350);
+    color: var(--color-text-muted);
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     cursor: pointer;
@@ -280,6 +280,10 @@
   }
   .picker-chevron.open {
     transform: rotate(90deg);
+  }
+  .picker-file-icon {
+    color: var(--color-info);
+    flex-shrink: 0;
   }
   .picker-file-name {
     overflow: hidden;
