@@ -78,8 +78,8 @@
   .tab-bar {
     display: flex;
     align-items: stretch;
-    background: #F0F0F4;
-    border-bottom: 1px solid #DCDCE2;
+    background: var(--color-bg-sidebar);
+    border-bottom: 1px solid var(--color-divider);
     overflow-x: auto;
     flex-shrink: 0;
     min-height: 32px;
@@ -88,29 +88,29 @@
   .tab {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0 12px;
+    gap: var(--space-1\.5);
+    padding: 0 var(--space-3);
     border: none;
-    border-right: 1px solid #DCDCE2;
+    border-right: 1px solid var(--color-divider);
     background: transparent;
-    color: #888;
+    color: var(--slate-350);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--text-sm);
     cursor: pointer;
     white-space: nowrap;
     max-width: 180px;
     min-width: 0;
-    transition: all 0.1s;
+    transition: all var(--duration-fast);
     position: relative;
   }
   .tab:hover {
-    background: #E8E8EC;
-    color: #555;
+    background: var(--color-bg-hover);
+    color: var(--color-text-secondary);
   }
   .tab.active {
-    background: #FFFFFF;
-    color: #333340;
-    font-weight: 600;
+    background: var(--color-bg-surface);
+    color: var(--color-text);
+    font-weight: var(--weight-semibold);
   }
   .tab.active::after {
     content: '';
@@ -119,14 +119,14 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: #D4900A;
+    background: var(--color-primary);
   }
   .tab.flow-tab.active::after {
-    background: #8040A8;
+    background: var(--color-accent-flow);
   }
   .flow-tab-icon {
     flex-shrink: 0;
-    color: #8040A8;
+    color: var(--color-accent-flow);
     opacity: 0.7;
   }
   .tab.flow-tab.active .flow-tab-icon {
@@ -134,7 +134,7 @@
   }
   .tab.preview {
     font-style: italic;
-    font-weight: 400;
+    font-weight: var(--weight-regular);
   }
   .tab.preview .tab-label {
     opacity: 0.7;
@@ -152,17 +152,17 @@
     width: 16px;
     height: 16px;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     background: transparent;
-    color: #AAA;
-    font-size: 14px;
+    color: var(--zinc-300);
+    font-size: var(--text-lg);
     line-height: 1;
     cursor: pointer;
     padding: 0;
     flex-shrink: 0;
   }
   .tab-close:hover {
-    background: #D4D4D8;
-    color: #333;
+    background: var(--color-border);
+    color: var(--color-text);
   }
 </style>

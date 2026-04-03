@@ -1,3 +1,6 @@
+import './styles/tokens.css';
+import './styles/theme-canvas.css';
+import './styles/shared.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
 

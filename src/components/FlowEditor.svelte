@@ -5,6 +5,7 @@
   import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective } from '../lib/types';
   import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
   import { baseEnvVars, namedResults, dotenvVariables } from '../lib/stores';
+  import { METHOD_COLORS } from '../lib/theme';
 
   export let flow: FlowDefinition;
   export let flowPath: string;
@@ -182,11 +183,6 @@
     }
   }
 
-  const MC: Record<string, string> = {
-    GET: '#2B7FC5', POST: '#3D8B45', PUT: '#9A7520', PATCH: '#A06828',
-    DELETE: '#CC4455', HEAD: '#8040A8', OPTIONS: '#1A8898',
-    TRACE: '#666677', CONNECT: '#CC4455',
-  };
 
   function startEditName() {
     editingName = true;
@@ -412,8 +408,8 @@
   <div class="flow-header">
     <div class="flow-title-row">
       <svg class="flow-icon" width="18" height="18" viewBox="0 0 16 16" fill="none">
-        <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="#8040A8" stroke-width="1.2" fill="#8040A8" fill-opacity="0.1"/>
-        <path d="M6 4.5h4M11.5 6v4" stroke="#8040A8" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.1"/>
+        <path d="M6 4.5h4M11.5 6v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
       {#if editingName}
         <input
@@ -457,8 +453,8 @@
     {#if hasAnyBroken}
       <div class="broken-warning">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-          <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="#D4900A" stroke-width="1.3" fill="#D4900A10"/>
-          <path d="M8 6v3M8 11v.5" stroke="#D4900A" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="currentColor" stroke-width="1.3" fill="currentColor" fill-opacity="0.06"/>
+          <path d="M8 6v3M8 11v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
         <span>{brokenCount} step{brokenCount === 1 ? '' : 's'} reference requests that no longer exist. Remove or re-add them.</span>
       </div>
@@ -549,7 +545,7 @@
                 {/if}
                 <div class="step-url-row">
                   {#if getMethod(step.label)}
-                    <span class="step-method" style="color: {MC[getMethod(step.label)] || '#888'}">{getMethod(step.label).slice(0, 3)}</span>
+                    <span class="step-method" style="color: {METHOD_COLORS[getMethod(step.label)] || 'var(--color-text-muted)'}">{getMethod(step.label).slice(0, 3)}</span>
                   {/if}
                   <span class="step-label" title={getUrl(step.label)}>{displayUrl}</span>
                 </div>
@@ -777,28 +773,29 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 24px;
-    gap: 24px;
+    padding: var(--space-6);
+    gap: var(--space-6);
   }
 
   /* Header */
   .flow-header {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .flow-title-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-2\.5);
   }
   .flow-icon {
     flex-shrink: 0;
+    color: var(--color-accent-flow);
   }
   .flow-name {
-    font-size: 18px;
-    font-weight: 700;
-    color: #1A1A2E;
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-bold);
+    color: var(--color-text-heading);
     margin: 0;
     cursor: pointer;
     border: none;
@@ -807,119 +804,119 @@
     font-family: inherit;
     padding: 0;
     text-align: left;
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-normal);
   }
   .flow-name:hover {
-    border-color: #D4D4D8;
+    border-color: var(--color-border);
   }
   .flow-name-input {
-    font-size: 18px;
-    font-weight: 700;
-    color: #1A1A2E;
-    border: 1px solid #8040A8;
-    border-radius: 4px;
-    padding: 2px 8px;
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-bold);
+    color: var(--color-text-heading);
+    border: 1px solid var(--color-accent-flow);
+    border-radius: var(--radius-sm);
+    padding: 2px var(--space-2);
     font-family: inherit;
     outline: none;
     flex: 1;
     min-width: 0;
   }
   .flow-description {
-    padding: 8px 10px;
-    border: 1px solid #E4E4EA;
-    border-radius: 6px;
-    background: #FAFAFA;
-    color: #555;
+    padding: var(--space-2) var(--space-2\.5);
+    border: 1px solid var(--color-bg-muted);
+    border-radius: var(--radius-default);
+    background: var(--color-bg-surface);
+    color: var(--color-text-secondary);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-base);
     line-height: 1.5;
     resize: vertical;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-normal);
   }
   .flow-description:focus {
-    border-color: #8040A8;
+    border-color: var(--color-accent-flow);
   }
   .flow-description::placeholder {
-    color: #BBB;
+    color: var(--color-text-placeholder);
   }
 
   /* Steps */
   .flow-steps-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .steps-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .steps-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: #333340;
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    color: var(--color-text);
   }
   .steps-count {
-    font-size: 10px;
-    color: #999;
-    background: #F0F0F4;
-    padding: 1px 6px;
-    border-radius: 8px;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
+    background: var(--color-bg-sidebar);
+    padding: 1px var(--space-1\.5);
+    border-radius: var(--radius-lg);
   }
   .btn-add-step {
     margin-left: auto;
-    padding: 4px 12px;
-    border: 1px solid #8040A830;
-    border-radius: 5px;
-    background: #8040A810;
-    color: #8040A8;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--color-accent-flow) 19%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent);
+    color: var(--color-accent-flow);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .btn-add-step:hover {
-    border-color: #8040A8;
-    background: #8040A820;
+    border-color: var(--color-accent-flow);
+    background: color-mix(in srgb, var(--color-accent-flow) 13%, transparent);
   }
   .steps-empty {
-    padding: 24px;
-    border: 1px dashed #DCDCE2;
-    border-radius: 8px;
+    padding: var(--space-6);
+    border: 1px dashed var(--color-divider);
+    border-radius: var(--radius-lg);
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-2\.5);
   }
   .steps-empty-text {
-    font-size: 12px;
-    color: #999;
+    font-size: var(--text-base);
+    color: var(--color-text-faint);
   }
   .steps-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-1\.5);
   }
   .step-card {
     display: flex;
     flex-direction: column;
-    background: #FAFAFA;
-    border: 1px solid #E4E4EA;
-    border-radius: 8px;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-bg-muted);
+    border-radius: var(--radius-lg);
+    transition: border-color var(--duration-normal), box-shadow var(--duration-normal);
   }
   .step-card:hover {
-    border-color: #D4D4D8;
+    border-color: var(--color-border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   }
   .step-card-row {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 12px 14px;
+    gap: var(--space-2\.5);
+    padding: var(--space-3) var(--space-3\.5);
   }
   .drag-handle {
     display: flex;
@@ -927,22 +924,22 @@
     justify-content: center;
     width: 16px;
     flex-shrink: 0;
-    color: #CCC;
+    color: var(--color-text-placeholder);
     cursor: grab;
-    margin-top: 4px;
-    transition: color 0.15s;
+    margin-top: var(--space-1);
+    transition: color var(--duration-normal);
   }
   .step-card:hover .drag-handle {
-    color: #AAA;
+    color: var(--color-text-faint);
   }
   .drag-handle:active {
     cursor: grabbing;
   }
   .drag-handle:focus-visible {
-    outline: 2px solid #8040A8;
+    outline: 2px solid var(--color-accent-flow);
     outline-offset: 2px;
-    border-radius: 3px;
-    color: #888;
+    border-radius: var(--radius-xs);
+    color: var(--color-text-muted);
   }
   .step-card.dragging {
     opacity: 0.35;
@@ -961,14 +958,14 @@
     right: 0;
     top: -1.5px;
     height: 3px;
-    background: #8040A8;
+    background: var(--color-accent-flow);
     border-radius: 2px;
   }
   .step-number {
-    font-size: 11px;
-    font-weight: 700;
-    color: #8040A8;
-    background: #8040A80D;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    color: var(--color-accent-flow);
+    background: color-mix(in srgb, var(--color-accent-flow) 5%, transparent);
     width: 24px;
     height: 24px;
     display: flex;
@@ -988,12 +985,12 @@
   .step-top-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
     margin-bottom: 1px;
   }
   .step-file {
-    font-size: 10.5px;
-    color: #AAA;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
     letter-spacing: 0.2px;
     text-transform: uppercase;
     max-width: 280px;
@@ -1002,9 +999,9 @@
     white-space: nowrap;
   }
   .step-request-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: #2A2A32;
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-heading);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1013,19 +1010,19 @@
   .step-url-row {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: var(--space-1\.5);
   }
   .step-method {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
     letter-spacing: 0.3px;
     min-width: 30px;
     flex-shrink: 0;
   }
   .step-label {
-    font-size: 12px;
-    color: #777;
-    font-weight: 400;
+    font-size: var(--text-base);
+    color: var(--color-text-muted);
+    font-weight: var(--weight-regular);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1039,13 +1036,13 @@
     padding-left: 36px;
   }
   .step-resolved-url .resolved-arrow {
-    font-size: 11px;
-    color: #BBB;
+    font-size: var(--text-sm);
+    color: var(--color-text-placeholder);
     flex-shrink: 0;
   }
   .step-resolved-url .resolved-value {
-    font-size: 11px;
-    color: #3D8B45;
+    font-size: var(--text-sm);
+    color: var(--color-success);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1054,92 +1051,92 @@
   .step-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
     flex-shrink: 0;
     margin-top: 3px;
   }
   .btn-continue-toggle {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 4px;
-    border: 1px solid #DCDCE2;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-divider);
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .btn-continue-toggle.active {
-    border-color: #D4900A50;
-    background: #D4900A10;
-    color: #D4900A;
+    border-color: color-mix(in srgb, var(--color-primary) 31%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    color: var(--color-primary);
   }
   .btn-remove-step {
     width: 22px; height: 22px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #CCC;
-    font-size: 16px;
+    color: var(--color-text-placeholder);
+    font-size: var(--text-xl);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     visibility: hidden;
-    transition: all 0.1s;
+    transition: all var(--duration-fast);
   }
   .step-card:hover .btn-remove-step {
     visibility: visible;
   }
   .btn-remove-step:hover {
-    background: #CC445518;
-    color: #CC4455;
+    background: color-mix(in srgb, var(--color-error) 9%, transparent);
+    color: var(--color-error);
   }
 
   /* Run button */
   .btn-run-flow {
-    padding: 4px 14px;
-    border: 1px solid #3D8B4540;
-    border-radius: 5px;
-    background: #3D8B4510;
-    color: #3D8B45;
+    padding: var(--space-1) var(--space-3\.5);
+    border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-success) 6%, transparent);
+    color: var(--color-success);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .btn-run-flow:hover {
-    border-color: #3D8B45;
-    background: #3D8B4520;
+    border-color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 13%, transparent);
   }
   .btn-run-flow.stopping {
-    border-color: #CC445540;
-    background: #CC445510;
-    color: #CC4455;
+    border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
+    background: color-mix(in srgb, var(--color-error) 6%, transparent);
+    color: var(--color-error);
   }
   .btn-run-flow.stopping:hover {
-    border-color: #CC4455;
-    background: #CC445520;
+    border-color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 13%, transparent);
   }
 
   /* Step status */
-  .step-card.step-passed { border-color: #3D8B4540; }
-  .step-card.step-failed { border-color: #CC445540; }
-  .step-card.step-running { border-color: #D4900A60; }
+  .step-card.step-passed { border-color: color-mix(in srgb, var(--color-success) 25%, transparent); }
+  .step-card.step-failed { border-color: color-mix(in srgb, var(--color-error) 25%, transparent); }
+  .step-card.step-running { border-color: color-mix(in srgb, var(--color-primary) 38%, transparent); }
   .step-card.step-skipped { opacity: 0.5; }
 
   .step-status-info {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     flex-shrink: 0;
   }
   .step-status-icon {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
     width: 16px;
     height: 16px;
     display: flex;
@@ -1148,50 +1145,50 @@
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .step-status-icon.passed { color: #3D8B45; background: #3D8B4515; }
-  .step-status-icon.failed { color: #CC4455; background: #CC445515; }
-  .step-status-icon.running { color: #D4900A; background: #D4900A15; }
-  .step-status-icon.skipped { color: #999; background: #F0F0F4; }
+  .step-status-icon.passed { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 8%, transparent); }
+  .step-status-icon.failed { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 8%, transparent); }
+  .step-status-icon.running { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+  .step-status-icon.skipped { color: var(--color-text-faint); background: var(--color-bg-sidebar); }
   .step-http-status {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 1px 4px;
-    border-radius: 3px;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-xs);
   }
-  .step-http-status.ok { color: #3D8B45; background: #3D8B4510; }
-  .step-http-status.err { color: #CC4455; background: #CC445510; }
+  .step-http-status.ok { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
+  .step-http-status.err { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 6%, transparent); }
   .step-duration {
-    font-size: 10px;
-    color: #AAA;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
   }
 
   /* Broken references */
   .broken-warning {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: #D4900A08;
-    border: 1px solid #D4900A30;
-    border-radius: 6px;
-    font-size: 11px;
-    color: #9A7520;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: color-mix(in srgb, var(--color-primary) 3%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 19%, transparent);
+    border-radius: var(--radius-default);
+    font-size: var(--text-sm);
+    color: var(--color-warning);
   }
   .step-card.step-broken {
-    border-color: #D4900A50;
-    background: #D4900A06;
+    border-color: color-mix(in srgb, var(--color-primary) 31%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 2%, transparent);
   }
   .step-card.step-broken .step-label {
     text-decoration: line-through;
     opacity: 0.6;
   }
   .step-broken-badge {
-    font-size: 9px;
-    font-weight: 600;
-    color: #D4900A;
-    background: #D4900A15;
-    padding: 1px 6px;
-    border-radius: 3px;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    padding: 1px var(--space-1\.5);
+    border-radius: var(--radius-xs);
     flex-shrink: 0;
   }
   .btn-run-flow:disabled {
@@ -1203,64 +1200,64 @@
   .flow-results-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    border-top: 1px solid #EDEDF0;
-    padding-top: 20px;
+    gap: var(--space-2);
+    border-top: 1px solid var(--color-divider);
+    padding-top: var(--space-5);
   }
   .results-section-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: #333340;
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    color: var(--color-text);
   }
 
   /* Override toggle button */
   .btn-override-toggle {
     width: 24px; height: 24px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #BBB;
+    color: var(--color-text-placeholder);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .btn-override-toggle .toggle-arrow {
-    transition: transform 0.15s;
+    transition: transform var(--duration-normal);
   }
   .btn-override-toggle.expanded .toggle-arrow {
     transform: rotate(90deg);
   }
   .btn-override-toggle:hover {
-    color: #8040A8;
-    background: #8040A808;
+    color: var(--color-accent-flow);
+    background: color-mix(in srgb, var(--color-accent-flow) 3%, transparent);
   }
   .btn-override-toggle.active {
-    color: #8040A8;
+    color: var(--color-accent-flow);
   }
   .btn-override-toggle.expanded {
-    color: #8040A8;
+    color: var(--color-accent-flow);
   }
 
   /* Override panel */
   .override-panel {
-    border-top: 1px solid #E4E4EA;
-    padding: 12px 14px 12px 48px;
+    border-top: 1px solid var(--color-bg-muted);
+    padding: var(--space-3) var(--space-3\.5) var(--space-3) 48px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-2\.5);
   }
   .override-section {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .override-section-header {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
   }
   .override-section-header.collapsible {
     cursor: pointer;
@@ -1268,12 +1265,12 @@
     padding: 2px 0;
   }
   .override-section-header.collapsible:hover .override-label {
-    color: #666;
+    color: var(--color-text-secondary);
   }
   .override-collapse-icon {
-    font-size: 10px;
-    color: #AAA;
-    transition: transform 0.15s;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
+    transition: transform var(--duration-normal);
     display: inline-block;
     width: 10px;
     flex-shrink: 0;
@@ -1282,17 +1279,17 @@
     transform: rotate(90deg);
   }
   .override-count {
-    font-size: 10px;
-    color: #AAA;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
     margin-right: auto;
   }
   .override-section-header .override-add-btn {
     margin-left: auto;
   }
   .override-label {
-    font-size: 10.5px;
-    font-weight: 600;
-    color: #888;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
@@ -1301,8 +1298,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #8040A8;
-    margin-left: 4px;
+    background: var(--color-accent-flow);
+    margin-left: var(--space-1);
     vertical-align: middle;
     position: relative;
     top: -1px;
@@ -1317,46 +1314,46 @@
     display: flex;
     align-items: center;
     gap: 0;
-    border-bottom: 1px solid #E4E4EA;
+    border-bottom: 1px solid var(--color-bg-muted);
   }
   .override-tab {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 6px 14px;
+    gap: var(--space-1);
+    padding: var(--space-1\.5) var(--space-3\.5);
     border: none;
     border-bottom: 2px solid transparent;
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
     white-space: nowrap;
   }
-  .override-tab:hover { color: #666; }
+  .override-tab:hover { color: var(--color-text-secondary); }
   .override-tab.active {
-    color: #1A1A2E;
-    border-bottom-color: #D4900A;
+    color: var(--color-text-heading);
+    border-bottom-color: var(--color-primary);
   }
   .override-tab-count {
-    background: #E4E4EA;
-    color: #777;
-    font-size: 9px;
+    background: var(--color-bg-muted);
+    color: var(--color-text-muted);
+    font-size: var(--text-2xs);
     padding: 1px 5px;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
   }
-.override-tab-content {
-    padding-top: 8px;
+  .override-tab-content {
+    padding-top: var(--space-2);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .override-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .override-row .override-label {
     min-width: 50px;
@@ -1364,84 +1361,84 @@
   }
   .override-input {
     flex: 1;
-    padding: 5px 8px;
-    border: 1px solid #DCDCE2;
-    border-radius: 5px;
-    background: #FFF;
+    padding: 5px var(--space-2);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 12px;
-    color: #2A2A32;
+    font-size: var(--text-base);
+    color: var(--color-text-heading);
     outline: none;
   }
   .override-input:focus {
-    border-color: #8040A8;
+    border-color: var(--color-accent-flow);
   }
   .override-input::placeholder {
-    color: #CCC;
+    color: var(--color-text-placeholder);
   }
   .override-add-btn {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border: 1px solid #DCDCE2;
-    border-radius: 4px;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    padding: 2px var(--space-2);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
+    color: var(--color-text-faint);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .override-add-btn:hover {
-    border-color: #8040A860;
-    color: #8040A8;
+    border-color: color-mix(in srgb, var(--color-accent-flow) 38%, transparent);
+    color: var(--color-accent-flow);
   }
   .override-header-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1\.5);
   }
   .override-header-check {
     flex-shrink: 0;
-    accent-color: #8040A8;
+    accent-color: var(--color-accent-flow);
   }
   .override-header-key {
     flex: 0 0 35%;
-    padding: 4px 8px;
-    border: 1px solid #DCDCE2;
-    border-radius: 4px;
-    background: #FFF;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
+    font-size: var(--text-sm);
+    color: var(--color-text-heading);
     outline: none;
   }
   .override-header-key:focus {
-    border-color: #8040A8;
+    border-color: var(--color-accent-flow);
   }
   .override-header-value {
     flex: 1;
-    padding: 4px 8px;
-    border: 1px solid #DCDCE2;
-    border-radius: 4px;
-    background: #FFF;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
+    font-size: var(--text-sm);
+    color: var(--color-text-heading);
     outline: none;
   }
   .override-header-value:focus {
-    border-color: #8040A8;
+    border-color: var(--color-accent-flow);
   }
   .override-header-key::placeholder,
   .override-header-value::placeholder {
-    color: #CCC;
+    color: var(--color-text-placeholder);
   }
   .override-header-remove {
     width: 20px; height: 20px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #CCC;
-    font-size: 14px;
+    color: var(--color-text-placeholder);
+    font-size: var(--text-lg);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1449,29 +1446,29 @@
     flex-shrink: 0;
   }
   .override-header-remove:hover {
-    background: #CC445518;
-    color: #CC4455;
+    background: color-mix(in srgb, var(--color-error) 9%, transparent);
+    color: var(--color-error);
   }
   .override-body {
-    padding: 6px 8px;
-    border: 1px solid #DCDCE2;
-    border-radius: 5px;
-    background: #FFF;
+    padding: var(--space-1\.5) var(--space-2);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
     font-family: inherit;
-    font-size: 11.5px;
-    color: #2A2A32;
+    font-size: var(--text-sm);
+    color: var(--color-text-heading);
     outline: none;
     resize: vertical;
     min-height: 120px;
   }
   .override-body:focus {
-    border-color: #8040A8;
+    border-color: var(--color-accent-flow);
   }
   .override-body::placeholder {
-    color: #CCC;
+    color: var(--color-text-placeholder);
   }
   .showing-base {
-    color: #999;
+    color: var(--color-text-faint);
   }
   .showing-base:focus {
     color: inherit;
@@ -1481,18 +1478,18 @@
     justify-content: flex-end;
   }
   .override-reset-btn {
-    font-size: 10.5px;
-    font-weight: 600;
-    padding: 3px 10px;
-    border: 1px solid #CC445530;
-    border-radius: 4px;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    padding: 3px var(--space-2\.5);
+    border: 1px solid color-mix(in srgb, var(--color-error) 19%, transparent);
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #CC4455;
+    color: var(--color-error);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .override-reset-btn:hover {
-    border-color: #CC4455;
-    background: #CC445510;
+    border-color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 6%, transparent);
   }
 </style>

@@ -69,34 +69,34 @@
   .dep-bar {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    background: #F0F0F4;
-    border-radius: 6px;
+    gap: var(--space-2);
+    padding: var(--space-1\.5) var(--space-2\.5);
+    background: var(--color-bg-sidebar);
+    border-radius: var(--radius-default);
     flex-wrap: wrap;
   }
 
   .dep-label {
-    font-size: 10px;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #999;
+    color: var(--color-text-faint);
     flex-shrink: 0;
   }
 
   .dep-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 100px;
-    font-size: 11px;
+    gap: var(--space-1\.5);
+    padding: var(--space-0\.5) var(--space-2\.5);
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
   }
   .dep-pill.sent {
-    background: #3D8B4515;
+    background: color-mix(in srgb, var(--color-success) 8%, transparent);
   }
   .dep-pill.unsent {
-    background: #9A752015;
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent);
   }
 
   .dep-dot {
@@ -104,35 +104,35 @@
     height: 6px;
     border-radius: 50%;
   }
-  .sent .dep-dot { background: #3D8B45; }
-  .unsent .dep-dot { background: #9A7520; }
+  .sent .dep-dot { background: var(--color-success); }
+  .unsent .dep-dot { background: var(--color-warning); }
 
   .dep-name {
-    font-weight: 500;
+    font-weight: var(--weight-medium);
   }
-  .sent .dep-name { color: #3D8B45; }
-  .unsent .dep-name { color: #9A7520; }
+  .sent .dep-name { color: var(--color-success); }
+  .unsent .dep-name { color: var(--color-warning); }
 
   .dep-status {
     opacity: 0.6;
   }
-  .sent .dep-status { color: #3D8B45; }
-  .unsent .dep-status { color: #9A7520; }
+  .sent .dep-status { color: var(--color-success); }
+  .unsent .dep-status { color: var(--color-warning); }
 
   .btn-run-all {
     margin-left: auto;
-    padding: 3px 10px;
-    border: 1px solid #D4D4D8;
-    border-radius: 6px;
+    padding: var(--space-0\.5) var(--space-2\.5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
     background: transparent;
-    color: #777;
+    color: var(--color-text-muted);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--text-sm);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--duration-normal);
   }
   .btn-run-all:hover {
-    border-color: #D4900A;
-    color: #D4900A;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 </style>
