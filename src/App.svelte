@@ -240,50 +240,62 @@
 
   // ─── Open Folder (scan for .http files) ───
 
+  async function openFolderByPath(rootPath: string) {
+    const discovered = await scanForHttpFiles(rootPath, rootPath);
+    const tree = buildWorkspaceTree(discovered);
+    const rootName = await basename(rootPath);
+
+    workspace.set({ rootPath, rootName, tree });
+    selectedLocation.set(null);
+    currentResponse.set(null);
+    namedResults.set({});
+    tabs.set([]);
+    currentSentRequest.set(null);
+
+    // Reset environment state before loading new env files
+    envFile.set(null);
+    userEnvFile.set(null);
+    activeEnvironment.set(null);
+
+    // Auto-discover env files from workspace root
+    await tryLoadEnvFiles(rootPath);
+
+    // Discover test flows and load run history
+    try {
+      const discoveredFlows = await scanForFlowFiles(rootPath, rootPath);
+      const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
+      for (const df of discoveredFlows) {
+        flowMap[df.relativePath] = df.flow;
+      }
+      flows.set(flowMap);
+    } catch { /* no flows yet */ }
+
+    try {
+      const history = await loadFlowHistory(rootPath);
+      flowRunHistory.set(history);
+    } catch { /* no history yet */ }
+
+    // Reset flow tabs
+    flowTabs.set([]);
+    activeFlowTabPath.set(null);
+  }
+
   async function openFolder() {
     try {
       const rootPath = await open({ directory: true, title: 'Select workspace folder' });
       if (!rootPath) return;
-
-      const discovered = await scanForHttpFiles(rootPath as string, rootPath as string);
-      const tree = buildWorkspaceTree(discovered);
-      const rootName = await basename(rootPath as string);
-
-      workspace.set({ rootPath: rootPath as string, rootName, tree });
-      selectedLocation.set(null);
-      currentResponse.set(null);
-      namedResults.set({});
-      tabs.set([]);
-      currentSentRequest.set(null);
-
-      // Reset environment state before loading new env files
-      envFile.set(null);
-      userEnvFile.set(null);
-      activeEnvironment.set(null);
-
-      // Auto-discover env files from workspace root
-      await tryLoadEnvFiles(rootPath as string);
-
-      // Discover test flows and load run history
-      try {
-        const discoveredFlows = await scanForFlowFiles(rootPath as string, rootPath as string);
-        const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
-        for (const df of discoveredFlows) {
-          flowMap[df.relativePath] = df.flow;
-        }
-        flows.set(flowMap);
-      } catch { /* no flows yet */ }
-
-      try {
-        const history = await loadFlowHistory(rootPath as string);
-        flowRunHistory.set(history);
-      } catch { /* no history yet */ }
-
-      // Reset flow tabs
-      flowTabs.set([]);
-      activeFlowTabPath.set(null);
+      await openFolderByPath(rootPath as string);
     } catch (e: any) {
       addToast(`Failed to open folder: ${e.message || e}`, 'error');
+    }
+  }
+
+  async function openGettingStarted() {
+    try {
+      const path = await invoke<string>('extract_getting_started');
+      await openFolderByPath(path);
+    } catch (e: any) {
+      addToast(`Failed to open getting-started folder: ${e.message || e}`, 'error');
     }
   }
 
@@ -967,6 +979,7 @@
         flows={$flows}
         activeFlowPath={$activeFlowTabPath}
         on:openFolder={openFolder}
+        on:openGettingStarted={openGettingStarted}
         on:importCollection={() => showImportCollectionModal = true}
         on:select={handleSelect}
         on:pinRequest={handlePinRequest}

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const MAX_RESPONSE_BYTES: usize = 50 * 1024 * 1024; // 50 MB
@@ -88,6 +90,61 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
     })
 }
 
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+fn should_update(source: &Path, target: &Path) -> bool {
+    let bundled = source.join(".version");
+    let existing = target.join(".version");
+    match (std::fs::read_to_string(bundled), std::fs::read_to_string(existing)) {
+        (Ok(src_ver), Ok(dst_ver)) => src_ver.trim() != dst_ver.trim(),
+        _ => true,
+    }
+}
+
+#[tauri::command]
+async fn extract_getting_started(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to resolve resource dir: {}", e))?;
+    let source = resource_dir.join("getting-started");
+
+    let documents = app_handle
+        .path()
+        .document_dir()
+        .or_else(|_| {
+            // Fallback for Linux without xdg-user-dirs
+            std::env::var("HOME")
+                .map(std::path::PathBuf::from)
+                .map(|h| h.join("Documents"))
+                .map_err(|e| tauri::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    e.to_string(),
+                )))
+        })
+        .map_err(|e| format!("Failed to resolve document dir: {}", e))?;
+    let target = documents.join("Psychic Broccoli").join("getting-started");
+
+    if should_update(&source, &target) {
+        copy_dir_recursive(&source, &target)
+            .map_err(|e| format!("Failed to copy getting-started: {}", e))?;
+    }
+
+    Ok(target.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -95,7 +152,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![http_request])
+        .invoke_handler(tauri::generate_handler![http_request, extract_getting_started])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

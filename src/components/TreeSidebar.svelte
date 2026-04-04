@@ -132,13 +132,15 @@
       </select>
       <button
         class="btn-add-env"
-        on:click={() => { showAddEnv = !showAddEnv; }}
-        title="Add environment"
+        class:disabled={!hasWorkspace}
+        on:click={() => { if (hasWorkspace) showAddEnv = !showAddEnv; }}
+        title={hasWorkspace ? 'Add environment' : 'Open a folder first'}
       >+</button>
       <button
         class="btn-edit-env"
-        on:click={() => dispatch('editEnv')}
-        title="Edit environment variables"
+        class:disabled={!hasWorkspace}
+        on:click={() => { if (hasWorkspace) dispatch('editEnv'); }}
+        title={hasWorkspace ? 'Edit environment variables' : 'Open a folder first'}
       >
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
           <path d="M6.9 1.7a1.1 1.1 0 012.2 0l.15.9a.7.7 0 00.46.5l.22.08a.7.7 0 00.67-.07l.76-.52a1.1 1.1 0 011.55 1.56l-.52.75a.7.7 0 00-.07.68l.08.22a.7.7 0 00.5.45l.9.16a1.1 1.1 0 010 2.2l-.9.15a.7.7 0 00-.5.46l-.08.22a.7.7 0 00.07.67l.52.76a1.1 1.1 0 01-1.56 1.55l-.75-.52a.7.7 0 00-.68-.07l-.22.08a.7.7 0 00-.45.5l-.16.9a1.1 1.1 0 01-2.2 0l-.15-.9a.7.7 0 00-.46-.5l-.22-.08a.7.7 0 00-.67.07l-.76.52a1.1 1.1 0 01-1.55-1.56l.52-.75a.7.7 0 00.07-.68l-.08-.22a.7.7 0 00-.5-.45l-.9-.16a1.1 1.1 0 010-2.2l.9-.15a.7.7 0 00.5-.46l.08-.22a.7.7 0 00-.07-.67l-.52-.76A1.1 1.1 0 014.4 2.56l.75.52a.7.7 0 00.68.07l.22-.08a.7.7 0 00.45-.5l.16-.9z" stroke="currentColor" stroke-width="1.2"/>
@@ -147,8 +149,9 @@
       </button>
       <button
         class="btn-edit-env"
-        on:click={() => dispatch('openVarInspector')}
-        title="Variable inspector"
+        class:disabled={!hasWorkspace}
+        on:click={() => { if (hasWorkspace) dispatch('openVarInspector'); }}
+        title={hasWorkspace ? 'Variable inspector' : 'Open a folder first'}
       >
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
           <text x="1" y="12" font-size="11" font-weight="700" fill="currentColor" font-family="system-ui">x</text>
@@ -275,8 +278,9 @@
     <button
       class="btn-display-mode"
       class:active={sortByUrl}
-      on:click={() => sortByUrl = !sortByUrl}
-      title={sortByUrl ? 'Show original order' : 'Sort by URL'}
+      class:disabled={!hasWorkspace}
+      on:click={() => { if (hasWorkspace) sortByUrl = !sortByUrl; }}
+      title={!hasWorkspace ? 'Open a folder first' : sortByUrl ? 'Show original order' : 'Sort by URL'}
     >
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
         <text x="0" y="7" font-size="6" font-weight="700" fill="currentColor" font-family="system-ui">A</text>
@@ -286,8 +290,9 @@
     </button>
     <button
       class="btn-display-mode"
-      on:click={() => displayMode = displayMode === 'name' ? 'url' : 'name'}
-      title={displayMode === 'name' ? 'Show URL paths' : 'Show request names'}
+      class:disabled={!hasWorkspace}
+      on:click={() => { if (hasWorkspace) displayMode = displayMode === 'name' ? 'url' : 'name'; }}
+      title={!hasWorkspace ? 'Open a folder first' : displayMode === 'name' ? 'Show URL paths' : 'Show request names'}
     >
       {#if displayMode === 'name'}
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -307,6 +312,7 @@
         <span class="empty-icon">📂</span>
         <span class="empty-text">Open a folder to browse .http files</span>
         <button class="btn-open" on:click={() => dispatch('openFolder')}>Open Folder</button>
+        <button class="btn-getting-started" on:click={() => dispatch('openGettingStarted')}>Getting Started</button>
       </div>
     {:else if displayTree.length === 0}
       <div class="empty-filter">
@@ -414,11 +420,17 @@
   .btn-import:hover {
     border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent);
   }
-  .btn-import.disabled {
+  .btn-import.disabled,
+  .btn-add-env.disabled,
+  .btn-edit-env.disabled,
+  .btn-display-mode.disabled {
     opacity: 0.35;
     cursor: default;
   }
-  .btn-import.disabled:hover {
+  .btn-import.disabled:hover,
+  .btn-add-env.disabled:hover,
+  .btn-edit-env.disabled:hover,
+  .btn-display-mode.disabled:hover {
     border-color: var(--color-border); color: var(--slate-350); background: transparent;
   }
 
@@ -844,6 +856,12 @@
     font-size: var(--text-base); font-weight: var(--weight-semibold); cursor: pointer; margin-top: var(--space-1);
   }
   .btn-open:hover { background: color-mix(in srgb, var(--color-primary) 12%, transparent); border-color: var(--color-primary); }
+  .btn-getting-started {
+    padding: var(--space-1) var(--space-3); border: none; border-radius: var(--radius-default);
+    background: transparent; color: var(--slate-350); font-family: inherit;
+    font-size: var(--text-sm); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .btn-getting-started:hover { color: var(--color-primary); }
 
   /* Sidebar footer */
   .sidebar-footer {
