@@ -307,6 +307,7 @@
         <span class="empty-icon">📂</span>
         <span class="empty-text">Open a folder to browse .http files</span>
         <button class="btn-open" on:click={() => dispatch('openFolder')}>Open Folder</button>
+        <button class="btn-getting-started" on:click={() => dispatch('openGettingStarted')}>Getting Started</button>
       </div>
     {:else if displayTree.length === 0}
       <div class="empty-filter">
@@ -844,6 +845,12 @@
     font-size: var(--text-base); font-weight: var(--weight-semibold); cursor: pointer; margin-top: var(--space-1);
   }
   .btn-open:hover { background: color-mix(in srgb, var(--color-primary) 12%, transparent); border-color: var(--color-primary); }
+  .btn-getting-started {
+    padding: var(--space-1) var(--space-3); border: none; border-radius: var(--radius-default);
+    background: transparent; color: var(--slate-350); font-family: inherit;
+    font-size: var(--text-sm); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .btn-getting-started:hover { color: var(--color-primary); }
 
   /* Sidebar footer */
   .sidebar-footer {
