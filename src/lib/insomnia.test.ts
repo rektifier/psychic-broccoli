@@ -27,8 +27,9 @@ describe('importInsomniaExport - v4 JSON', () => {
     ]);
     const result = importInsomniaExport(content);
     expect(result.files).toHaveLength(2);
-    expect(result.files.map(f => f.relativePath)).toContain('Auth.http');
-    expect(result.files.map(f => f.relativePath)).toContain('Users.http');
+    const filePaths = result.files.map(f => f.relativePath);
+    expect(filePaths).toContain('Auth.http');
+    expect(filePaths).toContain('Users.http');
   });
 
   it('extracts base environment variables', () => {

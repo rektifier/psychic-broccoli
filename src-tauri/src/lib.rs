@@ -76,7 +76,10 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
 
     // Stream the response body with a size limit to prevent OOM from
     // malicious or unexpectedly large responses.
-    let mut body_bytes = Vec::new();
+    let capacity = res.content_length()
+        .map(|len| len.min(MAX_RESPONSE_BYTES as u64) as usize)
+        .unwrap_or(0);
+    let mut body_bytes = Vec::with_capacity(capacity);
     let mut stream = res.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| e.to_string())?;

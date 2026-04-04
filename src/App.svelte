@@ -343,22 +343,14 @@
 
   // ─── Import Collections ───
 
-  /** Validate that a path segment does not allow directory traversal. */
-  function validatePathSegment(seg: string): void {
-    if (!seg || seg === '..' || seg === '.' || seg.includes('\0') || seg.includes('\\') || seg.includes('/')) {
-      throw new Error(`Invalid path segment: "${seg}"`);
-    }
-  }
-
-  /** Join path segments onto a root, validating each segment to prevent traversal. */
+  /** Validate and join a relative path onto a root, preventing directory traversal. */
   async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
-    const segments = relativePath.split('/');
-    let outPath = rootPath;
-    for (const seg of segments) {
-      validatePathSegment(seg);
-      outPath = await join(outPath, seg);
+    for (const seg of relativePath.split('/')) {
+      if (!seg || seg === '..' || seg === '.' || seg.includes('\0') || seg.includes('\\') || seg.includes('/')) {
+        throw new Error(`Invalid path segment: "${seg}"`);
+      }
     }
-    return outPath;
+    return join(rootPath, relativePath);
   }
 
   async function writeImportedFiles(result: ImportResult): Promise<number> {
