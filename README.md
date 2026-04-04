@@ -5,14 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 
+
+
+
 A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Svelte**, **TypeScript**, and **Rust**. Psychic Broccoli reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client — giving you a fast, native alternative to browser-based API tools.
 
 > **No CORS. No Electron. No bloat.** HTTP requests are dispatched from Rust via `reqwest`, so you never hit browser sandbox restrictions.
 
 
-![File tree and request editor](https://github.com/user-attachments/assets/f6d7ef96-3fe2-450a-8f07-7008599053c3)
-![Response viewer with headers and body](https://github.com/user-attachments/assets/f5253b75-ae2b-4637-94ac-2ac42c8461d5)
-![Environment editor and variable picker](https://github.com/user-attachments/assets/e7bd9aac-3884-4559-91ed-42641fe678d1)
+![File tree and request editor](https://github.com/user-attachments/assets/7301b8f1-671d-4b16-8400-d9db9fc69ff6)
+![Test Flow and Steps](https://github.com/user-attachments/assets/6e47472e-8be9-4c70-9b26-6aac6cf92916)
 
 ---
 
