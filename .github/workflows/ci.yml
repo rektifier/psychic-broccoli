@@ -44,5 +44,8 @@ jobs:
       - name: TypeScript and Svelte check
         run: pnpm check
 
+      - name: Run tests
+        run: pnpm test
+
       - name: Rust check
         run: cargo check --manifest-path src-tauri/Cargo.toml
