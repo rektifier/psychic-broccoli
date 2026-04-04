@@ -1,4 +1,5 @@
 {
+  "_comment": "Filesystem scopes use ** because the user selects an arbitrary workspace directory via the native dialog. Path traversal is guarded in application code (safeJoinPath).",
   "permissions": [
     "core:default",
     "dialog:default",

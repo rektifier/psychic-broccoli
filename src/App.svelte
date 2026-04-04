@@ -343,18 +343,30 @@
 
   // ─── Import Collections ───
 
+  /** Validate that a path segment does not allow directory traversal. */
+  function validatePathSegment(seg: string): void {
+    if (!seg || seg === '..' || seg === '.' || seg.includes('\0') || seg.includes('\\') || seg.includes('/')) {
+      throw new Error(`Invalid path segment: "${seg}"`);
+    }
+  }
+
+  /** Join path segments onto a root, validating each segment to prevent traversal. */
+  async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
+    const segments = relativePath.split('/');
+    let outPath = rootPath;
+    for (const seg of segments) {
+      validatePathSegment(seg);
+      outPath = await join(outPath, seg);
+    }
+    return outPath;
+  }
+
   async function writeImportedFiles(result: ImportResult): Promise<number> {
     const rootPath = $workspace.rootPath!;
     const { mkdir } = await import('@tauri-apps/plugin-fs');
     let written = 0;
     for (const file of result.files) {
-      // Split relative path into segments and join individually to handle
-      // forward slashes correctly on Windows
-      const segments = file.relativePath.split('/');
-      let outPath = rootPath;
-      for (const seg of segments) {
-        outPath = await join(outPath, seg);
-      }
+      const outPath = await safeJoinPath(rootPath, file.relativePath);
       const parentDir = await dirname(outPath);
       try {
         await mkdir(parentDir, { recursive: true });
@@ -858,11 +870,7 @@
     if (!rootPath) return;
 
     const { writeFlowFile } = await import('./lib/flowIO');
-    const segments = flowPath.split('/');
-    let absolutePath = rootPath;
-    for (const seg of segments) {
-      absolutePath = await join(absolutePath, seg);
-    }
+    const absolutePath = await safeJoinPath(rootPath, flowPath);
     await writeFlowFile(absolutePath, flow);
     flows.update(f => ({ ...f, [flowPath]: flow }));
 
@@ -900,11 +908,7 @@
 
     try {
       const { remove } = await import('@tauri-apps/plugin-fs');
-      const segments = path.split('/');
-      let absolutePath = rootPath;
-      for (const seg of segments) {
-        absolutePath = await join(absolutePath, seg);
-      }
+      const absolutePath = await safeJoinPath(rootPath, path);
       await remove(absolutePath);
     } catch (err) {
       console.warn('Could not delete flow file:', path, err);
