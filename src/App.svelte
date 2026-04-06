@@ -22,6 +22,7 @@
     pbAssertionResults, pbGlobals,
     keyVaultState, kvConflictPrefs,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
+    addFileToTree, renameFileInTree, editingFilePath,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
@@ -31,7 +32,7 @@
   import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
-    buildWorkspaceTree, createFileNode, getAllFileNodes,
+    buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
     executePbDirectives, parseScriptText, applyRequestMutations,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
@@ -46,7 +47,7 @@
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
+  import { readTextFile, writeTextFile, readDir, rename } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
   import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
@@ -746,6 +747,135 @@
     removeFileFromTree(filePath);
   }
 
+  async function handleCreateFile(e: CustomEvent<string | null>) {
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const folderPath = e.detail || rootPath;
+
+    // Generate unique filename
+    let stem = 'new-request';
+    let fileName = stem + '.http';
+    let filePath = await join(folderPath, fileName);
+    let counter = 2;
+
+    // Check for collisions in the tree
+    const existingNames = new Set<string>();
+    function collectNames(nodes: TreeNode[]) {
+      for (const n of nodes) {
+        if (n.type === 'file') existingNames.add(n.path);
+        if (n.type === 'folder') collectNames(n.children);
+      }
+    }
+    collectNames($workspace.tree);
+
+    while (existingNames.has(filePath)) {
+      fileName = `${stem}-${counter}.http`;
+      filePath = await join(folderPath, fileName);
+      counter++;
+    }
+
+    const fileNode = createEmptyFileNode(filePath, fileName);
+    const content = serializeHttpFile(fileNode.requests, fileNode.variables);
+
+    try {
+      await writeTextFile(filePath, content);
+    } catch (err) {
+      addToast(`Failed to create file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    fileNode.dirty = false;
+    fileNode.savedContent = content;
+    addFileToTree(folderPath === rootPath ? null : folderPath, fileNode);
+    editingFilePath.set(filePath);
+  }
+
+  async function handleRenameFile(e: CustomEvent<{ oldPath: string; newName: string }>) {
+    const { oldPath, newName } = e.detail;
+
+    // If file is dirty, save first
+    const file = findFileInTree($workspace.tree, oldPath);
+    if (file && file.dirty) {
+      try {
+        const content = serializeHttpFile(file.requests, file.variables);
+        await writeTextFile(oldPath, content);
+        markFileSaved(oldPath);
+      } catch (err) {
+        addToast(`Failed to save file before rename: ${err instanceof Error ? err.message : err}`, 'error');
+        return;
+      }
+    }
+
+    const dir = await dirname(oldPath);
+    const newPath = await join(dir, newName);
+
+    try {
+      await rename(oldPath, newPath);
+    } catch (err) {
+      addToast(`Failed to rename file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    renameFileInTree(oldPath, newPath, newName);
+    editingFilePath.set(null);
+  }
+
+  async function handleDuplicateFile(e: CustomEvent<string>) {
+    const sourcePath = e.detail;
+
+    let content: string;
+    try {
+      content = await readTextFile(sourcePath);
+    } catch (err) {
+      addToast(`Failed to read file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    const dir = await dirname(sourcePath);
+    const sourceBase = await basename(sourcePath);
+    const sourceStem = sourceBase.replace(/\.(http|rest)$/, '');
+
+    // Generate unique copy name
+    let copyStem = `${sourceStem} (copy)`;
+    let copyName = copyStem + '.http';
+    let copyPath = await join(dir, copyName);
+    let counter = 2;
+
+    const existingNames = new Set<string>();
+    function collectNames(nodes: TreeNode[]) {
+      for (const n of nodes) {
+        if (n.type === 'file') existingNames.add(n.path);
+        if (n.type === 'folder') collectNames(n.children);
+      }
+    }
+    collectNames($workspace.tree);
+
+    while (existingNames.has(copyPath)) {
+      copyStem = `${sourceStem} (copy ${counter})`;
+      copyName = copyStem + '.http';
+      copyPath = await join(dir, copyName);
+      counter++;
+    }
+
+    try {
+      await writeTextFile(copyPath, content);
+    } catch (err) {
+      addToast(`Failed to duplicate file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    const fileNode = createFileNode(copyPath, copyName, content);
+    const rootPath = $workspace.rootPath;
+    const parentPath = dir === rootPath ? null : dir;
+    addFileToTree(parentPath, fileNode);
+    editingFilePath.set(copyPath);
+  }
+
+  function handleCancelRename() {
+    editingFilePath.set(null);
+  }
+
   function handleToggleFolder(e: CustomEvent<string>) {
     toggleFolder(e.detail);
   }
@@ -1045,6 +1175,7 @@
         selected={$selectedLocation}
         rootName={$workspace.rootName}
         hasWorkspace={!!$workspace.rootPath}
+        editingFilePath={$editingFilePath}
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
         flows={$flows}
@@ -1058,6 +1189,10 @@
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
         on:deleteFile={handleDeleteFile}
+        on:createFile={handleCreateFile}
+        on:renameFile={handleRenameFile}
+        on:duplicateFile={handleDuplicateFile}
+        on:cancelRename={handleCancelRename}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
         on:editEnv={() => showEnvEditor = true}
         on:openVarInspector={() => showVarInspector = true}

@@ -13,6 +13,9 @@
   export let environments: string[] = [];
   export let activeEnv: string | null = null;
 
+  // File management props
+  export let editingFilePath: string | null = null;
+
   // Flow props
   export let flows: Record<string, FlowDefinition> = {};
   export let activeFlowPath: string | null = null;
@@ -269,6 +272,16 @@
         </svg>
       {/if}
     </button>
+    <button
+      class="btn-display-mode"
+      class:disabled={!hasWorkspace}
+      on:click={() => { if (hasWorkspace) dispatch('createFile', null); }}
+      title={!hasWorkspace ? 'Open a folder first' : 'New .http file'}
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+        <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
   </div>
   <div class="tree-scroll">
     {#if tree.length === 0}
@@ -292,6 +305,8 @@
           {sortByUrl}
           {usedNames}
           forceExpand={!!filterText.trim()}
+          {editingFilePath}
+          siblingNames={tree.filter(n => n.type === 'file').map(n => n.name)}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -299,6 +314,10 @@
           on:deleteRequest
           on:deleteFile
           on:nameRequest
+          on:renameFile
+          on:duplicateFile
+          on:createFile
+          on:cancelRename
         />
       {/each}
     {/if}
