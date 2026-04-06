@@ -20,6 +20,7 @@
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
     resolvedEnvVars, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
+    keyVaultState, kvConflictPrefs,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
@@ -27,6 +28,7 @@
     flows, flowRunHistory, flowRunState, flowTabs, activeFlowTabPath,
     openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
   } from './lib/stores';
+  import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
     buildWorkspaceTree, createFileNode, getAllFileNodes,
@@ -36,7 +38,7 @@
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
   import { importOpenApiSpec } from './lib/openapi';
-  import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
+  import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult, KeyVaultState } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
   import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
@@ -164,7 +166,70 @@
     document.removeEventListener('mouseup', onSidebarDividerUp);
   }
 
+  // ─── Key Vault ───
+
+  let lastKvEnv: string | null = null;
+  let kvFetchSeq = 0;
+  /** Per-environment KV cache - persists across env switches, cleared on folder change. */
+  let kvCache: Record<string, KeyVaultState> = {};
+  const idleKv: KeyVaultState = { status: 'idle', variables: {}, error: null, cacheKey: null };
+
+  async function refreshKeyVaultSecrets(forEnv?: string) {
+    const env = forEnv ?? $activeEnvironment;
+    if (!env) {
+      keyVaultState.set(idleKv);
+      return;
+    }
+
+    const config = extractKeyVaultConfig(env, $envFile, $userEnvFile);
+    if (!config) {
+      // No KV config for this env - restore idle but keep cache for other envs
+      keyVaultState.set(idleKv);
+      return;
+    }
+
+    const newCacheKey = kvCacheKey(env, config);
+
+    // Check per-env cache first
+    const cached = kvCache[newCacheKey];
+    if (cached && cached.status === 'loaded') {
+      keyVaultState.set(cached);
+      return;
+    }
+
+    // Only clear conflict preferences when switching environments
+    if (lastKvEnv !== env) {
+      kvConflictPrefs.set({});
+    }
+    lastKvEnv = env;
+
+    const seq = ++kvFetchSeq;
+    keyVaultState.set({ status: 'loading', variables: {}, error: null, cacheKey: newCacheKey });
+
+    try {
+      const vars = await fetchKeyVaultSecrets(config);
+      if (kvFetchSeq === seq) {
+        const state: KeyVaultState = { status: 'loaded', variables: vars, error: null, cacheKey: newCacheKey };
+        kvCache[newCacheKey] = state;
+        kvCache = kvCache;
+        keyVaultState.set(state);
+      }
+    } catch (err: unknown) {
+      if (kvFetchSeq === seq) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const state: KeyVaultState = { status: 'error', variables: {}, error: msg, cacheKey: newCacheKey };
+        keyVaultState.set(state);
+        addToast(`Key Vault error: ${msg}`, 'error');
+      }
+    }
+  }
+
+  const unsubKv = activeEnvironment.subscribe(() => {
+    refreshKeyVaultSecrets();
+  });
+
   onDestroy(() => {
+    unsubKv();
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
     document.removeEventListener('mousemove', onSidebarDividerMove);
@@ -255,6 +320,7 @@
     // Reset environment state before loading new env files
     envFile.set(null);
     userEnvFile.set(null);
+    kvCache = {};
     activeEnvironment.set(null);
 
     // Auto-discover env files from workspace root
@@ -339,6 +405,8 @@
       const parsed = parseEnvironmentFile(content);
       if (parsed) userEnvFile.set(parsed);
     } catch { /* file doesn't exist */ }
+
+    refreshKeyVaultSecrets();
   }
 
   // ─── Import Collections ───
@@ -668,14 +736,6 @@
     toggleFolder(e.detail);
   }
 
-  function handleAddEnv(e: CustomEvent<string>) {
-    const name = e.detail;
-    envFile.update(ef => {
-      const current = ef ?? {};
-      return { ...current, [name]: {} };
-    });
-    activeEnvironment.set(name);
-  }
 
   /** Resolve the full dependency chain in topological order, then run each unsent request. */
   async function handleRunAll(e: CustomEvent<string[]>) {
@@ -928,6 +988,7 @@
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
+  kvVariables={$keyVaultState.status === 'loaded' ? $keyVaultState.variables : {}}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
   namedResults={$namedResults}
@@ -983,7 +1044,6 @@
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-        on:addEnv={handleAddEnv}
         on:editEnv={() => showEnvEditor = true}
         on:openVarInspector={() => showVarInspector = true}
         on:openHelp={() => showHelp = true}
@@ -1017,12 +1077,25 @@
             <EnvironmentEditor
               envFile={$envFile}
               activeEnv={$activeEnvironment}
+              kvState={$keyVaultState}
               on:update={(e) => {
                 envFile.set(e.detail);
                 saveEnvFile(e.detail);
               }}
               on:changeEnv={(e) => activeEnvironment.set(e.detail)}
               on:close={() => showEnvEditor = false}
+              on:conflictPref={(e) => {
+                kvConflictPrefs.update(p => ({ ...p, [e.detail.key]: e.detail.source }));
+              }}
+              on:refreshKv={(e) => {
+                // Invalidate cache for this env so fresh secrets are fetched
+                for (const key of Object.keys(kvCache)) {
+                  if (key.startsWith(e.detail + '::')) delete kvCache[key];
+                }
+                kvCache = kvCache;
+                keyVaultState.update(s => ({ ...s, cacheKey: null }));
+                refreshKeyVaultSecrets(e.detail);
+              }}
             />
           </div>
         {:else if $activeFlowTabPath && $activeFlow}

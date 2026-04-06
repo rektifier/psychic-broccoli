@@ -5,6 +5,7 @@
   export let visible: boolean = false;
   export let fileVariables: Variable[] = [];
   export let envVariables: Record<string, string> = {};
+  export let kvVariables: Record<string, string> = {};
   export let pbOverrides: Record<string, string> = {};
   export let pbGlobals: Record<string, string> = {};
   export let namedResults: Record<string, NamedRequestResult> = {};
@@ -18,16 +19,22 @@
 
   let fileExpanded = true;
   let envExpanded = true;
+  let kvExpanded = true;
   let runtimeExpanded = true;
 
   let searchQuery = '';
+  let showKvSecrets = false;
   let copiedKey: string | null = null;
   let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  $: if (visible) { searchQuery = ''; copiedKey = null; }
+  $: if (visible) { searchQuery = ''; copiedKey = null; showKvSecrets = false; }
 
+  $: kvKeys = new Set(Object.keys(kvVariables));
   $: envEntries = Object.entries(envVariables).filter(([k]) =>
-    !(k in pbOverrides) && !(k in pbGlobals)
+    !(k in pbOverrides) && !(k in pbGlobals) && !kvKeys.has(k)
+  );
+  $: kvEntries = Object.entries(envVariables).filter(([k]) =>
+    !(k in pbOverrides) && !(k in pbGlobals) && kvKeys.has(k)
   );
   $: overrideEntries = Object.entries(pbOverrides).filter(([k]) => !(k in pbGlobals));
   $: globalEntries = Object.entries(pbGlobals);
@@ -44,6 +51,7 @@
 
   $: filteredFileVars = fileVariables.filter(v => matchesSearch(v.key, v.value));
   $: filteredEnvEntries = envEntries.filter(([k, v]) => matchesSearch(k, v));
+  $: filteredKvEntries = kvEntries.filter(([k, v]) => matchesSearch(k, v));
   $: filteredOverrides = overrideEntries.filter(([k, v]) => matchesSearch(k, v));
   $: filteredGlobals = globalEntries.filter(([k, v]) => matchesSearch(k, v));
   $: filteredNamed = namedEntries.filter(([name, result]) =>
@@ -51,8 +59,12 @@
   );
   $: filteredRuntimeCount = filteredOverrides.length + filteredGlobals.length + filteredNamed.length;
 
-  $: totalCount = fileVariables.length + envEntries.length + runtimeCount;
-  $: filteredTotal = filteredFileVars.length + filteredEnvEntries.length + filteredRuntimeCount;
+  $: totalCount = fileVariables.length + envEntries.length + kvEntries.length + runtimeCount;
+  $: filteredTotal = filteredFileVars.length + filteredEnvEntries.length + filteredKvEntries.length + filteredRuntimeCount;
+
+  function masked(val: string): string {
+    return '*'.repeat(Math.min(val.length, 12));
+  }
 
   function truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + '...' : str;
@@ -177,6 +189,45 @@
                           <span class="key" title={key}>{key}</span>
                           <span class="sep">=</span>
                           <span class="val" title={value}>{truncate(value, 60)}</span>
+                          <span class="row-action">{copiedKey === key ? 'Copied' : 'Copy ref'}</span>
+                        </button>
+                      {/each}
+                    {/if}
+                  </div>
+                {/if}
+              </section>
+            {/if}
+
+            <!-- Key Vault Variables -->
+            {#if kvEntries.length > 0}
+              <section class="group">
+                <button class="group-header" on:click={() => kvExpanded = !kvExpanded}>
+                  <span class="chevron" class:open={kvExpanded}>
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                  <span class="group-label">Key Vault</span>
+                  <span class="badge">{badgeText(filteredKvEntries.length, kvEntries.length)}</span>
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <span
+                    class="kv-reveal-toggle"
+                    role="button"
+                    tabindex="0"
+                    on:click|stopPropagation={() => showKvSecrets = !showKvSecrets}
+                  >{showKvSecrets ? '[Hide]' : '[Show]'}</span>
+                </button>
+                {#if kvExpanded}
+                  <div class="group-body">
+                    {#if filteredKvEntries.length === 0}
+                      <p class="empty">No matches in Key Vault variables.</p>
+                    {:else}
+                      {#each filteredKvEntries as [key, value]}
+                        <button class="row" class:copied={copiedKey === key} on:click={() => copyRef(key)}>
+                          <span class="tag kv">kv</span>
+                          <span class="key" title={key}>{key}</span>
+                          <span class="sep">=</span>
+                          <span class="val" title={showKvSecrets ? value : masked(value)}>{showKvSecrets ? truncate(value, 60) : masked(value)}</span>
                           <span class="row-action">{copiedKey === key ? 'Copied' : 'Copy ref'}</span>
                         </button>
                       {/each}
@@ -404,6 +455,15 @@
   }
   .tag.file     { color: var(--color-info); background: color-mix(in srgb, var(--color-info) 6%, transparent); }
   .tag.env      { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
+  .tag.kv       { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 6%, transparent); }
+
+  .kv-reveal-toggle {
+    margin-left: auto;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
+    cursor: pointer;
+  }
+  .kv-reveal-toggle:hover { color: var(--color-primary); }
   .tag.set      { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
   .tag.global   { color: var(--color-accent-flow); background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent); }
   .tag.response { color: var(--teal-600); background: color-mix(in srgb, var(--teal-600) 6%, transparent); }

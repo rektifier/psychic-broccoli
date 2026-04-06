@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { EnvironmentFile } from './types';
 import {
   parseHttpFile,
   serializeHttpFile,
@@ -135,6 +136,22 @@ describe('resolveEnvironmentVariables', () => {
     };
     const result = resolveEnvironmentVariables('dev', envFile, null);
     expect(result.secret).toBe('[AzureKeyVault:my-secret]');
+  });
+
+  it('skips $keyvault config entries', () => {
+    const envFile: EnvironmentFile = {
+      dev: {
+        token: 'abc',
+        $keyvault: {
+          provider: 'AzureKeyVault',
+          vaultUrl: 'https://v.vault.azure.net',
+          secretName: 's',
+        },
+      },
+    };
+    const result = resolveEnvironmentVariables('dev', envFile, null);
+    expect(result.token).toBe('abc');
+    expect(result['$keyvault']).toBeUndefined();
   });
 });
 

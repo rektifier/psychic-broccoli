@@ -97,14 +97,24 @@ export interface Variable {
 
 // ─── Environments ───────────────────────────────────────────────────────────
 
-/** A single named environment maps variable names → values (or provider objects). */
-export type EnvironmentVariables = Record<string, string | ProviderVariable>;
-
 /** Provider-based variable (Azure Key Vault, DPAPI, ASP.NET User Secrets). */
 export interface ProviderVariable {
   provider: string;
   [key: string]: string;
 }
+
+/** A $keyvault configuration block within an environment. */
+export interface KeyVaultConfig extends ProviderVariable {
+  provider: 'AzureKeyVault';
+  vaultUrl: string;
+  secretName: string;
+}
+
+/** A single named environment maps variable names to values (or provider objects).
+ *  The special `$keyvault` key holds a KeyVaultConfig block (not a variable). */
+export type EnvironmentVariables = Record<string, string | ProviderVariable> & {
+  $keyvault?: KeyVaultConfig;
+};
 
 /** The full structure of an http-client.env.json file. */
 export type EnvironmentFile = Record<string, EnvironmentVariables>;
@@ -119,6 +129,20 @@ export interface EnvironmentState {
   activeEnvironment: string | null;
   /** All available environment names (excluding $shared) */
   availableEnvironments: string[];
+}
+
+// ─── Key Vault ─────────────────────────────────────────────────────────────
+
+/** Source tag for a resolved variable. */
+export type VarSource = 'local' | 'keyvault';
+
+/** Key Vault fetch state for a single environment. */
+export interface KeyVaultState {
+  status: 'idle' | 'loading' | 'loaded' | 'error';
+  variables: Record<string, string>;
+  error: string | null;
+  /** Which environment + vault this was fetched for (cache key). */
+  cacheKey: string | null;
 }
 
 // ─── Import / Conversion ────────────────────────────────────────────────────

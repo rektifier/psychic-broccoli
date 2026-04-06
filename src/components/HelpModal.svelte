@@ -56,6 +56,28 @@ GET https://&#123;&#123;hostname&#125;&#125;:&#123;&#123;port&#125;&#125;/api/us
       </div>
 
       <div class="section">
+        <div class="section-title">Azure Key Vault</div>
+        <p>Pull secrets from Azure Key Vault directly into your environment variables. Sign in first with <code>az login</code> or <code>azd auth login</code>.</p>
+        <p>Configure a vault per environment (or in <code>$shared</code>) by adding a <code>$keyvault</code> block to your env file, or use the Key Vault section in the environment editor.</p>
+        <pre class="code-block">&#123;
+  "$shared": &#123;
+    "BaseUrl": "https://localhost:5000",
+    "$keyvault": &#123;
+      "provider": "AzureKeyVault",
+      "vaultUrl": "https://my-vault.vault.azure.net",
+      "secretName": "app-secrets"
+    &#125;
+  &#125;
+&#125;</pre>
+        <p>The secret value in Azure must be a flat JSON object with string values:</p>
+        <pre class="code-block">&#123;
+  "ApiKey": "sk-abc123",
+  "DbPassword": "hunter2"
+&#125;</pre>
+        <p>Each key becomes a variable (e.g. <code>&#123;&#123;ApiKey&#125;&#125;</code>). If a key exists both locally and in Key Vault, the KV value wins by default - you can toggle per variable in the environment editor.</p>
+      </div>
+
+      <div class="section">
         <div class="section-title">Dynamic variables</div>
         <pre class="code-block">&#123;&#123;$randomInt 1 100&#125;&#125;      Random integer
 &#123;&#123;$timestamp&#125;&#125;            Unix epoch (UTC)

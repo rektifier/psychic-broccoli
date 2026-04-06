@@ -101,6 +101,95 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
     })
 }
 
+#[cfg(feature = "keyvault")]
+mod keyvault_cmd {
+    use super::*;
+
+    #[derive(Deserialize)]
+    pub struct KeyVaultPayload {
+        pub vault_url: String,
+        pub secret_name: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct KeyVaultResponse {
+        pub value: String,
+    }
+
+    fn validate_vault_url(url_str: &str) -> Result<(), String> {
+        let parsed = url::Url::parse(url_str)
+            .map_err(|e| format!("Invalid vault URL: {}", e))?;
+        if parsed.scheme() != "https" {
+            return Err("Vault URL must use https://".to_string());
+        }
+        match parsed.host_str() {
+            Some(host) => {
+                let lower = host.to_lowercase();
+                let prefix = lower.strip_suffix(".vault.azure.net")
+                    .ok_or_else(|| "Vault URL host must end with .vault.azure.net".to_string())?;
+                if prefix.is_empty()
+                    || !prefix.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                    || prefix.starts_with('-')
+                    || prefix.ends_with('-')
+                {
+                    return Err("Invalid vault name in URL".to_string());
+                }
+                Ok(())
+            }
+            _ => Err("Vault URL host must end with .vault.azure.net".to_string()),
+        }
+    }
+
+    fn validate_secret_name(name: &str) -> Result<(), String> {
+        if name.is_empty() || name.len() > 127 {
+            return Err("Secret name must be 1-127 characters".to_string());
+        }
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return Err("Secret name may only contain alphanumeric characters and hyphens".to_string());
+        }
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub async fn fetch_keyvault_secret(payload: KeyVaultPayload) -> Result<KeyVaultResponse, String> {
+        validate_vault_url(&payload.vault_url)?;
+        validate_secret_name(&payload.secret_name)?;
+
+        let credential = azure_identity::DeveloperToolsCredential::new(None)
+            .map_err(|e| format!(
+                "Failed to create Azure credentials. Sign in with `az login` or `azd auth login`, then retry. Error: {}",
+                e
+            ))?;
+
+        let client = azure_security_keyvault_secrets::SecretClient::new(
+            &payload.vault_url,
+            credential,
+            None,
+        )
+        .map_err(|e| format!("Failed to create Key Vault client: {}", e))?;
+
+        let response = tokio::time::timeout(
+            Duration::from_secs(REQUEST_TIMEOUT_SECS),
+            client.get_secret(&payload.secret_name, None),
+        )
+        .await
+        .map_err(|_| format!(
+            "Key Vault request timed out after {} seconds", REQUEST_TIMEOUT_SECS
+        ))?
+        .map_err(|e| format!("Failed to fetch secret '{}': {}", payload.secret_name, e))?;
+
+        let secret = response
+            .into_model()
+            .map_err(|e| format!("Failed to parse secret '{}': {}", payload.secret_name, e))?;
+
+        let value = secret.value.ok_or_else(|| {
+            format!("Secret '{}' exists but has no value", payload.secret_name)
+        })?;
+
+        Ok(KeyVaultResponse { value })
+    }
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -163,12 +252,30 @@ async fn extract_getting_started(app_handle: tauri::AppHandle) -> Result<String,
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![http_request, extract_getting_started])
+        .plugin(tauri_plugin_opener::init());
+
+    #[cfg(feature = "keyvault")]
+    {
+        builder = builder.invoke_handler(tauri::generate_handler![
+            http_request,
+            extract_getting_started,
+            keyvault_cmd::fetch_keyvault_secret
+        ]);
+    }
+
+    #[cfg(not(feature = "keyvault"))]
+    {
+        builder = builder.invoke_handler(tauri::generate_handler![
+            http_request,
+            extract_getting_started
+        ]);
+    }
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
