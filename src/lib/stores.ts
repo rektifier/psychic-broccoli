@@ -306,6 +306,64 @@ export function markFileSaved(filePath: string) {
   }));
 }
 
+/** Path of a file currently in inline-rename mode (used to trigger editing from App). */
+export const editingFilePath = writable<string | null>(null);
+
+/** Add a file node to the tree under the given parent folder path. */
+export function addFileToTree(parentPath: string | null, fileNode: FileNode) {
+  workspace.update(ws => {
+    if (!parentPath || parentPath === ws.rootPath) {
+      return { ...ws, tree: [...ws.tree, fileNode] };
+    }
+    function insert(nodes: TreeNode[]): TreeNode[] {
+      return nodes.map(node => {
+        if (node.type === 'folder' && node.path === parentPath) {
+          return { ...node, children: [...node.children, fileNode] };
+        }
+        if (node.type === 'folder') {
+          return { ...node, children: insert(node.children) };
+        }
+        return node;
+      });
+    }
+    return { ...ws, tree: insert(ws.tree) };
+  });
+}
+
+/** Rename a file in the tree and update all tab/selection references. */
+export function renameFileInTree(oldPath: string, newPath: string, newName: string) {
+  // Update activeTabKey if it references the old path
+  const currentKey = get(activeTabKey);
+  if (currentKey && currentKey.startsWith(oldPath + '::')) {
+    const suffix = currentKey.slice(oldPath.length);
+    activeTabKey.set(newPath + suffix);
+  }
+
+  // Update tabs that reference the old path
+  tabs.update(ts => ts.map(t => {
+    if (t.location.filePath === oldPath) {
+      return { ...t, location: { ...t.location, filePath: newPath } };
+    }
+    return t;
+  }));
+
+  // Update selected location
+  const loc = get(selectedLocation);
+  if (loc && loc.filePath === oldPath) {
+    selectedLocation.set({ ...loc, filePath: newPath });
+  }
+
+  // Update tree node
+  workspace.update(ws => ({
+    ...ws,
+    tree: updateFileInTree(ws.tree, oldPath, file => ({
+      ...file,
+      path: newPath,
+      name: newName,
+    })),
+  }));
+}
+
 /** Toggle a folder's expanded state. */
 export function toggleFolder(folderPath: string) {
   function toggle(nodes: TreeNode[]): TreeNode[] {
