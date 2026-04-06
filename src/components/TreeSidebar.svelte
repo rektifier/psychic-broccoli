@@ -333,6 +333,7 @@
           on:pinRequest
           on:addRequest
           on:deleteRequest
+          on:deleteFile
           on:nameRequest
         />
       {/each}

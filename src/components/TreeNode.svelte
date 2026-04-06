@@ -44,6 +44,29 @@
     : [];
   let namingValue: string = '';
   let confirmDeleteIndex: number = -1;
+  let showFileMenu = false;
+  let fileMenuPos = { x: 0, y: 0 };
+  let confirmDeleteFile = false;
+
+  function handleFileContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    showFileMenu = true;
+    confirmDeleteFile = false;
+    fileMenuPos = { x: e.clientX, y: e.clientY };
+
+    const dismiss = () => {
+      showFileMenu = false;
+      confirmDeleteFile = false;
+      window.removeEventListener('click', dismiss);
+      window.removeEventListener('contextmenu', dismiss);
+    };
+    // Defer so the current event doesn't immediately dismiss
+    setTimeout(() => {
+      window.addEventListener('click', dismiss);
+      window.addEventListener('contextmenu', dismiss);
+    });
+  }
 
   $: isDuplicate = (() => {
     const v = namingValue.trim();
@@ -120,6 +143,7 @@
           on:pinRequest
           on:addRequest
           on:deleteRequest
+          on:deleteFile
           on:nameRequest
         />
       {/each}
@@ -134,6 +158,7 @@
     style="padding-left: {12 + depth * 16}px"
     on:click={() => fileExpanded = !fileExpanded}
     on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileExpanded = !fileExpanded; } }}
+    on:contextmenu={handleFileContextMenu}
     role="button"
     tabindex="0"
   >
@@ -157,6 +182,19 @@
     >+</button>
     <span class="req-count">{node.requests.length}</span>
   </div>
+
+  {#if showFileMenu}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="file-context-menu" style="left: {fileMenuPos.x}px; top: {fileMenuPos.y}px" on:click|stopPropagation on:keydown|stopPropagation>
+      {#if confirmDeleteFile}
+        <span class="confirm-delete-text">Delete file?</span>
+        <button class="confirm-delete-yes" on:click|stopPropagation={() => { dispatch('deleteFile', node.path); showFileMenu = false; confirmDeleteFile = false; }}>Yes</button>
+        <button class="confirm-delete-no" on:click|stopPropagation={() => { showFileMenu = false; confirmDeleteFile = false; }}>No</button>
+      {:else}
+        <button class="file-context-item file-context-delete" on:click|stopPropagation={() => confirmDeleteFile = true}>Delete file</button>
+      {/if}
+    </div>
+  {/if}
 
   {#if fileExpanded || forceExpand}
     <div class="children">
@@ -479,5 +517,42 @@
     font-weight: var(--weight-medium);
     flex-shrink: 0;
     white-space: nowrap;
+  }
+
+  /* File context menu */
+  .file-context-menu {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-1\.5);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+    white-space: nowrap;
+  }
+  .file-context-item {
+    display: block;
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+  }
+  .file-context-item:hover {
+    background: var(--color-bg-muted);
+  }
+  .file-context-delete {
+    color: var(--color-error);
+  }
+  .file-context-delete:hover {
+    background: color-mix(in srgb, var(--color-error) 9%, transparent);
   }
 </style>
