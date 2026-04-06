@@ -4,6 +4,7 @@ import type {
   EnvironmentFile, NamedRequestResult, PbAssertionResult,
   Workspace, TreeNode, FileNode, FolderNode, RequestLocation,
   FlowDefinition, FlowRunRecord, FlowRunStatus, FlowStepResult,
+  KeyVaultState, VarSource,
 } from './types';
 import { createEmptyRequest, resolveEnvironmentVariables, getEnvironmentNames, serializeHttpFile } from './parser';
 
@@ -343,6 +344,17 @@ export const pbFileOverrides = writable<Record<string, Record<string, string>>>(
 /** Workspace-global variables set via `# @pb.global(...)`. Persist across requests and files. */
 export const pbGlobals = writable<Record<string, string>>({});
 
+/** Key Vault resolution state (populated asynchronously). */
+export const keyVaultState = writable<KeyVaultState>({
+  status: 'idle',
+  variables: {},
+  error: null,
+  cacheKey: null,
+});
+
+/** Session-only conflict preferences: which source wins per variable key. */
+export const kvConflictPrefs = writable<Record<string, VarSource>>({});
+
 /** Environment variables only (no runtime overrides). */
 export const baseEnvVars = derived(
   [activeEnvironment, envFile, userEnvFile],
@@ -361,9 +373,23 @@ export const activeFileOverrides = derived(
 );
 
 export const resolvedEnvVars = derived(
-  [baseEnvVars, pbGlobals, activeFileOverrides],
-  ([$base, $globals, $fileOverrides]) => {
-    return { ...$base, ...$globals, ...$fileOverrides };
+  [baseEnvVars, keyVaultState, kvConflictPrefs, pbGlobals, activeFileOverrides],
+  ([$base, $kv, $prefs, $globals, $fileOverrides]) => {
+    const merged = { ...$base };
+
+    if ($kv.status === 'loaded') {
+      for (const [key, value] of Object.entries($kv.variables)) {
+        if (key in merged) {
+          // Conflict: KV wins by default, user can override per key
+          const pref = $prefs[key] ?? 'keyvault';
+          if (pref === 'keyvault') merged[key] = value;
+        } else {
+          merged[key] = value;
+        }
+      }
+    }
+
+    return { ...merged, ...$globals, ...$fileOverrides };
   }
 );
 

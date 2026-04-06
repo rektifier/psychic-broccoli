@@ -1118,6 +1118,7 @@ function mergeEnvVars(
 ): void {
   if (!source) return;
   for (const [key, value] of Object.entries(source)) {
+    if (key === '$keyvault') continue;
     if (typeof value === 'string') {
       target[key] = value;
     } else if (typeof value === 'object' && value !== null && 'provider' in value) {

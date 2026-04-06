@@ -28,23 +28,6 @@
   let sortByUrl = false;
   let filterText = '';
   let filterInputEl: HTMLInputElement;
-  let showAddEnv = false;
-  let newEnvName = '';
-  let inputEl: HTMLInputElement;
-
-  function addEnvironment() {
-    const name = newEnvName.trim();
-    if (!name) return;
-    dispatch('addEnv', name);
-    newEnvName = '';
-    showAddEnv = false;
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') addEnvironment();
-    if (e.key === 'Escape') showAddEnv = false;
-  }
-
   function filterTree(nodes: TNode[], query: string): TNode[] {
     const q = query.toLowerCase();
     const result: TNode[] = [];
@@ -75,7 +58,6 @@
 
   $: displayTree = filterText.trim() ? filterTree(tree, filterText.trim()) : tree;
 
-  $: if (showAddEnv && inputEl) inputEl.focus();
   $: if (showNewFlow && newFlowInputEl) newFlowInputEl.focus();
 
   $: flowEntries = Object.entries(flows).sort(([, a], [, b]) => a.name.localeCompare(b.name));
@@ -131,12 +113,6 @@
         {/each}
       </select>
       <button
-        class="btn-add-env"
-        class:disabled={!hasWorkspace}
-        on:click={() => { if (hasWorkspace) showAddEnv = !showAddEnv; }}
-        title={hasWorkspace ? 'Add environment' : 'Open a folder first'}
-      >+</button>
-      <button
         class="btn-edit-env"
         class:disabled={!hasWorkspace}
         on:click={() => { if (hasWorkspace) dispatch('editEnv'); }}
@@ -148,7 +124,7 @@
         </svg>
       </button>
       <button
-        class="btn-edit-env"
+        class="btn-var-inspector"
         class:disabled={!hasWorkspace}
         on:click={() => { if (hasWorkspace) dispatch('openVarInspector'); }}
         title={hasWorkspace ? 'Variable inspector' : 'Open a folder first'}
@@ -160,18 +136,6 @@
       </button>
     </div>
 
-    {#if showAddEnv}
-      <div class="add-env-form">
-        <input
-          bind:this={inputEl}
-          bind:value={newEnvName}
-          on:keydown={handleKeydown}
-          placeholder="Environment name..."
-          class="add-env-input"
-        />
-        <button class="btn-confirm-env" on:click={addEnvironment}>Add</button>
-      </div>
-    {/if}
   </div>
 
   <!-- Test Flows -->
@@ -422,15 +386,15 @@
     border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent);
   }
   .btn-import.disabled,
-  .btn-add-env.disabled,
   .btn-edit-env.disabled,
+  .btn-var-inspector.disabled,
   .btn-display-mode.disabled {
     opacity: 0.35;
     cursor: default;
   }
   .btn-import.disabled:hover,
-  .btn-add-env.disabled:hover,
   .btn-edit-env.disabled:hover,
+  .btn-var-inspector.disabled:hover,
   .btn-display-mode.disabled:hover {
     border-color: var(--color-border); color: var(--slate-350); background: transparent;
   }
@@ -469,22 +433,6 @@
   .env-select:hover { border-color: var(--color-success); }
   .env-select option { background: var(--color-bg-surface); color: var(--color-text); }
 
-  .btn-add-env {
-    width: 26px; height: 26px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-default);
-    background: transparent;
-    color: var(--slate-350);
-    font-size: var(--text-lg);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all var(--duration-normal);
-  }
-  .btn-add-env:hover { border-color: var(--color-success); color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
-
   .btn-edit-env {
     width: 26px; height: 26px;
     border: 1px solid var(--color-border);
@@ -501,34 +449,21 @@
   }
   .btn-edit-env:hover { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 
-  .add-env-form {
-    display: flex;
-    gap: var(--space-1);
-    margin-top: var(--space-1\.5);
-  }
-  .add-env-input {
-    flex: 1;
-    padding: 5px var(--space-2);
+  .btn-var-inspector {
+    width: 26px; height: 26px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-default);
-    background: var(--color-bg-surface);
-    color: var(--color-text);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    outline: none;
-  }
-  .add-env-input:focus { border-color: var(--color-success); }
-  .btn-confirm-env {
-    padding: 5px var(--space-2\.5);
-    border: none;
-    border-radius: var(--radius-default);
-    background: color-mix(in srgb, var(--color-success) 9%, transparent);
-    color: var(--color-success);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
+    background: transparent;
+    color: var(--color-text-faint);
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--duration-normal);
+    padding: 0;
   }
+  .btn-var-inspector:hover { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
 
   /* Test Flows */
   .flow-section {
