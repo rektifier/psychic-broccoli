@@ -4,6 +4,7 @@ import type {
   EnvironmentFile, NamedRequestResult, PbAssertionResult,
   Workspace, TreeNode, FileNode, FolderNode, RequestLocation,
   FlowDefinition, FlowRunRecord, FlowRunStatus, FlowStepResult,
+  KeyVaultState, VarSource,
 } from './types';
 import { createEmptyRequest, resolveEnvironmentVariables, getEnvironmentNames, serializeHttpFile } from './parser';
 
@@ -275,6 +276,24 @@ export function deleteRequestFromFile(filePath: string, requestIndex: number) {
   }
 }
 
+/** Remove a file from the workspace tree and close its tabs. */
+export function removeFileFromTree(filePath: string) {
+  function filterTree(nodes: TreeNode[]): TreeNode[] {
+    return nodes
+      .filter(n => !(n.type === 'file' && n.path === filePath))
+      .map(n => n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n);
+  }
+
+  const file = findFileNode(get(workspace).tree, filePath);
+  if (file) {
+    for (let i = file.requests.length - 1; i >= 0; i--) {
+      closeTab({ filePath, requestIndex: i });
+    }
+  }
+
+  workspace.update(ws => ({ ...ws, tree: filterTree(ws.tree) }));
+}
+
 /** Mark a file as saved (not dirty). */
 export function markFileSaved(filePath: string) {
   workspace.update(ws => ({
@@ -283,6 +302,64 @@ export function markFileSaved(filePath: string) {
       ...file,
       dirty: false,
       savedContent: serializeHttpFile(file.requests, file.variables),
+    })),
+  }));
+}
+
+/** Path of a file currently in inline-rename mode (used to trigger editing from App). */
+export const editingFilePath = writable<string | null>(null);
+
+/** Add a file node to the tree under the given parent folder path. */
+export function addFileToTree(parentPath: string | null, fileNode: FileNode) {
+  workspace.update(ws => {
+    if (!parentPath || parentPath === ws.rootPath) {
+      return { ...ws, tree: [...ws.tree, fileNode] };
+    }
+    function insert(nodes: TreeNode[]): TreeNode[] {
+      return nodes.map(node => {
+        if (node.type === 'folder' && node.path === parentPath) {
+          return { ...node, children: [...node.children, fileNode] };
+        }
+        if (node.type === 'folder') {
+          return { ...node, children: insert(node.children) };
+        }
+        return node;
+      });
+    }
+    return { ...ws, tree: insert(ws.tree) };
+  });
+}
+
+/** Rename a file in the tree and update all tab/selection references. */
+export function renameFileInTree(oldPath: string, newPath: string, newName: string) {
+  // Update activeTabKey if it references the old path
+  const currentKey = get(activeTabKey);
+  if (currentKey && currentKey.startsWith(oldPath + '::')) {
+    const suffix = currentKey.slice(oldPath.length);
+    activeTabKey.set(newPath + suffix);
+  }
+
+  // Update tabs that reference the old path
+  tabs.update(ts => ts.map(t => {
+    if (t.location.filePath === oldPath) {
+      return { ...t, location: { ...t.location, filePath: newPath } };
+    }
+    return t;
+  }));
+
+  // Update selected location
+  const loc = get(selectedLocation);
+  if (loc && loc.filePath === oldPath) {
+    selectedLocation.set({ ...loc, filePath: newPath });
+  }
+
+  // Update tree node
+  workspace.update(ws => ({
+    ...ws,
+    tree: updateFileInTree(ws.tree, oldPath, file => ({
+      ...file,
+      path: newPath,
+      name: newName,
     })),
   }));
 }
@@ -325,6 +402,17 @@ export const pbFileOverrides = writable<Record<string, Record<string, string>>>(
 /** Workspace-global variables set via `# @pb.global(...)`. Persist across requests and files. */
 export const pbGlobals = writable<Record<string, string>>({});
 
+/** Key Vault resolution state (populated asynchronously). */
+export const keyVaultState = writable<KeyVaultState>({
+  status: 'idle',
+  variables: {},
+  error: null,
+  cacheKey: null,
+});
+
+/** Session-only conflict preferences: which source wins per variable key. */
+export const kvConflictPrefs = writable<Record<string, VarSource>>({});
+
 /** Environment variables only (no runtime overrides). */
 export const baseEnvVars = derived(
   [activeEnvironment, envFile, userEnvFile],
@@ -343,9 +431,23 @@ export const activeFileOverrides = derived(
 );
 
 export const resolvedEnvVars = derived(
-  [baseEnvVars, pbGlobals, activeFileOverrides],
-  ([$base, $globals, $fileOverrides]) => {
-    return { ...$base, ...$globals, ...$fileOverrides };
+  [baseEnvVars, keyVaultState, kvConflictPrefs, pbGlobals, activeFileOverrides],
+  ([$base, $kv, $prefs, $globals, $fileOverrides]) => {
+    const merged = { ...$base };
+
+    if ($kv.status === 'loaded') {
+      for (const [key, value] of Object.entries($kv.variables)) {
+        if (key in merged) {
+          // Conflict: KV wins by default, user can override per key
+          const pref = $prefs[key] ?? 'keyvault';
+          if (pref === 'keyvault') merged[key] = value;
+        } else {
+          merged[key] = value;
+        }
+      }
+    }
+
+    return { ...merged, ...$globals, ...$fileOverrides };
   }
 );
 

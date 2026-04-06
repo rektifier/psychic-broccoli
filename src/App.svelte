@@ -20,23 +20,26 @@
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
     resolvedEnvVars, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
-    updateRequestInTree, addRequestToFile, deleteRequestFromFile,
+    keyVaultState, kvConflictPrefs,
+    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
+    addFileToTree, renameFileInTree, editingFilePath,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
     flows, flowRunHistory, flowRunState, flowTabs, activeFlowTabPath,
     openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
   } from './lib/stores';
+  import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile,
-    buildWorkspaceTree, createFileNode, getAllFileNodes,
+    buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
     executePbDirectives, parseScriptText, applyRequestMutations,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
   import { importOpenApiSpec } from './lib/openapi';
-  import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult } from './lib/types';
+  import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult, KeyVaultState } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
   import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
@@ -44,7 +47,7 @@
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile, readDir } from '@tauri-apps/plugin-fs';
+  import { readTextFile, writeTextFile, readDir, rename } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
   import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
@@ -164,7 +167,70 @@
     document.removeEventListener('mouseup', onSidebarDividerUp);
   }
 
+  // ─── Key Vault ───
+
+  let lastKvEnv: string | null = null;
+  let kvFetchSeq = 0;
+  /** Per-environment KV cache - persists across env switches, cleared on folder change. */
+  let kvCache: Record<string, KeyVaultState> = {};
+  const idleKv: KeyVaultState = { status: 'idle', variables: {}, error: null, cacheKey: null };
+
+  async function refreshKeyVaultSecrets(forEnv?: string) {
+    const env = forEnv ?? $activeEnvironment;
+    if (!env) {
+      keyVaultState.set(idleKv);
+      return;
+    }
+
+    const config = extractKeyVaultConfig(env, $envFile, $userEnvFile);
+    if (!config) {
+      // No KV config for this env - restore idle but keep cache for other envs
+      keyVaultState.set(idleKv);
+      return;
+    }
+
+    const newCacheKey = kvCacheKey(env, config);
+
+    // Check per-env cache first
+    const cached = kvCache[newCacheKey];
+    if (cached && cached.status === 'loaded') {
+      keyVaultState.set(cached);
+      return;
+    }
+
+    // Only clear conflict preferences when switching environments
+    if (lastKvEnv !== env) {
+      kvConflictPrefs.set({});
+    }
+    lastKvEnv = env;
+
+    const seq = ++kvFetchSeq;
+    keyVaultState.set({ status: 'loading', variables: {}, error: null, cacheKey: newCacheKey });
+
+    try {
+      const vars = await fetchKeyVaultSecrets(config);
+      if (kvFetchSeq === seq) {
+        const state: KeyVaultState = { status: 'loaded', variables: vars, error: null, cacheKey: newCacheKey };
+        kvCache[newCacheKey] = state;
+        kvCache = kvCache;
+        keyVaultState.set(state);
+      }
+    } catch (err: unknown) {
+      if (kvFetchSeq === seq) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const state: KeyVaultState = { status: 'error', variables: {}, error: msg, cacheKey: newCacheKey };
+        keyVaultState.set(state);
+        addToast(`Key Vault error: ${msg}`, 'error');
+      }
+    }
+  }
+
+  const unsubKv = activeEnvironment.subscribe(() => {
+    refreshKeyVaultSecrets();
+  });
+
   onDestroy(() => {
+    unsubKv();
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
     document.removeEventListener('mousemove', onSidebarDividerMove);
@@ -255,6 +321,7 @@
     // Reset environment state before loading new env files
     envFile.set(null);
     userEnvFile.set(null);
+    kvCache = {};
     activeEnvironment.set(null);
 
     // Auto-discover env files from workspace root
@@ -339,22 +406,28 @@
       const parsed = parseEnvironmentFile(content);
       if (parsed) userEnvFile.set(parsed);
     } catch { /* file doesn't exist */ }
+
+    refreshKeyVaultSecrets();
   }
 
   // ─── Import Collections ───
+
+  /** Validate and join a relative path onto a root, preventing directory traversal. */
+  async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
+    for (const seg of relativePath.split('/')) {
+      if (!seg || seg === '..' || seg === '.' || seg.includes('\0') || seg.includes('\\') || seg.includes('/')) {
+        throw new Error(`Invalid path segment: "${seg}"`);
+      }
+    }
+    return join(rootPath, relativePath);
+  }
 
   async function writeImportedFiles(result: ImportResult): Promise<number> {
     const rootPath = $workspace.rootPath!;
     const { mkdir } = await import('@tauri-apps/plugin-fs');
     let written = 0;
     for (const file of result.files) {
-      // Split relative path into segments and join individually to handle
-      // forward slashes correctly on Windows
-      const segments = file.relativePath.split('/');
-      let outPath = rootPath;
-      for (const seg of segments) {
-        outPath = await join(outPath, seg);
-      }
+      const outPath = await safeJoinPath(rootPath, file.relativePath);
       const parentDir = await dirname(outPath);
       try {
         await mkdir(parentDir, { recursive: true });
@@ -660,18 +733,153 @@
     deleteRequestFromFile(e.detail.filePath, e.detail.requestIndex);
   }
 
+  async function handleDeleteFile(e: CustomEvent<string>) {
+    const filePath = e.detail;
+
+    try {
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      await remove(filePath);
+    } catch (err) {
+      addToast(`Failed to delete file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    removeFileFromTree(filePath);
+  }
+
+  async function handleCreateFile(e: CustomEvent<string | null>) {
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const folderPath = e.detail || rootPath;
+
+    // Generate unique filename
+    let stem = 'new-request';
+    let fileName = stem + '.http';
+    let filePath = await join(folderPath, fileName);
+    let counter = 2;
+
+    // Check for collisions in the tree
+    const existingNames = new Set<string>();
+    function collectNames(nodes: TreeNode[]) {
+      for (const n of nodes) {
+        if (n.type === 'file') existingNames.add(n.path);
+        if (n.type === 'folder') collectNames(n.children);
+      }
+    }
+    collectNames($workspace.tree);
+
+    while (existingNames.has(filePath)) {
+      fileName = `${stem}-${counter}.http`;
+      filePath = await join(folderPath, fileName);
+      counter++;
+    }
+
+    const fileNode = createEmptyFileNode(filePath, fileName);
+    const content = serializeHttpFile(fileNode.requests, fileNode.variables);
+
+    try {
+      await writeTextFile(filePath, content);
+    } catch (err) {
+      addToast(`Failed to create file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    fileNode.dirty = false;
+    fileNode.savedContent = content;
+    addFileToTree(folderPath === rootPath ? null : folderPath, fileNode);
+    editingFilePath.set(filePath);
+  }
+
+  async function handleRenameFile(e: CustomEvent<{ oldPath: string; newName: string }>) {
+    const { oldPath, newName } = e.detail;
+
+    // If file is dirty, save first
+    const file = findFileInTree($workspace.tree, oldPath);
+    if (file && file.dirty) {
+      try {
+        const content = serializeHttpFile(file.requests, file.variables);
+        await writeTextFile(oldPath, content);
+        markFileSaved(oldPath);
+      } catch (err) {
+        addToast(`Failed to save file before rename: ${err instanceof Error ? err.message : err}`, 'error');
+        return;
+      }
+    }
+
+    const dir = await dirname(oldPath);
+    const newPath = await join(dir, newName);
+
+    try {
+      await rename(oldPath, newPath);
+    } catch (err) {
+      addToast(`Failed to rename file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    renameFileInTree(oldPath, newPath, newName);
+    editingFilePath.set(null);
+  }
+
+  async function handleDuplicateFile(e: CustomEvent<string>) {
+    const sourcePath = e.detail;
+
+    let content: string;
+    try {
+      content = await readTextFile(sourcePath);
+    } catch (err) {
+      addToast(`Failed to read file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    const dir = await dirname(sourcePath);
+    const sourceBase = await basename(sourcePath);
+    const sourceStem = sourceBase.replace(/\.(http|rest)$/, '');
+
+    // Generate unique copy name
+    let copyStem = `${sourceStem} (copy)`;
+    let copyName = copyStem + '.http';
+    let copyPath = await join(dir, copyName);
+    let counter = 2;
+
+    const existingNames = new Set<string>();
+    function collectNames(nodes: TreeNode[]) {
+      for (const n of nodes) {
+        if (n.type === 'file') existingNames.add(n.path);
+        if (n.type === 'folder') collectNames(n.children);
+      }
+    }
+    collectNames($workspace.tree);
+
+    while (existingNames.has(copyPath)) {
+      copyStem = `${sourceStem} (copy ${counter})`;
+      copyName = copyStem + '.http';
+      copyPath = await join(dir, copyName);
+      counter++;
+    }
+
+    try {
+      await writeTextFile(copyPath, content);
+    } catch (err) {
+      addToast(`Failed to duplicate file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    const fileNode = createFileNode(copyPath, copyName, content);
+    const rootPath = $workspace.rootPath;
+    const parentPath = dir === rootPath ? null : dir;
+    addFileToTree(parentPath, fileNode);
+    editingFilePath.set(copyPath);
+  }
+
+  function handleCancelRename() {
+    editingFilePath.set(null);
+  }
+
   function handleToggleFolder(e: CustomEvent<string>) {
     toggleFolder(e.detail);
   }
 
-  function handleAddEnv(e: CustomEvent<string>) {
-    const name = e.detail;
-    envFile.update(ef => {
-      const current = ef ?? {};
-      return { ...current, [name]: {} };
-    });
-    activeEnvironment.set(name);
-  }
 
   /** Resolve the full dependency chain in topological order, then run each unsent request. */
   async function handleRunAll(e: CustomEvent<string[]>) {
@@ -858,11 +1066,7 @@
     if (!rootPath) return;
 
     const { writeFlowFile } = await import('./lib/flowIO');
-    const segments = flowPath.split('/');
-    let absolutePath = rootPath;
-    for (const seg of segments) {
-      absolutePath = await join(absolutePath, seg);
-    }
+    const absolutePath = await safeJoinPath(rootPath, flowPath);
     await writeFlowFile(absolutePath, flow);
     flows.update(f => ({ ...f, [flowPath]: flow }));
 
@@ -900,11 +1104,7 @@
 
     try {
       const { remove } = await import('@tauri-apps/plugin-fs');
-      const segments = path.split('/');
-      let absolutePath = rootPath;
-      for (const seg of segments) {
-        absolutePath = await join(absolutePath, seg);
-      }
+      const absolutePath = await safeJoinPath(rootPath, path);
       await remove(absolutePath);
     } catch (err) {
       console.warn('Could not delete flow file:', path, err);
@@ -932,6 +1132,7 @@
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
+  kvVariables={$keyVaultState.status === 'loaded' ? $keyVaultState.variables : {}}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
   namedResults={$namedResults}
@@ -974,6 +1175,7 @@
         selected={$selectedLocation}
         rootName={$workspace.rootName}
         hasWorkspace={!!$workspace.rootPath}
+        editingFilePath={$editingFilePath}
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
         flows={$flows}
@@ -986,8 +1188,12 @@
         on:toggleFolder={handleToggleFolder}
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
+        on:deleteFile={handleDeleteFile}
+        on:createFile={handleCreateFile}
+        on:renameFile={handleRenameFile}
+        on:duplicateFile={handleDuplicateFile}
+        on:cancelRename={handleCancelRename}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-        on:addEnv={handleAddEnv}
         on:editEnv={() => showEnvEditor = true}
         on:openVarInspector={() => showVarInspector = true}
         on:openHelp={() => showHelp = true}
@@ -1021,12 +1227,25 @@
             <EnvironmentEditor
               envFile={$envFile}
               activeEnv={$activeEnvironment}
+              kvState={$keyVaultState}
               on:update={(e) => {
                 envFile.set(e.detail);
                 saveEnvFile(e.detail);
               }}
               on:changeEnv={(e) => activeEnvironment.set(e.detail)}
               on:close={() => showEnvEditor = false}
+              on:conflictPref={(e) => {
+                kvConflictPrefs.update(p => ({ ...p, [e.detail.key]: e.detail.source }));
+              }}
+              on:refreshKv={(e) => {
+                // Invalidate cache for this env so fresh secrets are fetched
+                for (const key of Object.keys(kvCache)) {
+                  if (key.startsWith(e.detail + '::')) delete kvCache[key];
+                }
+                kvCache = kvCache;
+                keyVaultState.update(s => ({ ...s, cacheKey: null }));
+                refreshKeyVaultSecrets(e.detail);
+              }}
             />
           </div>
         {:else if $activeFlowTabPath && $activeFlow}

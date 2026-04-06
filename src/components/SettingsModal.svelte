@@ -22,7 +22,7 @@
       </div>
       <div class="modal-body">
         <div class="section">
-          <label class="section-label">Theme</label>
+          <span class="section-label">Theme</span>
           <div class="theme-options">
             {#each THEMES as theme}
               <button
