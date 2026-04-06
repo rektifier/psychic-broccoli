@@ -1078,7 +1078,6 @@
               envFile={$envFile}
               activeEnv={$activeEnvironment}
               kvState={$keyVaultState}
-              kvCache={kvCache}
               on:update={(e) => {
                 envFile.set(e.detail);
                 saveEnvFile(e.detail);

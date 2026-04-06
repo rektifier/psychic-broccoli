@@ -7,7 +7,6 @@
   export let envFile: EnvironmentFile;
   export let activeEnv: string;
   export let kvState: KeyVaultState;
-  export let kvCache: Record<string, KeyVaultState> = {};
 
   const dispatch = createEventDispatcher();
 
@@ -89,32 +88,21 @@
     return envData ? JSON.stringify(envData) : '';
   }
 
-  /** Resolve the KV state for a given env, falling back to cache for non-active envs. */
-  function resolveKvState(env: string, active: KeyVaultState, cache: Record<string, KeyVaultState>): KeyVaultState {
-    if (active.status === 'loaded') return active;
-    // Look up cached state for this env (cache keys are "envName::vaultUrl::secretName")
-    for (const [key, state] of Object.entries(cache)) {
-      if (key.startsWith(env + '::') && state.status === 'loaded') return state;
-    }
-    return active;
-  }
-
   // Local editable array - rebuilt when switching environments, KV status changes, or envFile changes externally
-  $: effectiveKv = resolveKvState(editingEnv, kvState, kvCache);
-  let envVars: EnvVar[] = buildVarList(envFile, editingEnv, resolveKvState(editingEnv, kvState, kvCache));
+  let envVars: EnvVar[] = buildVarList(envFile, editingEnv, kvState);
   let lastEditingEnv = editingEnv;
-  let lastEffectiveKvStatus = resolveKvState(editingEnv, kvState, kvCache).status;
+  let lastKvStatus = kvState.status;
   let lastEnvFingerprint = envFileFingerprint(envFile, editingEnv);
   $: {
     const currentFingerprint = envFileFingerprint(envFile, editingEnv);
     if (
       editingEnv !== lastEditingEnv ||
-      effectiveKv.status !== lastEffectiveKvStatus ||
+      kvState.status !== lastKvStatus ||
       currentFingerprint !== lastEnvFingerprint
     ) {
-      envVars = buildVarList(envFile, editingEnv, effectiveKv);
+      envVars = buildVarList(envFile, editingEnv, kvState);
       lastEditingEnv = editingEnv;
-      lastEffectiveKvStatus = effectiveKv.status;
+      lastKvStatus = kvState.status;
       lastEnvFingerprint = currentFingerprint;
     }
   }
@@ -248,7 +236,7 @@
   // ─── Key Vault config ───
 
   $: kvConfig = envFile?.[editingEnv]?.$keyvault ?? null;
-  $: kvConnected = kvConfig && effectiveKv.status === 'loaded' && effectiveKv.cacheKey?.startsWith(editingEnv + '::');
+  $: kvConnected = kvConfig && kvState.status === 'loaded' && kvState.cacheKey?.startsWith(editingEnv + '::');
 
   // Sync local inputs when switching envs or when config changes externally
   let lastKvConfigEnv = editingEnv;
@@ -326,7 +314,7 @@
       {/if}
     </div>
     <div class="header-actions">
-      {#if kvConfig && (effectiveKv.status === 'loaded' || effectiveKv.status === 'error')}
+      {#if kvConfig && (kvState.status === 'loaded' || kvState.status === 'error')}
         <button
           class="btn-toggle-secrets"
           on:click={() => showSecrets = !showSecrets}
@@ -366,60 +354,6 @@
     {/if}
   </div>
 
-  <!-- Key Vault config -->
-  {#if showKvSetup || kvConfig}
-    <div class="kv-setup">
-      <div class="kv-setup-header">
-        <span class="kv-setup-title">Azure Key Vault</span>
-        <HelpTip
-          label="Azure Key Vault"
-          text="Requires Azure CLI login (az login) or a configured service principal. The vault URL should point to an existing Key Vault instance that your account has Secret read permissions on."
-        />
-        {#if kvConnected}
-          <span class="kv-connected-badge">connected</span>
-        {:else if kvConfig}
-          <span class="kv-configured-badge">configured</span>
-        {/if}
-      </div>
-      <div class="kv-setup-fields">
-        <label class="kv-field">
-          <span class="kv-field-label">Vault URL</span>
-          <input
-            class="kv-field-input"
-            bind:value={kvVaultUrl}
-            placeholder="https://my-vault.vault.azure.net"
-            spellcheck="false"
-          />
-        </label>
-        <label class="kv-field">
-          <span class="kv-field-label">Secret name</span>
-          <input
-            class="kv-field-input"
-            bind:value={kvSecretName}
-            placeholder="my-secret"
-            spellcheck="false"
-          />
-        </label>
-      </div>
-      <div class="kv-setup-actions">
-        <button
-          class="btn-kv-connect"
-          on:click={saveKvConfig}
-          disabled={!kvVaultUrl.trim() || !kvSecretName.trim()}
-        >{kvConfig ? 'Save & refresh' : 'Connect'}</button>
-        {#if kvConfig}
-          <button class="btn-kv-disconnect" on:click={removeKvConfig}>Disconnect</button>
-        {:else}
-          <button class="btn-kv-cancel" on:click={() => { showKvSetup = false; kvVaultUrl = ''; kvSecretName = ''; }}>Cancel</button>
-        {/if}
-      </div>
-    </div>
-  {:else}
-    <button class="btn-kv-add" on:click={() => showKvSetup = true}>
-      + Connect to Azure Key Vault
-    </button>
-  {/if}
-
   <!-- Column headers -->
   <div class="col-headers">
     <span class="col-check"></span>
@@ -428,11 +362,11 @@
     <span class="col-del"></span>
   </div>
 
-  {#if effectiveKv.status === 'loading'}
+  {#if kvState.status === 'loading'}
     <div class="kv-status kv-loading">Loading Key Vault secrets...</div>
-  {:else if effectiveKv.status === 'error'}
+  {:else if kvState.status === 'error'}
     <div class="kv-status kv-error">
-      Key Vault error: {effectiveKv.error}
+      Key Vault error: {kvState.error}
       <button class="btn-kv-retry" on:click={() => dispatch('refreshKv', editingEnv)}>Retry</button>
     </div>
   {/if}
@@ -517,6 +451,60 @@
       + Add variable
     </button>
   </div>
+
+  <!-- Key Vault config -->
+  {#if showKvSetup || kvConfig}
+    <div class="kv-setup">
+      <div class="kv-setup-header">
+        <span class="kv-setup-title">Azure Key Vault</span>
+        <HelpTip
+          label="Azure Key Vault"
+          text="Requires Azure CLI login (az login) or a configured service principal. The vault URL should point to an existing Key Vault instance that your account has Secret read permissions on."
+        />
+        {#if kvConnected}
+          <span class="kv-connected-badge">connected</span>
+        {:else if kvConfig}
+          <span class="kv-configured-badge">configured</span>
+        {/if}
+      </div>
+      <div class="kv-setup-fields">
+        <label class="kv-field">
+          <span class="kv-field-label">Vault URL</span>
+          <input
+            class="kv-field-input"
+            bind:value={kvVaultUrl}
+            placeholder="https://my-vault.vault.azure.net"
+            spellcheck="false"
+          />
+        </label>
+        <label class="kv-field">
+          <span class="kv-field-label">Secret name</span>
+          <input
+            class="kv-field-input"
+            bind:value={kvSecretName}
+            placeholder="my-secret"
+            spellcheck="false"
+          />
+        </label>
+      </div>
+      <div class="kv-setup-actions">
+        <button
+          class="btn-kv-connect"
+          on:click={saveKvConfig}
+          disabled={!kvVaultUrl.trim() || !kvSecretName.trim()}
+        >{kvConfig ? 'Save & refresh' : 'Connect'}</button>
+        {#if kvConfig}
+          <button class="btn-kv-disconnect" on:click={removeKvConfig}>Disconnect</button>
+        {:else}
+          <button class="btn-kv-cancel" on:click={() => { showKvSetup = false; kvVaultUrl = ''; kvSecretName = ''; }}>Cancel</button>
+        {/if}
+      </div>
+    </div>
+  {:else}
+    <button class="btn-kv-add" on:click={() => showKvSetup = true}>
+      + Connect to Azure Key Vault
+    </button>
+  {/if}
 
   <!-- Footer -->
   <div class="editor-footer">
