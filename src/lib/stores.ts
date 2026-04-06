@@ -276,6 +276,24 @@ export function deleteRequestFromFile(filePath: string, requestIndex: number) {
   }
 }
 
+/** Remove a file from the workspace tree and close its tabs. */
+export function removeFileFromTree(filePath: string) {
+  function filterTree(nodes: TreeNode[]): TreeNode[] {
+    return nodes
+      .filter(n => !(n.type === 'file' && n.path === filePath))
+      .map(n => n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n);
+  }
+
+  const file = findFileNode(get(workspace).tree, filePath);
+  if (file) {
+    for (let i = file.requests.length - 1; i >= 0; i--) {
+      closeTab({ filePath, requestIndex: i });
+    }
+  }
+
+  workspace.update(ws => ({ ...ws, tree: filterTree(ws.tree) }));
+}
+
 /** Mark a file as saved (not dirty). */
 export function markFileSaved(filePath: string) {
   workspace.update(ws => ({

@@ -21,7 +21,7 @@
     resolvedEnvVars, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
     keyVaultState, kvConflictPrefs,
-    updateRequestInTree, addRequestToFile, deleteRequestFromFile,
+    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
@@ -732,6 +732,20 @@
     deleteRequestFromFile(e.detail.filePath, e.detail.requestIndex);
   }
 
+  async function handleDeleteFile(e: CustomEvent<string>) {
+    const filePath = e.detail;
+
+    try {
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      await remove(filePath);
+    } catch (err) {
+      addToast(`Failed to delete file: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    removeFileFromTree(filePath);
+  }
+
   function handleToggleFolder(e: CustomEvent<string>) {
     toggleFolder(e.detail);
   }
@@ -1043,6 +1057,7 @@
         on:toggleFolder={handleToggleFolder}
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
+        on:deleteFile={handleDeleteFile}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
         on:editEnv={() => showEnvEditor = true}
         on:openVarInspector={() => showVarInspector = true}
