@@ -3,6 +3,7 @@ use std::path::Path;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
+use futures_util::StreamExt;
 
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const MAX_RESPONSE_BYTES: usize = 50 * 1024 * 1024; // 50 MB
@@ -38,6 +39,7 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
@@ -72,13 +74,22 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
         }
     }
 
-    let body_bytes = res.bytes().await.map_err(|e| e.to_string())?;
-    if body_bytes.len() > MAX_RESPONSE_BYTES {
-        return Err(format!(
-            "Response too large: {} bytes (limit: {} bytes)",
-            body_bytes.len(),
-            MAX_RESPONSE_BYTES
-        ));
+    // Stream the response body with a size limit to prevent OOM from
+    // malicious or unexpectedly large responses.
+    let capacity = res.content_length()
+        .map(|len| len.min(MAX_RESPONSE_BYTES as u64) as usize)
+        .unwrap_or(0);
+    let mut body_bytes = Vec::with_capacity(capacity);
+    let mut stream = res.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        body_bytes.extend_from_slice(&chunk);
+        if body_bytes.len() > MAX_RESPONSE_BYTES {
+            return Err(format!(
+                "Response too large (exceeded {} MB limit). Download aborted.",
+                MAX_RESPONSE_BYTES / (1024 * 1024)
+            ));
+        }
     }
     let body = String::from_utf8_lossy(&body_bytes).to_string();
 
@@ -94,8 +105,13 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
+        let file_type = entry.file_type()?;
+        // Skip symbolic links to prevent copying files from unexpected locations
+        if file_type.is_symlink() {
+            continue;
+        }
         let target = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        if file_type.is_dir() {
             copy_dir_recursive(&entry.path(), &target)?;
         } else {
             std::fs::copy(entry.path(), target)?;
