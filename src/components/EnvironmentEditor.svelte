@@ -459,7 +459,7 @@
         <span class="kv-setup-title">Azure Key Vault</span>
         <HelpTip
           label="Azure Key Vault"
-          text="Requires Azure CLI login (az login) or a configured service principal. The vault URL should point to an existing Key Vault instance that your account has Secret read permissions on."
+          text="Requires Azure CLI (az login) or Azure Developer CLI (azd auth login). The vault URL should point to an existing Key Vault instance that your account has Secret read permissions on."
         />
         {#if kvConnected}
           <span class="kv-connected-badge">connected</span>
