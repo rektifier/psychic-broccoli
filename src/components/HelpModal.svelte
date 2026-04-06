@@ -219,73 +219,39 @@ Authorization: Bearer &#123;&#123;token&#125;&#125;
 {/if}
 
 <style>
-  .overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 100;
-    background: rgba(0,0,0,0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
+  /* Modal base from shared.css; only overrides here */
   .modal {
     width: 480px;
-    max-height: 80vh;
-    overflow-y: auto;
-    background: #FFFFFF;
-    border: 1px solid #D4D4D8;
-    border-radius: 10px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.12);
   }
-
   .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid #DCDCE2;
     position: sticky;
     top: 0;
-    background: #FFFFFF;
+    background: var(--color-bg-surface);
     z-index: 1;
-    border-radius: 10px 10px 0 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   }
-  .modal-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #1A1A2E;
-  }
-  .btn-close {
-    width: 24px; height: 24px;
-    border: none; border-radius: 4px;
-    background: transparent; color: #999;
-    font-size: 16px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .btn-close:hover { background: #E4E4EA; color: #444; }
 
   .section {
-    padding: 12px 16px;
-    border-bottom: 1px solid #F0F0F4;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-bg-sidebar);
   }
   .section:last-child {
     border-bottom: none;
   }
   .section-title {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: #D4900A;
-    margin-bottom: 6px;
+    color: var(--color-primary);
+    margin-bottom: var(--space-1\.5);
   }
 
   p {
-    font-size: 12px;
-    color: #555;
+    font-size: var(--text-base);
+    color: var(--color-text-secondary);
     line-height: 1.5;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-2);
   }
   p:last-child {
     margin-bottom: 0;
@@ -293,23 +259,23 @@ Authorization: Bearer &#123;&#123;token&#125;&#125;
 
   code {
     font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 11px;
-    background: #F0F0F4;
+    font-size: var(--text-sm);
+    background: var(--color-bg-sidebar);
     padding: 1px 5px;
-    border-radius: 3px;
-    color: #9A7520;
+    border-radius: var(--radius-xs);
+    color: var(--color-warning);
   }
 
   .code-block {
     font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 11px;
+    font-size: var(--text-sm);
     line-height: 1.5;
-    background: #F8F8FA;
-    border: 1px solid #E8E8EC;
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: #444;
-    margin: 6px 0;
+    background: var(--color-bg);
+    border: 1px solid var(--color-bg-hover);
+    border-radius: var(--radius-default);
+    padding: var(--space-2) var(--space-3);
+    color: var(--slate-250);
+    margin: var(--space-1\.5) 0;
     white-space: pre;
     overflow-x: auto;
   }
@@ -317,22 +283,22 @@ Authorization: Bearer &#123;&#123;token&#125;&#125;
   .shortcut-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 4px 0;
-    font-size: 12px;
-    color: #555;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    font-size: var(--text-base);
+    color: var(--color-text-secondary);
   }
 
   kbd {
     display: inline-block;
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 500;
-    padding: 2px 8px;
-    background: #F0F0F4;
-    border: 1px solid #D4D4D8;
-    border-radius: 4px;
-    color: #444;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    padding: 2px var(--space-2);
+    background: var(--color-bg-sidebar);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--slate-250);
     min-width: 80px;
     text-align: center;
   }

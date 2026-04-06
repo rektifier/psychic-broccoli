@@ -11,6 +11,8 @@
   import type { ImportFormat } from './lib/detect';
   import TabBar from './components/TabBar.svelte';
   import FlowEditor from './components/FlowEditor.svelte';
+  import SettingsModal from './components/SettingsModal.svelte';
+  import { loadTheme, setTheme, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -51,6 +53,11 @@
   let showVarInspector = false;
 
   let showHelp = false;
+
+  // ─── Theme / Settings ───
+  let currentTheme: ThemeId = 'default';
+  let showSettings = false;
+  loadTheme().then(t => currentTheme = t);
 
   // ─── Import Collection Modal ───
   let showImportCollectionModal = false;
@@ -233,50 +240,62 @@
 
   // ─── Open Folder (scan for .http files) ───
 
+  async function openFolderByPath(rootPath: string) {
+    const discovered = await scanForHttpFiles(rootPath, rootPath);
+    const tree = buildWorkspaceTree(discovered);
+    const rootName = await basename(rootPath);
+
+    workspace.set({ rootPath, rootName, tree });
+    selectedLocation.set(null);
+    currentResponse.set(null);
+    namedResults.set({});
+    tabs.set([]);
+    currentSentRequest.set(null);
+
+    // Reset environment state before loading new env files
+    envFile.set(null);
+    userEnvFile.set(null);
+    activeEnvironment.set(null);
+
+    // Auto-discover env files from workspace root
+    await tryLoadEnvFiles(rootPath);
+
+    // Discover test flows and load run history
+    try {
+      const discoveredFlows = await scanForFlowFiles(rootPath, rootPath);
+      const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
+      for (const df of discoveredFlows) {
+        flowMap[df.relativePath] = df.flow;
+      }
+      flows.set(flowMap);
+    } catch { /* no flows yet */ }
+
+    try {
+      const history = await loadFlowHistory(rootPath);
+      flowRunHistory.set(history);
+    } catch { /* no history yet */ }
+
+    // Reset flow tabs
+    flowTabs.set([]);
+    activeFlowTabPath.set(null);
+  }
+
   async function openFolder() {
     try {
       const rootPath = await open({ directory: true, title: 'Select workspace folder' });
       if (!rootPath) return;
-
-      const discovered = await scanForHttpFiles(rootPath as string, rootPath as string);
-      const tree = buildWorkspaceTree(discovered);
-      const rootName = await basename(rootPath as string);
-
-      workspace.set({ rootPath: rootPath as string, rootName, tree });
-      selectedLocation.set(null);
-      currentResponse.set(null);
-      namedResults.set({});
-      tabs.set([]);
-      currentSentRequest.set(null);
-
-      // Reset environment state before loading new env files
-      envFile.set(null);
-      userEnvFile.set(null);
-      activeEnvironment.set(null);
-
-      // Auto-discover env files from workspace root
-      await tryLoadEnvFiles(rootPath as string);
-
-      // Discover test flows and load run history
-      try {
-        const discoveredFlows = await scanForFlowFiles(rootPath as string, rootPath as string);
-        const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
-        for (const df of discoveredFlows) {
-          flowMap[df.relativePath] = df.flow;
-        }
-        flows.set(flowMap);
-      } catch { /* no flows yet */ }
-
-      try {
-        const history = await loadFlowHistory(rootPath as string);
-        flowRunHistory.set(history);
-      } catch { /* no history yet */ }
-
-      // Reset flow tabs
-      flowTabs.set([]);
-      activeFlowTabPath.set(null);
+      await openFolderByPath(rootPath as string);
     } catch (e: any) {
       addToast(`Failed to open folder: ${e.message || e}`, 'error');
+    }
+  }
+
+  async function openGettingStarted() {
+    try {
+      const path = await invoke<string>('extract_getting_started');
+      await openFolderByPath(path);
+    } catch (e: any) {
+      addToast(`Failed to open getting-started folder: ${e.message || e}`, 'error');
     }
   }
 
@@ -324,18 +343,22 @@
 
   // ─── Import Collections ───
 
+  /** Validate and join a relative path onto a root, preventing directory traversal. */
+  async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
+    for (const seg of relativePath.split('/')) {
+      if (!seg || seg === '..' || seg === '.' || seg.includes('\0') || seg.includes('\\') || seg.includes('/')) {
+        throw new Error(`Invalid path segment: "${seg}"`);
+      }
+    }
+    return join(rootPath, relativePath);
+  }
+
   async function writeImportedFiles(result: ImportResult): Promise<number> {
     const rootPath = $workspace.rootPath!;
     const { mkdir } = await import('@tauri-apps/plugin-fs');
     let written = 0;
     for (const file of result.files) {
-      // Split relative path into segments and join individually to handle
-      // forward slashes correctly on Windows
-      const segments = file.relativePath.split('/');
-      let outPath = rootPath;
-      for (const seg of segments) {
-        outPath = await join(outPath, seg);
-      }
+      const outPath = await safeJoinPath(rootPath, file.relativePath);
       const parentDir = await dirname(outPath);
       try {
         await mkdir(parentDir, { recursive: true });
@@ -839,11 +862,7 @@
     if (!rootPath) return;
 
     const { writeFlowFile } = await import('./lib/flowIO');
-    const segments = flowPath.split('/');
-    let absolutePath = rootPath;
-    for (const seg of segments) {
-      absolutePath = await join(absolutePath, seg);
-    }
+    const absolutePath = await safeJoinPath(rootPath, flowPath);
     await writeFlowFile(absolutePath, flow);
     flows.update(f => ({ ...f, [flowPath]: flow }));
 
@@ -881,11 +900,7 @@
 
     try {
       const { remove } = await import('@tauri-apps/plugin-fs');
-      const segments = path.split('/');
-      let absolutePath = rootPath;
-      for (const seg of segments) {
-        absolutePath = await join(absolutePath, seg);
-      }
+      const absolutePath = await safeJoinPath(rootPath, path);
       await remove(absolutePath);
     } catch (err) {
       console.warn('Could not delete flow file:', path, err);
@@ -903,6 +918,12 @@
 
 <ToastContainer />
 <HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<SettingsModal
+  visible={showSettings}
+  currentTheme={currentTheme}
+  on:changeTheme={(e) => { currentTheme = e.detail; setTheme(e.detail); }}
+  on:close={() => showSettings = false}
+/>
 <VariableInspector
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
@@ -954,6 +975,7 @@
         flows={$flows}
         activeFlowPath={$activeFlowTabPath}
         on:openFolder={openFolder}
+        on:openGettingStarted={openGettingStarted}
         on:importCollection={() => showImportCollectionModal = true}
         on:select={handleSelect}
         on:pinRequest={handlePinRequest}
@@ -965,6 +987,7 @@
         on:editEnv={() => showEnvEditor = true}
         on:openVarInspector={() => showVarInspector = true}
         on:openHelp={() => showHelp = true}
+        on:openSettings={() => showSettings = true}
         on:nameRequest={handleNameRequest}
         on:openFlow={handleOpenFlow}
         on:createFlow={handleCreateFlow}
@@ -1063,27 +1086,27 @@
     margin: 0; padding: 0; box-sizing: border-box;
   }
   :global(body) {
-    font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
-    background: #F8F8FA; color: #333340;
-    overflow: hidden; font-size: 13px;
+    font-family: var(--font-ui);
+    background: var(--color-bg); color: var(--color-text);
+    overflow: hidden; font-size: var(--text-md);
   }
 
   .app {
     display: flex; flex-direction: column;
-    height: 100vh; background: #F8F8FA;
+    height: 100vh; background: var(--color-bg);
   }
 
   .titlebar {
     display: flex; justify-content: space-between; align-items: center;
     height: 28px;
-    background: #F0F0F4; border-bottom: 1px solid #DCDCE2;
+    background: var(--color-bg-sidebar); border-bottom: 1px solid var(--color-divider);
     -webkit-app-region: drag; user-select: none; flex-shrink: 0;
   }
   .layout { display: flex; flex: 1; overflow: hidden; }
 
   .sidebar-container {
     display: flex; flex-direction: column;
-    background: #F0F0F4;
+    background: var(--color-bg-sidebar);
     flex-shrink: 0; overflow: hidden;
   }
 
@@ -1091,11 +1114,11 @@
     width: 3px;
     flex-shrink: 0;
     cursor: col-resize;
-    background: #DCDCE2;
-    transition: background 0.15s;
+    background: var(--color-divider);
+    transition: background var(--duration-normal);
   }
   .sidebar-divider:hover, .sidebar-dragging .sidebar-divider {
-    background: #D4900A;
+    background: var(--color-primary);
   }
   .sidebar-dragging { cursor: col-resize; user-select: none; }
 
@@ -1109,11 +1132,11 @@
     width: 3px;
     flex-shrink: 0;
     cursor: col-resize;
-    background: #DCDCE2;
-    transition: background 0.15s;
+    background: var(--color-divider);
+    transition: background var(--duration-normal);
   }
   .divider:hover, .dragging .divider {
-    background: #D4900A;
+    background: var(--color-primary);
   }
   .env-editor-pane { flex: 1; overflow: auto; }
 
