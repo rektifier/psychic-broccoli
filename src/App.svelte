@@ -1133,7 +1133,7 @@
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
   envVarSources={$baseEnvVarsWithSource}
-  kvVariables={$keyVaultState.status === 'loaded' ? $keyVaultState.variables : {}}
+  kvVariables={$keyVaultState.status === 'loaded' && $keyVaultState.cacheKey?.startsWith($activeEnvironment + '::') ? $keyVaultState.variables : {}}
   varSourcePrefs={$varSourcePrefs}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
