@@ -1,11 +1,17 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
+  import { getVersion } from '@tauri-apps/api/app';
   import { THEMES, type ThemeId } from '../lib/theme';
 
   export let visible = false;
   export let currentTheme: ThemeId = 'default';
 
   const dispatch = createEventDispatcher();
+
+  let appVersion = '';
+  onMount(async () => {
+    try { appVersion = await getVersion(); } catch {}
+  });
 
   function selectTheme(id: ThemeId) {
     dispatch('changeTheme', id);
@@ -35,6 +41,9 @@
             {/each}
           </div>
         </div>
+        {#if appVersion}
+          <div class="version-info">v{appVersion}</div>
+        {/if}
       </div>
     </div>
   </div>
@@ -126,5 +135,12 @@
     background: var(--color-primary-subtle);
     color: var(--color-primary);
     font-weight: var(--weight-semibold);
+  }
+  .version-info {
+    margin-top: var(--space-4);
+    text-align: center;
+    font-size: var(--text-sm);
+    color: var(--color-text-faint);
+    opacity: 0.6;
   }
 </style>

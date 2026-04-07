@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
+  import { getVersion } from '@tauri-apps/api/app';
   import TreeNode from './TreeNode.svelte';
   import type { TreeNode as TNode, RequestLocation, FlowDefinition } from '../lib/types';
   import { getAllFileNodes } from '../lib/parser';
+
+  let appVersion = '';
 
   export let tree: TNode[] = [];
   export let selected: RequestLocation | null = null;
@@ -53,6 +56,10 @@
     }
     return result;
   }
+
+  onMount(async () => {
+    try { appVersion = await getVersion(); } catch {}
+  });
 
   $: usedNames = getAllFileNodes(tree)
     .flatMap(f => f.requests)
@@ -338,6 +345,9 @@
       </svg>
       <span>Help</span>
     </button>
+    {#if appVersion}
+      <span class="version-label">v{appVersion}</span>
+    {/if}
   </div>
 </aside>
 
@@ -821,10 +831,18 @@
   /* Sidebar footer */
   .sidebar-footer {
     display: flex;
+    align-items: center;
     gap: var(--space-2);
     flex-shrink: 0;
     padding: var(--space-2) var(--space-3);
     border-top: 1px solid var(--gray-100);
+  }
+  .version-label {
+    margin-left: auto;
+    font-size: var(--text-sm);
+    color: var(--color-text-faint);
+    opacity: 0.6;
+    user-select: text;
   }
   .btn-help {
     display: flex;
