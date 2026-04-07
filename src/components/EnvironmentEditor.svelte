@@ -149,6 +149,20 @@
   $: hasShared = envFile?.['$shared'] !== undefined || userEnvFile?.['$shared'] !== undefined;
   $: allTabs = hasShared ? ['$shared', ...envNames] : envNames;
 
+  // Track which variable keys have their override cascade expanded
+  let expandedOverrides = new Set<string>();
+
+  function toggleOverrideExpand(key: string) {
+    if (expandedOverrides.has(key)) {
+      expandedOverrides.delete(key);
+    } else {
+      expandedOverrides.add(key);
+    }
+    expandedOverrides = expandedOverrides; // trigger reactivity
+  }
+
+  $: userOverrideCount = envVars.filter(v => v.userOverride).length;
+
   // Editing state
   let renaming = false;
   let renameValue = '';
@@ -415,84 +429,122 @@
     </div>
   {/if}
 
+  {#if userOverrideCount > 0}
+    <div class="user-override-banner">
+      {userOverrideCount} variable{userOverrideCount !== 1 ? 's' : ''} overridden by .user file. Active values shown below.
+    </div>
+  {/if}
+
   <!-- Variable rows -->
   <div class="var-rows">
     {#each envVars as v, i}
-      <div class="var-row" class:disabled={!v.enabled} class:kv-row={v.source === 'keyvault'} class:user-overridden={!!v.userOverride} class:user-row={v.source === 'user-local'}>
-        {#if v.conflictShadow}
-          <input
-            type="checkbox"
-            class="var-check"
-            checked={v.enabled}
-            on:change={() => toggleConflictPair(i)}
-            title="Check to use local value instead of Key Vault"
-          />
-        {:else if v.source === 'keyvault' && conflictKeys.has(v.key)}
-          <input
-            type="checkbox"
-            class="var-check"
-            checked={v.enabled}
-            on:change={() => toggleConflictPair(i)}
-            title="Uncheck to use local value instead"
-          />
-        {:else if v.source === 'keyvault' || v.source === 'user-local'}
-          <input
-            type="checkbox"
-            class="var-check"
-            checked={v.enabled}
-            disabled
-            title={v.source === 'keyvault' ? 'Key Vault variable' : 'User file variable (.user)'}
-          />
-        {:else}
-          <input
-            type="checkbox"
-            class="var-check"
-            checked={v.enabled}
-            on:change={() => toggleVariable(i)}
-          />
-        {/if}
-
-        <input
-          class="var-key"
-          value={v.key}
-          on:input={(e) => updateVariable(i, 'key', e.currentTarget.value)}
-          placeholder="variableName"
-          spellcheck="false"
-          disabled={v.source === 'keyvault' || v.source === 'user-local'}
-        />
-
-        <div class="var-value-cell">
-          <div class="var-value-row">
+      <div class="var-row-wrapper">
+        <div class="var-row" class:disabled={!v.enabled} class:kv-row={v.source === 'keyvault'} class:user-overridden={!!v.userOverride} class:user-row={v.source === 'user-local'}>
+          {#if v.conflictShadow}
             <input
-              class="var-value"
-              class:overridden-value={!!v.userOverride}
-              value={v.source === 'keyvault' ? (showSecrets ? v.value : masked(v.value)) : v.value}
-              on:input={(e) => updateVariable(i, 'value', e.currentTarget.value)}
-              placeholder="value"
-              spellcheck="false"
-              disabled={v.source === 'keyvault' || v.source === 'user-local'}
+              type="checkbox"
+              class="var-check"
+              checked={v.enabled}
+              on:change={() => toggleConflictPair(i)}
+              title="Check to use local value instead of Key Vault"
             />
-            {#if v.source === 'keyvault'}
-              <span class="kv-badge">KV</span>
-            {/if}
-            {#if v.userOverride}
-              <span class="user-badge" title="Overridden by .user file: {v.userOverride.value}">USER</span>
-            {/if}
-            {#if v.source === 'user-local'}
-              <span class="user-badge">.user</span>
-            {/if}
-          </div>
-          {#if v.userOverride}
-            <div class="user-override-hint" title="Active value from .user file">
-              Active: {v.userOverride.value.length > 50 ? v.userOverride.value.slice(0, 50) + '...' : v.userOverride.value}
+          {:else if v.source === 'keyvault' && conflictKeys.has(v.key)}
+            <input
+              type="checkbox"
+              class="var-check"
+              checked={v.enabled}
+              on:change={() => toggleConflictPair(i)}
+              title="Uncheck to use local value instead"
+            />
+          {:else if v.source === 'keyvault' || v.source === 'user-local'}
+            <input
+              type="checkbox"
+              class="var-check"
+              checked={v.enabled}
+              disabled
+              title={v.source === 'keyvault' ? 'Key Vault variable' : 'User file variable (.user)'}
+            />
+          {:else}
+            <input
+              type="checkbox"
+              class="var-check"
+              checked={v.enabled}
+              on:change={() => toggleVariable(i)}
+            />
+          {/if}
+
+          <input
+            class="var-key"
+            value={v.key}
+            on:input={(e) => updateVariable(i, 'key', e.currentTarget.value)}
+            placeholder="variableName"
+            spellcheck="false"
+            disabled={v.source === 'keyvault' || v.source === 'user-local'}
+          />
+
+          <div class="var-value-cell">
+            <div class="var-value-row">
+              {#if v.userOverride}
+                <!-- Show the active (.user) value as the displayed value -->
+                <input
+                  class="var-value"
+                  value={v.userOverride.value}
+                  disabled
+                  spellcheck="false"
+                />
+                <span class="user-badge">USER</span>
+                <button
+                  class="btn-override-chevron"
+                  class:open={expandedOverrides.has(v.key)}
+                  on:click={() => toggleOverrideExpand(v.key)}
+                  title={expandedOverrides.has(v.key) ? 'Hide overridden value' : 'Show overridden value'}
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              {:else}
+                <input
+                  class="var-value"
+                  value={v.source === 'keyvault' ? (showSecrets ? v.value : masked(v.value)) : v.value}
+                  on:input={(e) => updateVariable(i, 'value', e.currentTarget.value)}
+                  placeholder="value"
+                  spellcheck="false"
+                  disabled={v.source === 'keyvault' || v.source === 'user-local'}
+                />
+                {#if v.source === 'keyvault'}
+                  <span class="kv-badge">KV</span>
+                {/if}
+                {#if v.source === 'user-local'}
+                  <span class="user-badge">USER</span>
+                {/if}
+              {/if}
             </div>
+          </div>
+
+          {#if v.source === 'local' && !v.userOverride}
+            <button class="btn-remove" on:click={() => removeVariable(i)}>x</button>
+          {:else if v.source === 'local' && v.userOverride}
+            <div class="btn-remove-placeholder"></div>
+          {:else}
+            <div class="btn-remove-placeholder"></div>
           {/if}
         </div>
 
-        {#if v.source === 'local'}
-          <button class="btn-remove" on:click={() => removeVariable(i)}>x</button>
-        {:else}
-          <div class="btn-remove-placeholder"></div>
+        <!-- Expanded override detail: shows the base file value (editable) -->
+        {#if v.userOverride && expandedOverrides.has(v.key)}
+          <div class="override-detail">
+            <div class="override-detail-row">
+              <span class="override-source-tag">{editingEnv === '$shared' ? 'SHARED' : 'ENV'}</span>
+              <input
+                class="var-value override-base-value"
+                value={v.value}
+                on:input={(e) => updateVariable(i, 'value', e.currentTarget.value)}
+                spellcheck="false"
+              />
+              <button class="btn-remove" on:click={() => removeVariable(i)} title="Remove {editingEnv === '$shared' ? '$shared' : 'environment'} variable">x</button>
+            </div>
+          </div>
         {/if}
       </div>
     {/each}
@@ -1018,10 +1070,18 @@
   .var-value::placeholder { color: var(--color-text-placeholder); }
 
   /* User override indicators */
+  .var-row-wrapper {
+    display: flex;
+    flex-direction: column;
+  }
   .var-row.user-overridden {
     border-left: 3px solid var(--purple-600);
     padding-left: var(--space-1\.5);
     margin-left: -3px;
+  }
+  .var-row.user-overridden .var-value {
+    opacity: 0.8;
+    cursor: default;
   }
   .var-row.user-row {
     border-left: 3px solid color-mix(in srgb, var(--purple-600) 50%, transparent);
@@ -1032,10 +1092,6 @@
   .var-row.user-row .var-value {
     opacity: 0.7;
     cursor: default;
-  }
-  .overridden-value {
-    text-decoration: line-through;
-    opacity: 0.5;
   }
   .user-badge {
     padding: 1px 5px;
@@ -1048,14 +1104,62 @@
     flex-shrink: 0;
     cursor: default;
   }
-  .user-override-hint {
-    font-size: var(--text-xs);
+
+  .btn-override-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform var(--duration-normal), color var(--duration-fast);
+  }
+  .btn-override-chevron:hover { color: var(--purple-600); }
+  .btn-override-chevron.open { transform: rotate(90deg); }
+
+  .override-detail {
+    margin-left: 22px;
+    padding: var(--space-1) 0 var(--space-1\.5) var(--space-2\.5);
+    border-left: 2px solid color-mix(in srgb, var(--purple-600) 25%, transparent);
+  }
+  .override-detail-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .override-source-tag {
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-faint);
+    background: var(--color-bg-sidebar);
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+    min-width: 30px;
+    text-align: center;
+  }
+  .override-base-value {
+    text-decoration: line-through;
+    opacity: 0.55;
+  }
+  .override-base-value:focus {
+    text-decoration: none;
+    opacity: 1;
+  }
+
+  .user-override-banner {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-default);
+    background: color-mix(in srgb, var(--purple-600) 6%, transparent);
     color: var(--purple-600);
-    font-family: var(--font-mono);
-    padding-left: var(--space-1);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--purple-600) 15%, transparent);
   }
 
   .env-tab.user-only-tab {
