@@ -5,6 +5,7 @@
   import HelpTip from './HelpTip.svelte';
 
   export let envFile: EnvironmentFile;
+  export let userEnvFile: EnvironmentFile | null = null;
   export let activeEnv: string;
   export let kvState: KeyVaultState;
 
@@ -27,9 +28,11 @@
     key: string;
     value: string;
     enabled: boolean;
-    source: 'local' | 'keyvault';
+    source: 'local' | 'keyvault' | 'user-local';
     /** True when this is a KV shadow row for a variable that also exists locally. */
     conflictShadow?: boolean;
+    /** Present when a .user file overrides this base-file variable. */
+    userOverride?: { value: string };
   }
 
   /** Check if an environment has KV access (directly or via $shared). */
@@ -37,21 +40,30 @@
     return isKeyVaultConfig(ef?.[env]?.$keyvault) || isKeyVaultConfig(ef?.['$shared']?.$keyvault);
   }
 
-  function buildVarList(ef: EnvironmentFile, env: string, kv: KeyVaultState): EnvVar[] {
+  function buildVarList(ef: EnvironmentFile, uef: EnvironmentFile | null, env: string, kv: KeyVaultState): EnvVar[] {
     const vars = ef?.[env];
+    const userVars = uef?.[env];
     const result: EnvVar[] = [];
     const hasKv = kv.status === 'loaded' && envHasKv(ef, env);
+    const localKeys = new Set<string>();
 
     if (vars) {
       for (const [key, value] of Object.entries(vars)) {
         if (key === '$keyvault') continue;
+        localKeys.add(key);
         const hasConflict = hasKv && kv.variables[key] !== undefined;
+        // Check if .user file overrides this variable
+        const userVal = userVars?.[key];
+        const userOverride = userVal !== undefined && typeof userVal === 'string'
+          ? { value: userVal }
+          : undefined;
         result.push({
           key,
           value: typeof value === 'string' ? value : JSON.stringify(value),
           enabled: !hasConflict,
           source: 'local',
           conflictShadow: hasConflict,
+          userOverride,
         });
         // If same key exists in KV, KV value takes priority
         if (hasConflict) {
@@ -65,11 +77,26 @@
       }
     }
 
+    // Add user-only variables (in .user file but not in base file)
+    if (userVars) {
+      for (const [key, value] of Object.entries(userVars)) {
+        if (key === '$keyvault') continue;
+        if (localKeys.has(key)) continue;
+        if (typeof value !== 'string') continue;
+        result.push({
+          key,
+          value,
+          enabled: true,
+          source: 'user-local',
+        });
+      }
+    }
+
     // Add KV-only variables (not in local) - only if this env has KV access
     if (hasKv) {
-      const localKeys = new Set(Object.keys(vars ?? {}).filter(k => k !== '$keyvault'));
+      const allLocalKeys = new Set([...localKeys, ...Object.keys(userVars ?? {}).filter(k => k !== '$keyvault')]);
       for (const [key, value] of Object.entries(kv.variables)) {
-        if (!localKeys.has(key)) {
+        if (!allLocalKeys.has(key)) {
           result.push({
             key,
             value,
@@ -83,24 +110,25 @@
     return result;
   }
 
-  function envFileFingerprint(ef: EnvironmentFile, env: string): string {
+  function envFileFingerprint(ef: EnvironmentFile, uef: EnvironmentFile | null, env: string): string {
     const envData = ef?.[env];
-    return envData ? JSON.stringify(envData) : '';
+    const userData = uef?.[env];
+    return (envData ? JSON.stringify(envData) : '') + '|' + (userData ? JSON.stringify(userData) : '');
   }
 
   // Local editable array - rebuilt when switching environments, KV status changes, or envFile changes externally
-  let envVars: EnvVar[] = buildVarList(envFile, editingEnv, kvState);
+  let envVars: EnvVar[] = buildVarList(envFile, userEnvFile, editingEnv, kvState);
   let lastEditingEnv = editingEnv;
   let lastKvStatus = kvState.status;
-  let lastEnvFingerprint = envFileFingerprint(envFile, editingEnv);
+  let lastEnvFingerprint = envFileFingerprint(envFile, userEnvFile, editingEnv);
   $: {
-    const currentFingerprint = envFileFingerprint(envFile, editingEnv);
+    const currentFingerprint = envFileFingerprint(envFile, userEnvFile, editingEnv);
     if (
       editingEnv !== lastEditingEnv ||
       kvState.status !== lastKvStatus ||
       currentFingerprint !== lastEnvFingerprint
     ) {
-      envVars = buildVarList(envFile, editingEnv, kvState);
+      envVars = buildVarList(envFile, userEnvFile, editingEnv, kvState);
       lastEditingEnv = editingEnv;
       lastKvStatus = kvState.status;
       lastEnvFingerprint = currentFingerprint;
@@ -110,9 +138,16 @@
   $: conflicts = envVars.filter(v => v.conflictShadow);
   $: conflictKeys = new Set(conflicts.map(v => v.key));
 
-  // Environments list: $shared first, then the rest
-  $: envNames = Object.keys(envFile || {}).filter(k => k !== '$shared');
-  $: allTabs = envFile?.['$shared'] !== undefined ? ['$shared', ...envNames] : envNames;
+  // Environments list: $shared first, then the rest (including user-file-only envs)
+  $: envNames = [...new Set([
+    ...Object.keys(envFile || {}).filter(k => k !== '$shared'),
+    ...Object.keys(userEnvFile || {}).filter(k => k !== '$shared'),
+  ])];
+  $: userOnlyEnvs = new Set(
+    Object.keys(userEnvFile || {}).filter(k => k !== '$shared' && !(envFile || {})[k])
+  );
+  $: hasShared = envFile?.['$shared'] !== undefined || userEnvFile?.['$shared'] !== undefined;
+  $: allTabs = hasShared ? ['$shared', ...envNames] : envNames;
 
   // Editing state
   let renaming = false;
@@ -225,6 +260,7 @@
       envData.$keyvault = existing.$keyvault;
     }
     for (const v of vars) {
+      // Only save base-file variables, not user-local or keyvault
       if (v.key.trim() && v.source === 'local') {
         envData[v.key.trim()] = v.value;
       }
@@ -332,8 +368,10 @@
         class="env-tab"
         class:active={env === editingEnv}
         class:shared-tab={env === '$shared'}
+        class:user-only-tab={userOnlyEnvs.has(env)}
         on:click={() => { editingEnv = env; confirmingDelete = false; }}
-      >{env}{env === activeEnv ? ' ✓' : ''}</button>
+        title={userOnlyEnvs.has(env) ? 'Defined only in .user file' : ''}
+      >{env}{env === activeEnv ? ' \u2713' : ''}{userOnlyEnvs.has(env) ? ' \u00B7' : ''}</button>
     {/each}
     {#if showAddEnv}
       <div class="add-env-inline">
@@ -380,7 +418,7 @@
   <!-- Variable rows -->
   <div class="var-rows">
     {#each envVars as v, i}
-      <div class="var-row" class:disabled={!v.enabled} class:kv-row={v.source === 'keyvault'}>
+      <div class="var-row" class:disabled={!v.enabled} class:kv-row={v.source === 'keyvault'} class:user-overridden={!!v.userOverride} class:user-row={v.source === 'user-local'}>
         {#if v.conflictShadow}
           <input
             type="checkbox"
@@ -397,13 +435,13 @@
             on:change={() => toggleConflictPair(i)}
             title="Uncheck to use local value instead"
           />
-        {:else if v.source === 'keyvault'}
+        {:else if v.source === 'keyvault' || v.source === 'user-local'}
           <input
             type="checkbox"
             class="var-check"
             checked={v.enabled}
             disabled
-            title="Key Vault variable"
+            title={v.source === 'keyvault' ? 'Key Vault variable' : 'User file variable (.user)'}
           />
         {:else}
           <input
@@ -420,23 +458,35 @@
           on:input={(e) => updateVariable(i, 'key', e.currentTarget.value)}
           placeholder="variableName"
           spellcheck="false"
-          disabled={v.source === 'keyvault'}
+          disabled={v.source === 'keyvault' || v.source === 'user-local'}
         />
 
         <div class="var-value-cell">
           <div class="var-value-row">
             <input
               class="var-value"
+              class:overridden-value={!!v.userOverride}
               value={v.source === 'keyvault' ? (showSecrets ? v.value : masked(v.value)) : v.value}
               on:input={(e) => updateVariable(i, 'value', e.currentTarget.value)}
               placeholder="value"
               spellcheck="false"
-              disabled={v.source === 'keyvault'}
+              disabled={v.source === 'keyvault' || v.source === 'user-local'}
             />
             {#if v.source === 'keyvault'}
               <span class="kv-badge">KV</span>
             {/if}
+            {#if v.userOverride}
+              <span class="user-badge" title="Overridden by .user file: {v.userOverride.value}">USER</span>
+            {/if}
+            {#if v.source === 'user-local'}
+              <span class="user-badge">.user</span>
+            {/if}
           </div>
+          {#if v.userOverride}
+            <div class="user-override-hint" title="Active value from .user file">
+              Active: {v.userOverride.value.length > 50 ? v.userOverride.value.slice(0, 50) + '...' : v.userOverride.value}
+            </div>
+          {/if}
         </div>
 
         {#if v.source === 'local'}
@@ -966,6 +1016,56 @@
   }
   .var-value:focus { border-color: #B0B0BA; }
   .var-value::placeholder { color: var(--color-text-placeholder); }
+
+  /* User override indicators */
+  .var-row.user-overridden {
+    border-left: 3px solid var(--purple-600);
+    padding-left: var(--space-1\.5);
+    margin-left: -3px;
+  }
+  .var-row.user-row {
+    border-left: 3px solid color-mix(in srgb, var(--purple-600) 50%, transparent);
+    padding-left: var(--space-1\.5);
+    margin-left: -3px;
+  }
+  .var-row.user-row .var-key,
+  .var-row.user-row .var-value {
+    opacity: 0.7;
+    cursor: default;
+  }
+  .overridden-value {
+    text-decoration: line-through;
+    opacity: 0.5;
+  }
+  .user-badge {
+    padding: 1px 5px;
+    border-radius: var(--radius-default);
+    background: color-mix(in srgb, var(--purple-600) 12%, transparent);
+    color: var(--purple-600);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+    cursor: default;
+  }
+  .user-override-hint {
+    font-size: var(--text-xs);
+    color: var(--purple-600);
+    font-family: var(--font-mono);
+    padding-left: var(--space-1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .env-tab.user-only-tab {
+    font-style: italic;
+    color: var(--purple-600);
+  }
+  .env-tab.user-only-tab.active {
+    color: var(--purple-600);
+    border-bottom-color: var(--purple-600);
+  }
 
   /* KV badge */
   .kv-badge {

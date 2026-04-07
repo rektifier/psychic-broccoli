@@ -18,7 +18,7 @@
     workspace, selectedLocation, currentResponse, isLoading,
     activeFile, activeRequest, activeFileVariables,
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
-    resolvedEnvVars, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
+    resolvedEnvVars, baseEnvVarsWithSource, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
     keyVaultState, kvConflictPrefs,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
@@ -1132,6 +1132,7 @@
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
+  envVarSources={$baseEnvVarsWithSource}
   kvVariables={$keyVaultState.status === 'loaded' ? $keyVaultState.variables : {}}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
@@ -1226,6 +1227,7 @@
           <div class="env-editor-pane">
             <EnvironmentEditor
               envFile={$envFile}
+              userEnvFile={$userEnvFile}
               activeEnv={$activeEnvironment}
               kvState={$keyVaultState}
               on:update={(e) => {

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { Variable, NamedRequestResult } from '../lib/types';
+  import type { Variable, NamedRequestResult, ResolvedVarWithCascade, VarSourceLayer } from '../lib/types';
 
   export let visible: boolean = false;
   export let fileVariables: Variable[] = [];
   export let envVariables: Record<string, string> = {};
+  export let envVarSources: Record<string, ResolvedVarWithCascade> = {};
   export let kvVariables: Record<string, string> = {};
   export let pbOverrides: Record<string, string> = {};
   export let pbGlobals: Record<string, string> = {};
@@ -27,7 +28,31 @@
   let copiedKey: string | null = null;
   let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  $: if (visible) { searchQuery = ''; copiedKey = null; showKvSecrets = false; }
+  let expandedCascadeKey: string | null = null;
+
+  function sourceTagLabel(source: VarSourceLayer): string {
+    switch (source) {
+      case 'shared': return '$shared';
+      case 'user-shared': return '$shared.user';
+      case 'env': return 'env';
+      case 'user-env': return 'env.user';
+    }
+  }
+
+  function sourceTagClass(source: VarSourceLayer): string {
+    switch (source) {
+      case 'shared': return 'source-shared';
+      case 'user-shared': return 'source-user';
+      case 'env': return 'source-env';
+      case 'user-env': return 'source-user';
+    }
+  }
+
+  function toggleCascade(key: string) {
+    expandedCascadeKey = expandedCascadeKey === key ? null : key;
+  }
+
+  $: if (visible) { searchQuery = ''; copiedKey = null; showKvSecrets = false; expandedCascadeKey = null; }
 
   $: kvKeys = new Set(Object.keys(kvVariables));
   $: envEntries = Object.entries(envVariables).filter(([k]) =>
@@ -184,13 +209,42 @@
                       <p class="empty">No matches in environment variables.</p>
                     {:else}
                       {#each filteredEnvEntries as [key, value]}
-                        <button class="row" class:copied={copiedKey === key} on:click={() => copyRef(key)}>
-                          <span class="tag env">env</span>
-                          <span class="key" title={key}>{key}</span>
-                          <span class="sep">=</span>
-                          <span class="val" title={value}>{truncate(value, 60)}</span>
-                          <span class="row-action">{copiedKey === key ? 'Copied' : 'Copy ref'}</span>
-                        </button>
+                        {@const srcInfo = envVarSources[key]}
+                        {@const hasCascade = srcInfo && srcInfo.cascade.length > 1}
+                        <div class="env-row-wrapper">
+                          <button class="row" class:copied={copiedKey === key} on:click={() => copyRef(key)}>
+                            {#if srcInfo}
+                              <span class="tag {sourceTagClass(srcInfo.source)}">{sourceTagLabel(srcInfo.source)}</span>
+                            {:else}
+                              <span class="tag env">env</span>
+                            {/if}
+                            <span class="key" title={key}>{key}</span>
+                            <span class="sep">=</span>
+                            <span class="val" title={value}>{truncate(value, 60)}</span>
+                            {#if hasCascade}
+                              <!-- svelte-ignore a11y_click_events_have_key_events -->
+                              <span
+                                class="cascade-toggle"
+                                role="button"
+                                tabindex="0"
+                                title="Defined in {srcInfo.cascade.length} layers"
+                                on:click|stopPropagation={() => toggleCascade(key)}
+                              >{srcInfo.cascade.length} layers</span>
+                            {/if}
+                            <span class="row-action">{copiedKey === key ? 'Copied' : 'Copy ref'}</span>
+                          </button>
+                          {#if hasCascade && expandedCascadeKey === key}
+                            <div class="cascade-detail">
+                              {#each srcInfo.cascade as layer, i}
+                                {@const isWinner = i === srcInfo.cascade.length - 1}
+                                <div class="cascade-layer" class:winner={isWinner} class:loser={!isWinner}>
+                                  <span class="tag tag-sm {sourceTagClass(layer.source)}">{sourceTagLabel(layer.source)}</span>
+                                  <span class="cascade-value" class:strikethrough={!isWinner}>{truncate(layer.value, 50)}</span>
+                                </div>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
                       {/each}
                     {/if}
                   </div>
@@ -464,9 +518,62 @@
     cursor: pointer;
   }
   .kv-reveal-toggle:hover { color: var(--color-primary); }
+  .tag.source-shared { color: var(--teal-600); background: color-mix(in srgb, var(--teal-600) 6%, transparent); }
+  .tag.source-env    { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
+  .tag.source-user   { color: var(--purple-600); background: color-mix(in srgb, var(--purple-600) 6%, transparent); }
+
   .tag.set      { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
   .tag.global   { color: var(--color-accent-flow); background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent); }
   .tag.response { color: var(--teal-600); background: color-mix(in srgb, var(--teal-600) 6%, transparent); }
+
+  .tag-sm {
+    font-size: 9px;
+    padding: 0 4px;
+    min-width: 32px;
+  }
+
+  .env-row-wrapper {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cascade-toggle {
+    font-size: var(--text-2xs);
+    color: var(--color-text-faint);
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+    background: var(--color-bg-sidebar);
+  }
+  .cascade-toggle:hover { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+
+  .cascade-detail {
+    margin-left: 48px;
+    padding: var(--space-1) 0 var(--space-1\.5);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    border-left: 2px solid var(--color-border);
+    padding-left: var(--space-2\.5);
+  }
+
+  .cascade-layer {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1\.5);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+  .cascade-layer.winner { color: var(--color-text); }
+  .cascade-layer.loser { opacity: 0.55; }
+
+  .cascade-value {
+    color: var(--color-text-secondary);
+    word-break: break-all;
+  }
+  .cascade-value.strikethrough { text-decoration: line-through; }
 
   .key {
     color: var(--color-accent-flow);

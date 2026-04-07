@@ -4,9 +4,9 @@ import type {
   EnvironmentFile, NamedRequestResult, PbAssertionResult,
   Workspace, TreeNode, FileNode, FolderNode, RequestLocation,
   FlowDefinition, FlowRunRecord, FlowRunStatus, FlowStepResult,
-  KeyVaultState, VarSource,
+  KeyVaultState, VarSource, ResolvedVarWithCascade,
 } from './types';
-import { createEmptyRequest, resolveEnvironmentVariables, getEnvironmentNames, serializeHttpFile } from './parser';
+import { createEmptyRequest, resolveEnvironmentVariables, resolveEnvironmentVariablesWithSource, getEnvironmentNames, serializeHttpFile } from './parser';
 
 // ─── Workspace ──────────────────────────────────────────────────────────────
 
@@ -418,6 +418,14 @@ export const baseEnvVars = derived(
   [activeEnvironment, envFile, userEnvFile],
   ([$active, $envFile, $userEnvFile]) => {
     return $active ? resolveEnvironmentVariables($active, $envFile, $userEnvFile) : {};
+  }
+);
+
+/** Environment variables with source layer tracking (for display components). */
+export const baseEnvVarsWithSource = derived(
+  [activeEnvironment, envFile, userEnvFile],
+  ([$active, $envFile, $userEnvFile]) => {
+    return $active ? resolveEnvironmentVariablesWithSource($active, $envFile, $userEnvFile) : {} as Record<string, ResolvedVarWithCascade>;
   }
 );
 
