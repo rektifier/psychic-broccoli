@@ -4,9 +4,9 @@ import type {
   EnvironmentFile, NamedRequestResult, PbAssertionResult,
   Workspace, TreeNode, FileNode, FolderNode, RequestLocation,
   FlowDefinition, FlowRunRecord, FlowRunStatus, FlowStepResult,
-  KeyVaultState, VarSource,
+  KeyVaultState, VarSource, ResolvedVarWithCascade,
 } from './types';
-import { createEmptyRequest, resolveEnvironmentVariables, getEnvironmentNames, serializeHttpFile } from './parser';
+import { createEmptyRequest, resolveEnvironmentVariables, resolveEnvironmentVariablesWithSource, getEnvironmentNames, serializeHttpFile } from './parser';
 
 // ─── Workspace ──────────────────────────────────────────────────────────────
 
@@ -410,14 +410,44 @@ export const keyVaultState = writable<KeyVaultState>({
   cacheKey: null,
 });
 
-/** Session-only conflict preferences: which source wins per variable key. */
-export const kvConflictPrefs = writable<Record<string, VarSource>>({});
+/** Session-only source preferences: which source wins per variable key when multiple sources define the same key. */
+export const varSourcePrefs = writable<Record<string, VarSource>>({});
 
 /** Environment variables only (no runtime overrides). */
 export const baseEnvVars = derived(
   [activeEnvironment, envFile, userEnvFile],
   ([$active, $envFile, $userEnvFile]) => {
     return $active ? resolveEnvironmentVariables($active, $envFile, $userEnvFile) : {};
+  }
+);
+
+/** Environment variables with source layer tracking (for display components).
+ *  Respects varSourcePrefs so the VariableInspector reflects the user's active source choice. */
+export const baseEnvVarsWithSource = derived(
+  [activeEnvironment, envFile, userEnvFile, varSourcePrefs],
+  ([$active, $envFile, $userEnvFile, $prefs]) => {
+    if (!$active) return {} as Record<string, ResolvedVarWithCascade>;
+    const result = resolveEnvironmentVariablesWithSource($active, $envFile, $userEnvFile);
+
+    // Apply user source preferences to override the default winner
+    for (const [key, pref] of Object.entries($prefs)) {
+      if (!result[key]) continue;
+
+      if (pref === 'keyvault') {
+        // Keep cascade data for VariableInspector to show overridden env layers
+        continue;
+      }
+
+      // Map VarSource pref to matching VarSourceLayer entries in the cascade.
+      // 'local' -> prefer 'env' then 'shared'; 'user-local' -> prefer 'user-env' then 'user-shared'
+      const layers = pref === 'local' ? ['env', 'shared'] : ['user-env', 'user-shared'];
+      const match = [...result[key].cascade].reverse().find(c => layers.includes(c.source));
+      if (match) {
+        result[key] = { ...result[key], source: match.source, value: match.value };
+      }
+    }
+
+    return result;
   }
 );
 
@@ -431,16 +461,37 @@ export const activeFileOverrides = derived(
 );
 
 export const resolvedEnvVars = derived(
-  [baseEnvVars, keyVaultState, kvConflictPrefs, pbGlobals, activeFileOverrides],
-  ([$base, $kv, $prefs, $globals, $fileOverrides]) => {
+  [baseEnvVars, keyVaultState, varSourcePrefs, pbGlobals, activeFileOverrides, envFile, userEnvFile, activeEnvironment],
+  ([$base, $kv, $prefs, $globals, $fileOverrides, $envFile, $userEnvFile, $active]) => {
     const merged = { ...$base };
 
-    if ($kv.status === 'loaded') {
+    // Apply user-local vs local preferences (override the default user > base resolution)
+    if ($active && $envFile) {
+      for (const [key, pref] of Object.entries($prefs)) {
+        if (pref === 'local') {
+          // User prefers base file value; look it up from env-specific then $shared
+          const envVal = $envFile[$active]?.[key];
+          const sharedVal = $envFile['$shared']?.[key];
+          const val = envVal ?? sharedVal;
+          if (typeof val === 'string') merged[key] = val;
+        } else if (pref === 'user-local' && $userEnvFile) {
+          // User explicitly prefers user file value; ensure it's used
+          const envVal = $userEnvFile[$active]?.[key];
+          const sharedVal = $userEnvFile['$shared']?.[key];
+          const val = envVal ?? sharedVal;
+          if (typeof val === 'string') merged[key] = val;
+        }
+      }
+    }
+
+    const kvBelongsToActiveEnv = !!$active && ($kv.cacheKey?.startsWith($active + '::') ?? false);
+    if ($kv.status === 'loaded' && kvBelongsToActiveEnv) {
       for (const [key, value] of Object.entries($kv.variables)) {
         if (key in merged) {
           // Conflict: KV wins by default, user can override per key
-          const pref = $prefs[key] ?? 'keyvault';
-          if (pref === 'keyvault') merged[key] = value;
+          const pref = $prefs[key];
+          if (!pref || pref === 'keyvault') merged[key] = value;
+          // If pref is 'local' or 'user-local', the merged value already has the right one
         } else {
           merged[key] = value;
         }
