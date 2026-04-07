@@ -1134,6 +1134,7 @@
   envVariables={$resolvedEnvVars}
   envVarSources={$baseEnvVarsWithSource}
   kvVariables={$keyVaultState.status === 'loaded' ? $keyVaultState.variables : {}}
+  varSourcePrefs={$varSourcePrefs}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
   namedResults={$namedResults}

@@ -421,11 +421,35 @@ export const baseEnvVars = derived(
   }
 );
 
-/** Environment variables with source layer tracking (for display components). */
+/** Environment variables with source layer tracking (for display components).
+ *  Respects varSourcePrefs so the VariableInspector reflects the user's active source choice. */
 export const baseEnvVarsWithSource = derived(
-  [activeEnvironment, envFile, userEnvFile],
-  ([$active, $envFile, $userEnvFile]) => {
-    return $active ? resolveEnvironmentVariablesWithSource($active, $envFile, $userEnvFile) : {} as Record<string, ResolvedVarWithCascade>;
+  [activeEnvironment, envFile, userEnvFile, varSourcePrefs],
+  ([$active, $envFile, $userEnvFile, $prefs]) => {
+    if (!$active) return {} as Record<string, ResolvedVarWithCascade>;
+    const result = resolveEnvironmentVariablesWithSource($active, $envFile, $userEnvFile);
+
+    // Apply user source preferences to override the default winner
+    for (const [key, pref] of Object.entries($prefs)) {
+      if (!result[key]) continue;
+
+      if (pref === 'keyvault') {
+        // KV is not part of the env cascade - remove from base so the inspector
+        // shows it in its KV section instead of the Environment section
+        delete result[key];
+        continue;
+      }
+
+      // Map VarSource pref to matching VarSourceLayer entries in the cascade.
+      // 'local' -> prefer 'env' then 'shared'; 'user-local' -> prefer 'user-env' then 'user-shared'
+      const layers = pref === 'local' ? ['env', 'shared'] : ['user-env', 'user-shared'];
+      const match = result[key].cascade.find(c => layers.includes(c.source));
+      if (match) {
+        result[key] = { ...result[key], source: match.source, value: match.value };
+      }
+    }
+
+    return result;
   }
 );
 
