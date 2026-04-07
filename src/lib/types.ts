@@ -134,7 +134,7 @@ export interface EnvironmentState {
 // ─── Key Vault ─────────────────────────────────────────────────────────────
 
 /** Source tag for a resolved variable. */
-export type VarSource = 'local' | 'keyvault';
+export type VarSource = 'local' | 'keyvault' | 'user-local';
 
 /** Identifies which layer in the 4-level priority chain a variable came from. */
 export type VarSourceLayer = 'shared' | 'user-shared' | 'env' | 'user-env';
