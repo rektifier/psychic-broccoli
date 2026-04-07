@@ -12,6 +12,7 @@ import {
   parseEnvironmentFile,
   getEnvironmentNames,
   resolveEnvironmentVariables,
+  resolveEnvironmentVariablesWithSource,
   extractVariableRefs,
   createEmptyRequest,
   createFileNode,
@@ -151,6 +152,82 @@ describe('resolveEnvironmentVariables', () => {
     };
     const result = resolveEnvironmentVariables('dev', envFile, null);
     expect(result.token).toBe('abc');
+    expect(result['$keyvault']).toBeUndefined();
+  });
+});
+
+describe('resolveEnvironmentVariablesWithSource', () => {
+  it('tracks source for a single-layer variable', () => {
+    const envFile = { dev: { baseUrl: 'http://localhost:3000' } };
+    const result = resolveEnvironmentVariablesWithSource('dev', envFile, null);
+    expect(result.baseUrl).toEqual({
+      value: 'http://localhost:3000',
+      source: 'env',
+      cascade: [{ source: 'env', value: 'http://localhost:3000' }],
+    });
+  });
+
+  it('builds full cascade with correct priority order', () => {
+    const envFile = {
+      $shared: { d: 'base-shared' },
+      dev: { d: 'base-env' },
+    };
+    const userEnvFile = {
+      $shared: { d: 'user-shared' },
+      dev: { d: 'user-env' },
+    };
+    const result = resolveEnvironmentVariablesWithSource('dev', envFile, userEnvFile);
+    expect(result.d.value).toBe('user-env');
+    expect(result.d.source).toBe('user-env');
+    expect(result.d.cascade).toEqual([
+      { source: 'shared', value: 'base-shared' },
+      { source: 'user-shared', value: 'user-shared' },
+      { source: 'env', value: 'base-env' },
+      { source: 'user-env', value: 'user-env' },
+    ]);
+  });
+
+  it('tracks partial cascade when variable only in some layers', () => {
+    const envFile = {
+      $shared: { a: 'shared-val', b: 'shared-val' },
+      dev: { b: 'env-val' },
+    };
+    const result = resolveEnvironmentVariablesWithSource('dev', envFile, null);
+    expect(result.a.cascade).toHaveLength(1);
+    expect(result.a.source).toBe('shared');
+    expect(result.b.cascade).toHaveLength(2);
+    expect(result.b.source).toBe('env');
+  });
+
+  it('handles null envFile and userEnvFile', () => {
+    const result = resolveEnvironmentVariablesWithSource('dev', null, null);
+    expect(result).toEqual({});
+  });
+
+  it('handles provider-based variables with source tracking', () => {
+    const envFile = {
+      dev: {
+        secret: { provider: 'AzureKeyVault', secretName: 'my-secret' } as any,
+      },
+    };
+    const result = resolveEnvironmentVariablesWithSource('dev', envFile, null);
+    expect(result.secret.value).toBe('[AzureKeyVault:my-secret]');
+    expect(result.secret.source).toBe('env');
+  });
+
+  it('excludes $keyvault config entries', () => {
+    const envFile: EnvironmentFile = {
+      dev: {
+        token: 'abc',
+        $keyvault: {
+          provider: 'AzureKeyVault',
+          vaultUrl: 'https://v.vault.azure.net',
+          secretName: 's',
+        },
+      },
+    };
+    const result = resolveEnvironmentVariablesWithSource('dev', envFile, null);
+    expect(result.token).toBeDefined();
     expect(result['$keyvault']).toBeUndefined();
   });
 });

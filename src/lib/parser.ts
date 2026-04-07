@@ -4,6 +4,7 @@ import type {
   NamedRequestResult, PbDirective, PbAssertionResult,
   HttpResponse,
   TreeNode, FileNode, FolderNode,
+  VarSourceLayer, ResolvedVarWithCascade,
 } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -1127,6 +1128,51 @@ function mergeEnvVars(
       target[key] = `[${value.provider}:${(value as any).secretName || key}]`;
     }
   }
+}
+
+/**
+ * Like resolveEnvironmentVariables but tracks the source layer and full cascade
+ * for each variable. Used by display components to show where values come from.
+ */
+export function resolveEnvironmentVariablesWithSource(
+  envName: string,
+  envFile: EnvironmentFile | null,
+  userEnvFile: EnvironmentFile | null,
+): Record<string, ResolvedVarWithCascade> {
+  const result: Record<string, ResolvedVarWithCascade> = {};
+
+  const layers: Array<{ source: VarSourceLayer; vars: EnvironmentVariables | undefined }> = [
+    { source: 'shared', vars: envFile?.['$shared'] },
+    { source: 'user-shared', vars: userEnvFile?.['$shared'] },
+    { source: 'env', vars: envFile?.[envName] },
+    { source: 'user-env', vars: userEnvFile?.[envName] },
+  ];
+
+  for (const { source, vars } of layers) {
+    if (!vars) continue;
+    for (const [key, raw] of Object.entries(vars)) {
+      if (key === '$keyvault') continue;
+      let value: string;
+      if (typeof raw === 'string') {
+        value = raw;
+      } else if (typeof raw === 'object' && raw !== null && 'provider' in raw) {
+        value = `[${raw.provider}:${(raw as any).secretName || key}]`;
+      } else {
+        continue;
+      }
+
+      const entry = { source, value };
+      if (result[key]) {
+        result[key].cascade.push(entry);
+        result[key].value = value;
+        result[key].source = source;
+      } else {
+        result[key] = { value, source, cascade: [entry] };
+      }
+    }
+  }
+
+  return result;
 }
 
 // ─── Factory ────────────────────────────────────────────────────────────────

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher, tick, onMount } from 'svelte';
-  import type { EnvironmentFile, EnvironmentVariables, KeyVaultConfig, KeyVaultState } from '../lib/types';
+  import type { EnvironmentFile, EnvironmentVariables, KeyVaultConfig, KeyVaultState, VarSource } from '../lib/types';
   import { isKeyVaultConfig } from '../lib/keyvault';
   import HelpTip from './HelpTip.svelte';
 
   export let envFile: EnvironmentFile;
+  export let userEnvFile: EnvironmentFile | null = null;
   export let activeEnv: string;
   export let kvState: KeyVaultState;
 
@@ -23,13 +24,42 @@
   // Local editing state - independent from sidebar's active env
   let editingEnv = activeEnv;
 
+  // ─── Unified grouped variable model ────────────────────────────────────────
+
+  interface VarSourceEntry {
+    source: VarSource;
+    value: string;
+  }
+
   interface EnvVar {
     key: string;
-    value: string;
     enabled: boolean;
-    source: 'local' | 'keyvault';
-    /** True when this is a KV shadow row for a variable that also exists locally. */
-    conflictShadow?: boolean;
+    /** Which source is currently active (displayed in the main row). */
+    activeSource: VarSource;
+    /** All sources where this variable is defined, ordered: local, user-local, keyvault. */
+    sources: VarSourceEntry[];
+  }
+
+  /** Convenience: get the active value for a grouped variable. */
+  function activeValue(v: EnvVar): string {
+    return v.sources.find(s => s.source === v.activeSource)?.value ?? '';
+  }
+
+  /** Source display label. */
+  function sourceLabel(s: VarSource): string {
+    switch (s) {
+      case 'local': return editingEnv === '$shared' ? 'SHARED' : 'ENV';
+      case 'user-local': return 'USER';
+      case 'keyvault': return 'KV';
+    }
+  }
+
+  /** Default priority: KV > user-local > local. */
+  function defaultActiveSource(sources: VarSourceEntry[]): VarSource {
+    const sourceSet = new Set(sources.map(s => s.source));
+    if (sourceSet.has('keyvault')) return 'keyvault';
+    if (sourceSet.has('user-local')) return 'user-local';
+    return 'local';
   }
 
   /** Check if an environment has KV access (directly or via $shared). */
@@ -37,82 +67,110 @@
     return isKeyVaultConfig(ef?.[env]?.$keyvault) || isKeyVaultConfig(ef?.['$shared']?.$keyvault);
   }
 
-  function buildVarList(ef: EnvironmentFile, env: string, kv: KeyVaultState): EnvVar[] {
-    const vars = ef?.[env];
-    const result: EnvVar[] = [];
+  function buildVarList(ef: EnvironmentFile, uef: EnvironmentFile | null, env: string, kv: KeyVaultState): EnvVar[] {
     const hasKv = kv.status === 'loaded' && envHasKv(ef, env);
+    const vars = ef?.[env];
+    const userVars = uef?.[env];
 
+    // Collect all sources per key, preserving insertion order
+    const keyMap = new Map<string, VarSourceEntry[]>();
+
+    function addEntry(key: string, source: VarSource, value: string) {
+      if (!keyMap.has(key)) keyMap.set(key, []);
+      keyMap.get(key)!.push({ source, value });
+    }
+
+    // Base file (local)
     if (vars) {
       for (const [key, value] of Object.entries(vars)) {
         if (key === '$keyvault') continue;
-        const hasConflict = hasKv && kv.variables[key] !== undefined;
-        result.push({
-          key,
-          value: typeof value === 'string' ? value : JSON.stringify(value),
-          enabled: !hasConflict,
-          source: 'local',
-          conflictShadow: hasConflict,
-        });
-        // If same key exists in KV, KV value takes priority
-        if (hasConflict) {
-          result.push({
-            key,
-            value: kv.variables[key],
-            enabled: true,
-            source: 'keyvault',
-          });
-        }
+        const val = typeof value === 'string' ? value : JSON.stringify(value);
+        addEntry(key, 'local', val);
       }
     }
 
-    // Add KV-only variables (not in local) - only if this env has KV access
+    // User file (user-local)
+    if (userVars) {
+      for (const [key, value] of Object.entries(userVars)) {
+        if (key === '$keyvault') continue;
+        if (typeof value !== 'string') continue;
+        addEntry(key, 'user-local', value);
+      }
+    }
+
+    // Key Vault
     if (hasKv) {
-      const localKeys = new Set(Object.keys(vars ?? {}).filter(k => k !== '$keyvault'));
       for (const [key, value] of Object.entries(kv.variables)) {
-        if (!localKeys.has(key)) {
-          result.push({
-            key,
-            value,
-            enabled: true,
-            source: 'keyvault',
-          });
-        }
+        addEntry(key, 'keyvault', value);
       }
     }
 
-    return result;
+    // Build result
+    return [...keyMap.entries()].map(([key, sources]) => ({
+      key,
+      enabled: true,
+      activeSource: defaultActiveSource(sources),
+      sources,
+    }));
   }
 
-  function envFileFingerprint(ef: EnvironmentFile, env: string): string {
+  function envFileFingerprint(ef: EnvironmentFile, uef: EnvironmentFile | null, env: string): string {
     const envData = ef?.[env];
-    return envData ? JSON.stringify(envData) : '';
+    const userData = uef?.[env];
+    return (envData ? JSON.stringify(envData) : '') + '|' + (userData ? JSON.stringify(userData) : '');
   }
 
   // Local editable array - rebuilt when switching environments, KV status changes, or envFile changes externally
-  let envVars: EnvVar[] = buildVarList(envFile, editingEnv, kvState);
+  let envVars: EnvVar[] = buildVarList(envFile, userEnvFile, editingEnv, kvState);
   let lastEditingEnv = editingEnv;
   let lastKvStatus = kvState.status;
-  let lastEnvFingerprint = envFileFingerprint(envFile, editingEnv);
+  let lastEnvFingerprint = envFileFingerprint(envFile, userEnvFile, editingEnv);
   $: {
-    const currentFingerprint = envFileFingerprint(envFile, editingEnv);
+    const currentFingerprint = envFileFingerprint(envFile, userEnvFile, editingEnv);
     if (
       editingEnv !== lastEditingEnv ||
       kvState.status !== lastKvStatus ||
       currentFingerprint !== lastEnvFingerprint
     ) {
-      envVars = buildVarList(envFile, editingEnv, kvState);
+      envVars = buildVarList(envFile, userEnvFile, editingEnv, kvState);
       lastEditingEnv = editingEnv;
       lastKvStatus = kvState.status;
       lastEnvFingerprint = currentFingerprint;
     }
   }
 
-  $: conflicts = envVars.filter(v => v.conflictShadow);
-  $: conflictKeys = new Set(conflicts.map(v => v.key));
+  $: groupedCount = envVars.filter(v => v.sources.length > 1).length;
 
-  // Environments list: $shared first, then the rest
-  $: envNames = Object.keys(envFile || {}).filter(k => k !== '$shared');
-  $: allTabs = envFile?.['$shared'] !== undefined ? ['$shared', ...envNames] : envNames;
+  // Environments list: $shared first, then the rest (including user-file-only envs)
+  $: envNames = [...new Set([
+    ...Object.keys(envFile || {}).filter(k => k !== '$shared'),
+    ...Object.keys(userEnvFile || {}).filter(k => k !== '$shared'),
+  ])];
+  $: userOnlyEnvs = new Set(
+    Object.keys(userEnvFile || {}).filter(k => k !== '$shared' && !(envFile || {})[k])
+  );
+  $: hasShared = envFile?.['$shared'] !== undefined || userEnvFile?.['$shared'] !== undefined;
+  $: allTabs = hasShared ? ['$shared', ...envNames] : envNames;
+
+  // Track which variable keys have their source group expanded
+  let expandedGroups = new Set<string>();
+
+  function toggleGroupExpand(key: string) {
+    if (expandedGroups.has(key)) {
+      expandedGroups.delete(key);
+    } else {
+      expandedGroups.add(key);
+    }
+    expandedGroups = expandedGroups; // trigger reactivity
+  }
+
+  /** Switch the active source for a grouped variable. */
+  function setActiveSource(index: number, newSource: VarSource) {
+    const v = envVars[index];
+    if (v.activeSource === newSource) return;
+    envVars = envVars.map((item, i) => i === index ? { ...item, activeSource: newSource } : item);
+    dispatch('sourcePref', { key: v.key, source: newSource });
+  }
 
   // Editing state
   let renaming = false;
@@ -148,7 +206,6 @@
     updated[newName] = updated[editingEnv];
     delete updated[editingEnv];
     dispatch('update', updated);
-    // If the renamed env was the active one, update the sidebar too
     if (editingEnv === activeEnv) {
       dispatch('changeEnv', newName);
     }
@@ -162,49 +219,42 @@
     delete updated[editingEnv];
     dispatch('update', updated);
     const remaining = Object.keys(updated).filter(k => k !== '$shared');
-    // If the deleted env was the active one, update the sidebar too
     if (editingEnv === activeEnv) {
       dispatch('changeEnv', remaining[0] || null);
     }
     editingEnv = remaining[0] || '';
   }
 
-  function updateVariable(index: number, field: 'key' | 'value', newVal: string) {
-    envVars = envVars.map((v, i) => i === index ? { ...v, [field]: newVal } : v);
-    saveVars(envVars);
+  function updateLocalValue(index: number, field: 'key' | 'value', newVal: string) {
+    envVars = envVars.map((v, i) => {
+      if (i !== index) return v;
+      if (field === 'key') return { ...v, key: newVal };
+      // Update value in the 'local' source entry
+      return {
+        ...v,
+        sources: v.sources.map(s => s.source === 'local' ? { ...s, value: newVal } : s),
+      };
+    });
+    saveVars();
   }
 
   function toggleVariable(index: number) {
     envVars = envVars.map((v, i) => i === index ? { ...v, enabled: !v.enabled } : v);
-    saveVars(envVars);
-  }
-
-  /** Toggle a conflict pair: exactly one of the local/KV rows for a key can be enabled. */
-  function toggleConflictPair(index: number) {
-    const target = envVars[index];
-    const key = target.key;
-    const willEnable = !target.enabled;
-    envVars = envVars.map((v, i) => {
-      if (i === index) return { ...v, enabled: willEnable };
-      // Flip the counterpart with the same key
-      if (v.key === key && v.conflictShadow !== target.conflictShadow) {
-        return { ...v, enabled: !willEnable };
-      }
-      return v;
-    });
-    // Tell App.svelte which source wins for variable resolution.
-    // conflictShadow is on the local row; the KV row is the non-shadow.
-    const useKv = target.conflictShadow ? !willEnable : willEnable;
-    dispatch('conflictPref', { key, source: useKv ? 'keyvault' : 'local' });
+    saveVars();
   }
 
   function removeVariable(index: number) {
     envVars = envVars.filter((_, i) => i !== index);
-    saveVars(envVars);
+    saveVars();
   }
 
   function addVariable() {
-    envVars = [...envVars, { key: '', value: '', enabled: true, source: 'local' }];
+    envVars = [...envVars, {
+      key: '',
+      enabled: true,
+      activeSource: 'local',
+      sources: [{ source: 'local', value: '' }],
+    }];
   }
 
   onMount(async () => {
@@ -216,7 +266,7 @@
     }
   });
 
-  function saveVars(vars: EnvVar[]) {
+  function saveVars() {
     const updated = { ...envFile };
     const envData: EnvironmentVariables = {} as EnvironmentVariables;
     // Preserve $keyvault config if it exists
@@ -224,9 +274,10 @@
     if (existing?.$keyvault) {
       envData.$keyvault = existing.$keyvault;
     }
-    for (const v of vars) {
-      if (v.key.trim() && v.source === 'local') {
-        envData[v.key.trim()] = v.value;
+    for (const v of envVars) {
+      const localEntry = v.sources.find(s => s.source === 'local');
+      if (localEntry && v.key.trim()) {
+        envData[v.key.trim()] = localEntry.value;
       }
     }
     updated[editingEnv] = envData;
@@ -332,8 +383,10 @@
         class="env-tab"
         class:active={env === editingEnv}
         class:shared-tab={env === '$shared'}
+        class:user-only-tab={userOnlyEnvs.has(env)}
         on:click={() => { editingEnv = env; confirmingDelete = false; }}
-      >{env}{env === activeEnv ? ' ✓' : ''}</button>
+        title={userOnlyEnvs.has(env) ? 'Defined only in .user file' : ''}
+      >{env}{env === activeEnv ? ' \u2713' : ''}{userOnlyEnvs.has(env) ? ' \u00B7' : ''}</button>
     {/each}
     {#if showAddEnv}
       <div class="add-env-inline">
@@ -371,78 +424,105 @@
     </div>
   {/if}
 
-  {#if conflicts.length > 0}
-    <div class="kv-conflict-banner">
-      {conflicts.length} variable{conflicts.length !== 1 ? 's' : ''} exist{conflicts.length === 1 ? 's' : ''} both locally and in Key Vault. Key Vault values are used by default. The local duplicate{conflicts.length !== 1 ? 's have' : ' has'} been unchecked.
+  {#if groupedCount > 0}
+    <div class="grouped-banner">
+      {groupedCount} variable{groupedCount !== 1 ? 's' : ''} defined in multiple sources. Highest-priority source is active by default.
     </div>
   {/if}
 
   <!-- Variable rows -->
   <div class="var-rows">
     {#each envVars as v, i}
-      <div class="var-row" class:disabled={!v.enabled} class:kv-row={v.source === 'keyvault'}>
-        {#if v.conflictShadow}
-          <input
-            type="checkbox"
-            class="var-check"
-            checked={v.enabled}
-            on:change={() => toggleConflictPair(i)}
-            title="Check to use local value instead of Key Vault"
-          />
-        {:else if v.source === 'keyvault' && conflictKeys.has(v.key)}
-          <input
-            type="checkbox"
-            class="var-check"
-            checked={v.enabled}
-            on:change={() => toggleConflictPair(i)}
-            title="Uncheck to use local value instead"
-          />
-        {:else if v.source === 'keyvault'}
-          <input
-            type="checkbox"
-            class="var-check"
-            checked={v.enabled}
-            disabled
-            title="Key Vault variable"
-          />
-        {:else}
+      {@const isGrouped = v.sources.length > 1}
+      {@const isExpanded = expandedGroups.has(v.key)}
+      {@const isKvActive = v.activeSource === 'keyvault'}
+      {@const isLocalActive = v.activeSource === 'local'}
+      {@const hasLocal = v.sources.some(s => s.source === 'local')}
+      <div class="var-row-wrapper">
+        <!-- Main row: shows the active source's value -->
+        <div class="var-row" class:disabled={!v.enabled} class:grouped-row={isGrouped}>
           <input
             type="checkbox"
             class="var-check"
             checked={v.enabled}
             on:change={() => toggleVariable(i)}
           />
-        {/if}
 
-        <input
-          class="var-key"
-          value={v.key}
-          on:input={(e) => updateVariable(i, 'key', e.currentTarget.value)}
-          placeholder="variableName"
-          spellcheck="false"
-          disabled={v.source === 'keyvault'}
-        />
+          <input
+            class="var-key"
+            value={v.key}
+            on:input={(e) => updateLocalValue(i, 'key', e.currentTarget.value)}
+            placeholder="variableName"
+            spellcheck="false"
+            disabled={!hasLocal}
+          />
 
-        <div class="var-value-cell">
-          <div class="var-value-row">
-            <input
-              class="var-value"
-              value={v.source === 'keyvault' ? (showSecrets ? v.value : masked(v.value)) : v.value}
-              on:input={(e) => updateVariable(i, 'value', e.currentTarget.value)}
-              placeholder="value"
-              spellcheck="false"
-              disabled={v.source === 'keyvault'}
-            />
-            {#if v.source === 'keyvault'}
-              <span class="kv-badge">KV</span>
-            {/if}
+          <div class="var-value-cell">
+            <div class="var-value-row">
+              <input
+                class="var-value"
+                value={isKvActive ? (showSecrets ? activeValue(v) : masked(activeValue(v))) : activeValue(v)}
+                on:input={(e) => { if (isLocalActive && hasLocal) updateLocalValue(i, 'value', e.currentTarget.value); }}
+                placeholder="value"
+                spellcheck="false"
+                disabled={!isLocalActive}
+              />
+              <span class="source-badge source-badge-{v.activeSource}">{sourceLabel(v.activeSource)}</span>
+              {#if isGrouped}
+                <button
+                  class="btn-group-chevron"
+                  class:open={isExpanded}
+                  on:click={() => toggleGroupExpand(v.key)}
+                  title="{v.sources.length} sources"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              {/if}
+            </div>
           </div>
+
+          {#if hasLocal && !isGrouped}
+            <button class="btn-remove" on:click={() => removeVariable(i)}>x</button>
+          {:else}
+            <div class="btn-remove-placeholder"></div>
+          {/if}
         </div>
 
-        {#if v.source === 'local'}
-          <button class="btn-remove" on:click={() => removeVariable(i)}>x</button>
-        {:else}
-          <div class="btn-remove-placeholder"></div>
+        <!-- Expanded group: shows all other (inactive) sources -->
+        {#if isGrouped && isExpanded}
+          <div class="group-detail">
+            {#each v.sources as entry}
+              {#if entry.source !== v.activeSource}
+                <div class="group-detail-row">
+                  <input
+                    type="checkbox"
+                    class="var-check"
+                    checked={false}
+                    on:change={() => setActiveSource(i, entry.source)}
+                    title="Switch to {sourceLabel(entry.source)} value"
+                  />
+                  <span class="source-tag source-tag-{entry.source}">{sourceLabel(entry.source)}</span>
+                  <input
+                    class="var-value group-inactive-value"
+                    value={entry.source === 'keyvault' ? (showSecrets ? entry.value : masked(entry.value)) : entry.value}
+                    on:input={(e) => {
+                      if (entry.source === 'local') {
+                        envVars = envVars.map((item, idx) => {
+                          if (idx !== i) return item;
+                          return { ...item, sources: item.sources.map(s => s.source === 'local' ? { ...s, value: e.currentTarget.value } : s) };
+                        });
+                        saveVars();
+                      }
+                    }}
+                    spellcheck="false"
+                    disabled={entry.source !== 'local'}
+                  />
+                </div>
+              {/if}
+            {/each}
+          </div>
         {/if}
       </div>
     {/each}
@@ -902,16 +982,7 @@
     background: color-mix(in srgb, var(--color-error) 15%, transparent);
   }
 
-  /* Conflict banner */
-  .kv-conflict-banner {
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-default);
-    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-    color: var(--color-warning);
-    font-size: var(--text-sm);
-    margin-bottom: var(--space-3);
-    border: 1px solid color-mix(in srgb, var(--color-warning) 20%, transparent);
-  }
+  /* (Conflict banner replaced by unified grouped-banner) */
 
   /* Variable rows */
   .var-rows {
@@ -967,24 +1038,122 @@
   .var-value:focus { border-color: #B0B0BA; }
   .var-value::placeholder { color: var(--color-text-placeholder); }
 
-  /* KV badge */
-  .kv-badge {
+  /* Grouped variable system */
+  .var-row-wrapper {
+    display: flex;
+    flex-direction: column;
+  }
+  .var-row.grouped-row {
+    border-left: 3px solid var(--color-primary);
+    padding-left: var(--space-1\.5);
+    margin-left: -3px;
+  }
+
+  /* Source badges (main row) */
+  .source-badge {
     padding: 1px 5px;
     border-radius: var(--radius-default);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-primary);
     font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
     letter-spacing: 0.5px;
     flex-shrink: 0;
-  }
-
-  /* KV row styling */
-  .kv-row .var-key,
-  .kv-row .var-value {
-    opacity: 0.7;
     cursor: default;
   }
+  .source-badge-local {
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    color: var(--color-success);
+  }
+  .source-badge-user-local {
+    background: color-mix(in srgb, var(--purple-600) 12%, transparent);
+    color: var(--purple-600);
+  }
+  .source-badge-keyvault {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-primary);
+  }
+
+  /* Source tags (expanded detail rows) */
+  .source-tag {
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+    min-width: 36px;
+    text-align: center;
+  }
+  .source-tag-local {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  }
+  .source-tag-user-local {
+    color: var(--purple-600);
+    background: color-mix(in srgb, var(--purple-600) 8%, transparent);
+  }
+  .source-tag-keyvault {
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+
+  .btn-group-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform var(--duration-normal), color var(--duration-fast);
+  }
+  .btn-group-chevron:hover { color: var(--color-primary); }
+  .btn-group-chevron.open { transform: rotate(90deg); }
+
+  .group-detail {
+    margin-left: 22px;
+    padding: var(--space-1) 0 var(--space-1\.5) var(--space-2\.5);
+    border-left: 2px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .group-detail-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .group-inactive-value {
+    text-decoration: line-through;
+    opacity: 0.55;
+  }
+  .group-inactive-value:focus {
+    text-decoration: none;
+    opacity: 1;
+  }
+
+  .grouped-banner {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-default);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    color: var(--color-info);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
+  }
+
+  .env-tab.user-only-tab {
+    font-style: italic;
+    color: var(--purple-600);
+  }
+  .env-tab.user-only-tab.active {
+    color: var(--purple-600);
+    border-bottom-color: var(--purple-600);
+  }
+
+  /* (KV badge and KV row styling replaced by unified source-badge system) */
 
   /* Value cell layout for badge + subline */
   .var-value-cell {

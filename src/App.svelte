@@ -18,9 +18,9 @@
     workspace, selectedLocation, currentResponse, isLoading,
     activeFile, activeRequest, activeFileVariables,
     envFile, userEnvFile, activeEnvironment, availableEnvironments,
-    resolvedEnvVars, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
+    resolvedEnvVars, baseEnvVarsWithSource, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
-    keyVaultState, kvConflictPrefs,
+    keyVaultState, varSourcePrefs,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
     addFileToTree, renameFileInTree, editingFilePath,
     toggleFolder, markFileSaved, addToast,
@@ -200,7 +200,7 @@
 
     // Only clear conflict preferences when switching environments
     if (lastKvEnv !== env) {
-      kvConflictPrefs.set({});
+      varSourcePrefs.set({});
     }
     lastKvEnv = env;
 
@@ -1132,7 +1132,9 @@
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
-  kvVariables={$keyVaultState.status === 'loaded' ? $keyVaultState.variables : {}}
+  envVarSources={$baseEnvVarsWithSource}
+  kvVariables={$keyVaultState.status === 'loaded' && $keyVaultState.cacheKey?.startsWith($activeEnvironment + '::') ? $keyVaultState.variables : {}}
+  varSourcePrefs={$varSourcePrefs}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
   namedResults={$namedResults}
@@ -1226,6 +1228,7 @@
           <div class="env-editor-pane">
             <EnvironmentEditor
               envFile={$envFile}
+              userEnvFile={$userEnvFile}
               activeEnv={$activeEnvironment}
               kvState={$keyVaultState}
               on:update={(e) => {
@@ -1234,8 +1237,8 @@
               }}
               on:changeEnv={(e) => activeEnvironment.set(e.detail)}
               on:close={() => showEnvEditor = false}
-              on:conflictPref={(e) => {
-                kvConflictPrefs.update(p => ({ ...p, [e.detail.key]: e.detail.source }));
+              on:sourcePref={(e) => {
+                varSourcePrefs.update(p => ({ ...p, [e.detail.key]: e.detail.source }));
               }}
               on:refreshKv={(e) => {
                 // Invalidate cache for this env so fresh secrets are fetched

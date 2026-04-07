@@ -134,7 +134,22 @@ export interface EnvironmentState {
 // ─── Key Vault ─────────────────────────────────────────────────────────────
 
 /** Source tag for a resolved variable. */
-export type VarSource = 'local' | 'keyvault';
+export type VarSource = 'local' | 'keyvault' | 'user-local';
+
+/** Identifies which layer in the 4-level priority chain a variable came from. */
+export type VarSourceLayer = 'shared' | 'user-shared' | 'env' | 'user-env';
+
+/** A resolved variable with its winning source layer. */
+export interface ResolvedVar {
+  value: string;
+  source: VarSourceLayer;
+}
+
+/** A resolved variable with full cascade showing all layers where it is defined. */
+export interface ResolvedVarWithCascade extends ResolvedVar {
+  /** Every layer that defines this variable, ordered lowest to highest priority. */
+  cascade: Array<{ source: VarSourceLayer; value: string }>;
+}
 
 /** Key Vault fetch state for a single environment. */
 export interface KeyVaultState {
