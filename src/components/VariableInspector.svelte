@@ -240,8 +240,11 @@
                         {@const srcInfo = envVarSources[key]}
                         {@const isKv = isKvVariable(key)}
                         {@const kvLoaded = key in kvVariables}
-                        {@const hasCascade = (srcInfo && srcInfo.cascade.length > 1) || (isKv && srcInfo)}
-                        {@const cascadeCount = (srcInfo?.cascade.length ?? 0) + (isKv && srcInfo ? 1 : 0)}
+                        {@const kvAvailable = kvLoaded || isKv}
+                        {@const envLayerCount = srcInfo?.cascade.length ?? 0}
+                        {@const totalSources = envLayerCount + (kvAvailable ? 1 : 0)}
+                        {@const hasCascade = totalSources > 1}
+                        {@const cascadeCount = totalSources}
                         {@const displayValue = isKv ? (kvLoaded ? (showKvSecrets ? value : masked(value)) : '(pending)') : value}
                         <div class="env-row-wrapper">
                           <button class="row" class:copied={copiedKey === key} on:click={() => copyRef(key)}>
@@ -269,19 +272,20 @@
                           </button>
                           {#if hasCascade && expandedCascadeKey === key}
                             <div class="cascade-detail">
-                              {#if isKv}
-                                <div class="cascade-layer winner">
+                              {#if kvAvailable && !isKv}
+                                <div class="cascade-layer loser">
                                   <span class="tag tag-sm kv">KV</span>
-                                  <span class="cascade-value">{kvLoaded ? truncate(showKvSecrets ? kvVariables[key] : masked(kvVariables[key]), 50) : '(pending)'}</span>
+                                  <span class="cascade-value strikethrough">{truncate(showKvSecrets && kvLoaded ? kvVariables[key] : masked(kvLoaded ? kvVariables[key] : '?'), 50)}</span>
                                 </div>
                               {/if}
                               {#if srcInfo}
                                 {#each [...srcInfo.cascade].reverse() as layer, i}
-                                  {@const isEnvWinner = !isKv && i === 0}
-                                  <div class="cascade-layer" class:winner={isEnvWinner} class:loser={!isEnvWinner}>
-                                    <span class="tag tag-sm {sourceTagClass(layer.source)}">{sourceTagLabel(layer.source)}</span>
-                                    <span class="cascade-value" class:strikethrough={!isEnvWinner}>{truncate(layer.value, 50)}</span>
-                                  </div>
+                                  {#if isKv || i !== 0}
+                                    <div class="cascade-layer loser">
+                                      <span class="tag tag-sm {sourceTagClass(layer.source)}">{sourceTagLabel(layer.source)}</span>
+                                      <span class="cascade-value strikethrough">{truncate(layer.value, 50)}</span>
+                                    </div>
+                                  {/if}
                                 {/each}
                               {/if}
                             </div>

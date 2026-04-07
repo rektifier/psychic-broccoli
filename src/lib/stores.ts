@@ -434,16 +434,14 @@ export const baseEnvVarsWithSource = derived(
       if (!result[key]) continue;
 
       if (pref === 'keyvault') {
-        // KV is not part of the env cascade - remove from base so the inspector
-        // shows it in its KV section instead of the Environment section
-        delete result[key];
+        // Keep cascade data for VariableInspector to show overridden env layers
         continue;
       }
 
       // Map VarSource pref to matching VarSourceLayer entries in the cascade.
       // 'local' -> prefer 'env' then 'shared'; 'user-local' -> prefer 'user-env' then 'user-shared'
       const layers = pref === 'local' ? ['env', 'shared'] : ['user-env', 'user-shared'];
-      const match = result[key].cascade.find(c => layers.includes(c.source));
+      const match = [...result[key].cascade].reverse().find(c => layers.includes(c.source));
       if (match) {
         result[key] = { ...result[key], source: match.source, value: match.value };
       }
@@ -486,7 +484,8 @@ export const resolvedEnvVars = derived(
       }
     }
 
-    if ($kv.status === 'loaded') {
+    const kvBelongsToActiveEnv = !!$active && ($kv.cacheKey?.startsWith($active + '::') ?? false);
+    if ($kv.status === 'loaded' && kvBelongsToActiveEnv) {
       for (const [key, value] of Object.entries($kv.variables)) {
         if (key in merged) {
           // Conflict: KV wins by default, user can override per key
