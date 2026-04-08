@@ -1106,8 +1106,8 @@
       const { remove } = await import('@tauri-apps/plugin-fs');
       const absolutePath = await safeJoinPath(rootPath, path);
       await remove(absolutePath);
-    } catch (err) {
-      console.warn('Could not delete flow file:', path, err);
+    } catch {
+      // Silently ignore - flow file may not exist on disk
     }
 
     flows.update(f => {
