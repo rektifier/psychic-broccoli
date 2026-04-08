@@ -1,49 +1,102 @@
 {
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
   "permissions": [
     "core:default",
+
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
+
     "fs:default",
     {
       "identifier": "fs:allow-read-text-file",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$RESOURCE/**" }
+      ],
+      "deny": [
+        { "path": "$HOME/.ssh/**" },
+        { "path": "$HOME/.gnupg/**" },
+        { "path": "$HOME/.aws/**" },
+        { "path": "$HOME/.kube/**" },
+        { "path": "$HOME/.docker/**" },
+        { "path": "$HOME/.azure/**" }
+      ]
     },
     {
       "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "$HOME/**" }
+      ],
+      "deny": [
+        { "path": "$HOME/.ssh/**" },
+        { "path": "$HOME/.gnupg/**" },
+        { "path": "$HOME/.aws/**" },
+        { "path": "$HOME/.kube/**" },
+        { "path": "$HOME/.docker/**" },
+        { "path": "$HOME/.azure/**" }
+      ]
     },
     {
       "identifier": "fs:allow-read-dir",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$RESOURCE/**" }
+      ],
+      "deny": [
+        { "path": "$HOME/.ssh/**" },
+        { "path": "$HOME/.gnupg/**" },
+        { "path": "$HOME/.aws/**" },
+        { "path": "$HOME/.kube/**" },
+        { "path": "$HOME/.docker/**" },
+        { "path": "$HOME/.azure/**" }
+      ]
     },
     {
       "identifier": "fs:allow-mkdir",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "$HOME/**" }
+      ],
+      "deny": [
+        { "path": "$HOME/.ssh/**" },
+        { "path": "$HOME/.gnupg/**" },
+        { "path": "$HOME/.aws/**" },
+        { "path": "$HOME/.kube/**" },
+        { "path": "$HOME/.docker/**" },
+        { "path": "$HOME/.azure/**" }
+      ]
     },
     {
       "identifier": "fs:allow-remove",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "$HOME/**" }
+      ],
+      "deny": [
+        { "path": "$HOME/.ssh/**" },
+        { "path": "$HOME/.gnupg/**" },
+        { "path": "$HOME/.aws/**" },
+        { "path": "$HOME/.kube/**" },
+        { "path": "$HOME/.docker/**" },
+        { "path": "$HOME/.azure/**" }
+      ]
     },
     {
       "identifier": "fs:allow-rename",
-      "allow": [{ "path": "**" }]
-    },
-    "http:default",
-    {
-      "identifier": "http:allow-fetch",
       "allow": [
-        { "url": "https://**" },
-        { "url": "http://**" }
+        { "path": "$HOME/**" }
+      ],
+      "deny": [
+        { "path": "$HOME/.ssh/**" },
+        { "path": "$HOME/.gnupg/**" },
+        { "path": "$HOME/.aws/**" },
+        { "path": "$HOME/.kube/**" },
+        { "path": "$HOME/.docker/**" },
+        { "path": "$HOME/.azure/**" }
       ]
     },
-    "http:allow-fetch-send",
-    "http:allow-fetch-read-body",
-    "http:allow-fetch-cancel"
-  ],
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": [
-    "main"
+
+    "http:default"
   ]
 }

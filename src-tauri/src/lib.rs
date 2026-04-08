@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use futures_util::StreamExt;
 
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const MAX_RESPONSE_BYTES: usize = 50 * 1024 * 1024; // 50 MB
+const MAX_REDIRECTS: usize = 5;
 
 #[derive(Deserialize)]
 struct HttpRequestPayload {
@@ -24,24 +26,114 @@ struct HttpResponsePayload {
     body: String,
 }
 
-fn validate_url(url: &str) -> Result<(), String> {
-    let lower = url.to_lowercase();
-    if lower.starts_with("http://") || lower.starts_with("https://") {
-        Ok(())
-    } else {
-        Err(format!("Only http:// and https:// URLs are allowed, got: {}", url))
+/// Check whether an IP address belongs to a private, loopback, link-local,
+/// or otherwise reserved range that should not be reachable from the HTTP proxy.
+fn is_private_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()            // 127.0.0.0/8
+            || v4.is_private()          // 10/8, 172.16/12, 192.168/16
+            || v4.is_link_local()       // 169.254.0.0/16 (incl. cloud metadata)
+            || v4.is_broadcast()        // 255.255.255.255
+            || v4.is_unspecified()      // 0.0.0.0
+            || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xC0) == 64) // 100.64.0.0/10 (CGNAT)
+        }
+        IpAddr::V6(v6) => {
+            // Check IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_private_ip(&IpAddr::V4(v4));
+            }
+            v6.is_loopback()            // ::1
+            || v6.is_unspecified()      // ::
+            || (v6.segments()[0] & 0xfe00) == 0xfc00  // fc00::/7 unique local
+            || (v6.segments()[0] == 0xfe80)           // fe80::/10 link-local
+        }
     }
+}
+
+/// Validate that a URL is safe to request: correct scheme and non-private host.
+/// Returns the validated (host, resolved IPs) pair so the caller can pin the
+/// DNS resolution and prevent TOCTOU attacks.
+async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String> {
+    let parsed = url::Url::parse(url_str)
+        .map_err(|_| "Invalid URL format".to_string())?;
+
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => return Err("Only http:// and https:// URLs are allowed".to_string()),
+    }
+
+    let host = parsed.host_str()
+        .ok_or_else(|| "URL must contain a host".to_string())?
+        .to_string();
+    let port = parsed.port_or_known_default().unwrap_or(80);
+
+    // Block direct IP addresses in private ranges
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_private_ip(&ip) {
+            return Err("Requests to private/internal network addresses are not allowed".to_string());
+        }
+        return Ok((host, vec![SocketAddr::new(ip, port)]));
+    }
+
+    // Resolve hostname and check all resulting IPs
+    let addr = format!("{}:{}", host, port);
+    let resolved: Vec<SocketAddr> = tokio::net::lookup_host(&addr).await
+        .map_err(|_| "Failed to resolve host".to_string())?
+        .collect();
+
+    if resolved.is_empty() {
+        return Err("Host resolved to no addresses".to_string());
+    }
+
+    for sa in &resolved {
+        if is_private_ip(&sa.ip()) {
+            return Err("Requests to private/internal network addresses are not allowed".to_string());
+        }
+    }
+
+    Ok((host, resolved))
+}
+
+/// Custom redirect policy that re-validates each redirect target URL to
+/// prevent SSRF via open redirect chains.
+fn ssrf_safe_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= MAX_REDIRECTS {
+            return attempt.error("Too many redirects");
+        }
+        let url = attempt.url();
+        match url.scheme() {
+            "http" | "https" => {}
+            _ => return attempt.error("Redirect to non-HTTP scheme blocked"),
+        }
+        if let Some(host) = url.host_str() {
+            if let Ok(ip) = host.parse::<IpAddr>() {
+                if is_private_ip(&ip) {
+                    return attempt.error("Redirect to private IP blocked");
+                }
+            }
+        }
+        attempt.follow()
+    })
 }
 
 #[tauri::command]
 async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload, String> {
-    validate_url(&payload.url)?;
+    let (host, resolved_addrs) = validate_url(&payload.url).await?;
 
-    let client = reqwest::Client::builder()
+    // Pin the DNS resolution we already validated to prevent TOCTOU attacks
+    // where a second lookup could return a different (private) IP.
+    let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .redirect(ssrf_safe_redirect_policy());
+
+    for sa in &resolved_addrs {
+        builder = builder.resolve(&host, *sa);
+    }
+
+    let client = builder.build()
+        .map_err(|_| "Failed to initialize HTTP client".to_string())?;
 
     let method = payload.method.parse::<reqwest::Method>()
         .map_err(|e| format!("Invalid method: {}", e))?;
@@ -59,8 +151,12 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
     let res = req.send().await.map_err(|e| {
         if e.is_timeout() {
             format!("Request timed out after {} seconds", REQUEST_TIMEOUT_SECS)
+        } else if e.is_connect() {
+            "Connection failed - check that the server is reachable".to_string()
+        } else if e.is_redirect() {
+            "Too many redirects or unsafe redirect target".to_string()
         } else {
-            e.to_string()
+            "Request failed - check the URL and try again".to_string()
         }
     })?;
 
@@ -82,7 +178,7 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
     let mut body_bytes = Vec::with_capacity(capacity);
     let mut stream = res.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| e.to_string())?;
+        let chunk = chunk.map_err(|_| "Error reading response body".to_string())?;
         body_bytes.extend_from_slice(&chunk);
         if body_bytes.len() > MAX_RESPONSE_BYTES {
             return Err(format!(

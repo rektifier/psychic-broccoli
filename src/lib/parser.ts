@@ -408,8 +408,16 @@ export function substituteAll(input: string, ctx: SubstitutionContext): string {
 
       const fileVar = ctx.fileVariables.find(v => v.key === name);
       // Skip self-referencing file vars (e.g. @baseUrl = {{baseUrl}}) so
-      // the lookup falls through to environment variables
-      if (fileVar && fileVar.value !== `{{${name}}}`) return fileVar.value;
+      // the lookup falls through to environment variables.
+      // Also skip empty file vars when an env variable exists, so that
+      // placeholder declarations like @id = don't shadow environment values.
+      if (fileVar && fileVar.value !== `{{${name}}}`) {
+        if (fileVar.value === '' && name in ctx.environmentVariables) {
+          // Fall through to environment variable
+        } else {
+          return fileVar.value;
+        }
+      }
 
       if (name in ctx.environmentVariables) {
         return ctx.environmentVariables[name];
