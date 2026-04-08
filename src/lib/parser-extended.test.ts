@@ -288,6 +288,24 @@ describe('substituteAll - environment variables', () => {
     expect(substituteAll('{{$dotenv SECRET_KEY}}', ctx)).toBe('[dotenv:SECRET_KEY]');
   });
 
+  it('empty file variable falls through to env variable', () => {
+    const ctx: SubstitutionContext = {
+      fileVariables: [{ key: 'id', value: '' }],
+      environmentVariables: { id: '260e6af6-df59-44bd-a553-06b8be721da9' },
+      namedResults: {},
+    };
+    expect(substituteAll('{{id}}', ctx)).toBe('260e6af6-df59-44bd-a553-06b8be721da9');
+  });
+
+  it('empty file variable stays empty when no env variable exists', () => {
+    const ctx: SubstitutionContext = {
+      fileVariables: [{ key: 'id', value: '' }],
+      environmentVariables: {},
+      namedResults: {},
+    };
+    expect(substituteAll('{{id}}', ctx)).toBe('');
+  });
+
   it('returns placeholder for $processEnv', () => {
     const ctx: SubstitutionContext = {
       fileVariables: [],
