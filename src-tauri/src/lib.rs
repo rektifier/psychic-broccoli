@@ -26,14 +26,14 @@ struct HttpResponsePayload {
     body: String,
 }
 
-/// Check whether an IP address belongs to a private, loopback, link-local,
-/// or otherwise reserved range that should not be reachable from the HTTP proxy.
-fn is_private_ip(ip: &IpAddr) -> bool {
+/// Check whether an IP address should be blocked even in a developer HTTP client.
+/// Loopback and RFC1918 are intentionally allowed so users can hit local services
+/// (see issue #79); this only blocks addresses that are never valid developer
+/// targets and that include well-known SSRF risks like cloud metadata endpoints.
+fn is_blocked_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
-            v4.is_loopback()            // 127.0.0.0/8
-            || v4.is_private()          // 10/8, 172.16/12, 192.168/16
-            || v4.is_link_local()       // 169.254.0.0/16 (incl. cloud metadata)
+            v4.is_link_local()          // 169.254.0.0/16 (incl. cloud metadata 169.254.169.254)
             || v4.is_broadcast()        // 255.255.255.255
             || v4.is_unspecified()      // 0.0.0.0
             || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xC0) == 64) // 100.64.0.0/10 (CGNAT)
@@ -41,11 +41,9 @@ fn is_private_ip(ip: &IpAddr) -> bool {
         IpAddr::V6(v6) => {
             // Check IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
             if let Some(v4) = v6.to_ipv4_mapped() {
-                return is_private_ip(&IpAddr::V4(v4));
+                return is_blocked_ip(&IpAddr::V4(v4));
             }
-            v6.is_loopback()            // ::1
-            || v6.is_unspecified()      // ::
-            || (v6.segments()[0] & 0xfe00) == 0xfc00  // fc00::/7 unique local
+            v6.is_unspecified()                       // ::
             || (v6.segments()[0] == 0xfe80)           // fe80::/10 link-local
         }
     }
@@ -68,10 +66,11 @@ async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String
         .to_string();
     let port = parsed.port_or_known_default().unwrap_or(80);
 
-    // Block direct IP addresses in private ranges
+    // Block a narrow set of never-valid or dangerous direct IP addresses
+    // (link-local/cloud metadata, broadcast, unspecified, CGNAT).
     if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_private_ip(&ip) {
-            return Err("Requests to private/internal network addresses are not allowed".to_string());
+        if is_blocked_ip(&ip) {
+            return Err("Requests to this address are blocked (link-local, broadcast, or unspecified)".to_string());
         }
         return Ok((host, vec![SocketAddr::new(ip, port)]));
     }
@@ -87,8 +86,8 @@ async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String
     }
 
     for sa in &resolved {
-        if is_private_ip(&sa.ip()) {
-            return Err("Requests to private/internal network addresses are not allowed".to_string());
+        if is_blocked_ip(&sa.ip()) {
+            return Err("Requests to this address are blocked (link-local, broadcast, or unspecified)".to_string());
         }
     }
 
@@ -109,8 +108,8 @@ fn ssrf_safe_redirect_policy() -> reqwest::redirect::Policy {
         }
         if let Some(host) = url.host_str() {
             if let Ok(ip) = host.parse::<IpAddr>() {
-                if is_private_ip(&ip) {
-                    return attempt.error("Redirect to private IP blocked");
+                if is_blocked_ip(&ip) {
+                    return attempt.error("Redirect to blocked address");
                 }
             }
         }
@@ -374,4 +373,100 @@ pub fn run() {
     builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn allows_loopback_and_rfc1918() {
+        assert!(!is_blocked_ip(&ip("127.0.0.1")));
+        assert!(!is_blocked_ip(&ip("127.255.255.1")));
+        assert!(!is_blocked_ip(&ip("::1")));
+        assert!(!is_blocked_ip(&ip("10.0.0.1")));
+        assert!(!is_blocked_ip(&ip("172.16.5.5")));
+        assert!(!is_blocked_ip(&ip("192.168.1.10")));
+        assert!(!is_blocked_ip(&ip("fc00::1")));
+        assert!(!is_blocked_ip(&ip("fd12:3456:789a::1")));
+    }
+
+    #[test]
+    fn allows_public_addresses() {
+        assert!(!is_blocked_ip(&ip("1.1.1.1")));
+        assert!(!is_blocked_ip(&ip("8.8.8.8")));
+        assert!(!is_blocked_ip(&ip("2606:4700:4700::1111")));
+    }
+
+    #[test]
+    fn blocks_link_local_and_metadata() {
+        // Cloud metadata endpoint used by AWS/GCP/Azure
+        assert!(is_blocked_ip(&ip("169.254.169.254")));
+        assert!(is_blocked_ip(&ip("169.254.0.1")));
+        assert!(is_blocked_ip(&ip("fe80::1")));
+    }
+
+    #[test]
+    fn blocks_unspecified_and_broadcast() {
+        assert!(is_blocked_ip(&ip("0.0.0.0")));
+        assert!(is_blocked_ip(&ip("255.255.255.255")));
+        assert!(is_blocked_ip(&ip("::")));
+    }
+
+    #[test]
+    fn blocks_cgnat() {
+        assert!(is_blocked_ip(&ip("100.64.0.1")));
+        assert!(is_blocked_ip(&ip("100.127.255.254")));
+        // Just outside CGNAT range should be allowed
+        assert!(!is_blocked_ip(&ip("100.63.255.255")));
+        assert!(!is_blocked_ip(&ip("100.128.0.0")));
+    }
+
+    #[test]
+    fn blocks_ipv4_mapped_ipv6_metadata() {
+        // ::ffff:169.254.169.254
+        assert!(is_blocked_ip(&ip("::ffff:169.254.169.254")));
+        // ::ffff:127.0.0.1 should now be allowed (loopback)
+        assert!(!is_blocked_ip(&ip("::ffff:127.0.0.1")));
+    }
+
+    #[tokio::test]
+    async fn validate_url_allows_localhost_literal() {
+        let res = validate_url("http://127.0.0.1:8080/health").await;
+        assert!(res.is_ok(), "expected Ok, got {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn validate_url_allows_ipv6_loopback_literal() {
+        let res = validate_url("http://[::1]:8080/").await;
+        assert!(res.is_ok(), "expected Ok, got {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn validate_url_allows_rfc1918_literal() {
+        let res = validate_url("http://192.168.1.10/").await;
+        assert!(res.is_ok(), "expected Ok, got {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn validate_url_blocks_cloud_metadata() {
+        let res = validate_url("http://169.254.169.254/latest/meta-data/").await;
+        assert!(res.is_err(), "expected Err, got {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn validate_url_blocks_unspecified() {
+        let res = validate_url("http://0.0.0.0/").await;
+        assert!(res.is_err(), "expected Err, got {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn validate_url_rejects_non_http_scheme() {
+        let res = validate_url("ftp://example.com/").await;
+        assert!(res.is_err());
+    }
 }
