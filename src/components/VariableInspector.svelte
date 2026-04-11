@@ -84,21 +84,39 @@
   $: runtimeCount = overrideEntries.length + globalEntries.length + namedEntries.length;
   $: hasRuntime = runtimeCount > 0;
 
-  function matchesSearch(key: string, value: string): boolean {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return key.toLowerCase().includes(q) || value.toLowerCase().includes(q);
-  }
+  $: searchQueryLower = searchQuery.trim().toLowerCase();
 
-  $: filteredFileVars = fileVariables.filter(v => matchesSearch(v.key, v.value));
-  $: filteredEnvEntries = envEntries
-    .filter(([k, v]) => matchesSearch(k, v))
-    .sort((a, b) => sourcePriority(a[0]) - sourcePriority(b[0]));
-  $: filteredOverrides = overrideEntries.filter(([k, v]) => matchesSearch(k, v));
-  $: filteredGlobals = globalEntries.filter(([k, v]) => matchesSearch(k, v));
-  $: filteredNamed = namedEntries.filter(([name, result]) =>
-    matchesSearch(name, `${result.request.method} ${result.response.status}`)
-  );
+  $: filteredFileVars = searchQueryLower
+    ? fileVariables.filter(v =>
+        v.key.toLowerCase().includes(searchQueryLower) ||
+        v.value.toLowerCase().includes(searchQueryLower)
+      )
+    : fileVariables;
+  $: filteredEnvEntries = (searchQueryLower
+    ? envEntries.filter(([k, v]) =>
+        k.toLowerCase().includes(searchQueryLower) ||
+        v.toLowerCase().includes(searchQueryLower)
+      )
+    : envEntries
+  ).slice().sort((a, b) => sourcePriority(a[0]) - sourcePriority(b[0]));
+  $: filteredOverrides = searchQueryLower
+    ? overrideEntries.filter(([k, v]) =>
+        k.toLowerCase().includes(searchQueryLower) ||
+        v.toLowerCase().includes(searchQueryLower)
+      )
+    : overrideEntries;
+  $: filteredGlobals = searchQueryLower
+    ? globalEntries.filter(([k, v]) =>
+        k.toLowerCase().includes(searchQueryLower) ||
+        v.toLowerCase().includes(searchQueryLower)
+      )
+    : globalEntries;
+  $: filteredNamed = searchQueryLower
+    ? namedEntries.filter(([name, result]) => {
+        const summary = `${result.request.method} ${result.response.status}`.toLowerCase();
+        return name.toLowerCase().includes(searchQueryLower) || summary.includes(searchQueryLower);
+      })
+    : namedEntries;
   $: filteredRuntimeCount = filteredOverrides.length + filteredGlobals.length + filteredNamed.length;
 
   $: totalCount = fileVariables.length + envEntries.length + runtimeCount;
