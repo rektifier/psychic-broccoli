@@ -15,11 +15,7 @@
 
   $: if (visible) { searchQuery = ''; insertedKey = null; }
 
-  function matchesSearch(key: string, value: string): boolean {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return key.toLowerCase().includes(q) || value.toLowerCase().includes(q);
-  }
+  $: searchQueryLower = searchQuery.trim().toLowerCase();
 
   function truncate(str: string, max: number): string {
     return str.length > max ? str.slice(0, max) + '...' : str;
@@ -61,13 +57,29 @@
   $: fileOnly = fileVariables.filter(v => !(v.key in envVariables));
 
   // Filtered lists
-  $: filteredEnv = envEntries.filter(([k, v]) => matchesSearch(k, v));
-  $: filteredFile = fileOnly.filter(v => matchesSearch(v.key, v.value));
-  $: filteredDynamic = [
+  $: filteredEnv = searchQueryLower
+    ? envEntries.filter(([k, v]) =>
+        k.toLowerCase().includes(searchQueryLower) ||
+        v.toLowerCase().includes(searchQueryLower)
+      )
+    : envEntries;
+  $: filteredFile = searchQueryLower
+    ? fileOnly.filter(v =>
+        v.key.toLowerCase().includes(searchQueryLower) ||
+        v.value.toLowerCase().includes(searchQueryLower)
+      )
+    : fileOnly;
+  const dynamicVars = [
     { key: '$randomInt', value: 'random number', insert: '{{$randomInt 1 100}}' },
     { key: '$timestamp', value: 'unix epoch', insert: '{{$timestamp}}' },
     { key: '$datetime', value: 'ISO 8601 date', insert: '{{$datetime iso8601}}' },
-  ].filter(d => matchesSearch(d.key, d.value));
+  ];
+  $: filteredDynamic = searchQueryLower
+    ? dynamicVars.filter(d =>
+        d.key.toLowerCase().includes(searchQueryLower) ||
+        d.value.toLowerCase().includes(searchQueryLower)
+      )
+    : dynamicVars;
 
   // Build response field options for each named result
   $: responseGroups = Object.entries(namedResults).map(([name, result]) => {
@@ -89,8 +101,18 @@
 
   $: filteredResponseGroups = responseGroups.map(group => ({
     ...group,
-    bodyFields: group.bodyFields.filter(f => matchesSearch(f.path, f.value)),
-    headerFields: group.headerFields.filter(f => matchesSearch(f.path, f.value)),
+    bodyFields: searchQueryLower
+      ? group.bodyFields.filter(f =>
+          f.path.toLowerCase().includes(searchQueryLower) ||
+          f.value.toLowerCase().includes(searchQueryLower)
+        )
+      : group.bodyFields,
+    headerFields: searchQueryLower
+      ? group.headerFields.filter(f =>
+          f.path.toLowerCase().includes(searchQueryLower) ||
+          f.value.toLowerCase().includes(searchQueryLower)
+        )
+      : group.headerFields,
   })).filter(g => g.bodyFields.length > 0 || g.headerFields.length > 0);
 
   $: hasEnvOrFile = envEntries.length > 0 || fileOnly.length > 0;
