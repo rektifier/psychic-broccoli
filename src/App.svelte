@@ -678,8 +678,8 @@
   // ─── Event Handlers ───
 
   function handleSelect(e: CustomEvent<RequestLocation>) {
-    if (showEnvEditor && $envFile) {
-      saveEnvFile($envFile);
+    if (showEnvEditor) {
+      if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
     }
     // Deactivate any flow tab when selecting a request
@@ -695,8 +695,8 @@
   }
 
   function handlePinRequest(e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>) {
-    if (showEnvEditor && $envFile) {
-      saveEnvFile($envFile);
+    if (showEnvEditor) {
+      if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
     }
     pinTab(
@@ -706,8 +706,8 @@
   }
 
   function handleTabActivate(e: CustomEvent<RequestLocation>) {
-    if (showEnvEditor && $envFile) {
-      saveEnvFile($envFile);
+    if (showEnvEditor) {
+      if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
     }
     // Deactivate any flow tab when switching to a request tab
@@ -1224,12 +1224,12 @@
         on:closeFlowTab={(e) => { delete flowUIState[e.detail]; closeFlowTab(e.detail); }}
       />
       <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
-        {#if showEnvEditor && $envFile && $activeEnvironment}
+        {#if showEnvEditor}
           <div class="env-editor-pane">
             <EnvironmentEditor
-              envFile={$envFile}
+              envFile={$envFile ?? { $shared: {} }}
               userEnvFile={$userEnvFile}
-              activeEnv={$activeEnvironment}
+              activeEnv={$activeEnvironment ?? '$shared'}
               kvState={$keyVaultState}
               on:update={(e) => {
                 envFile.set(e.detail);
