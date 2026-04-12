@@ -181,6 +181,8 @@ export interface ImportResult {
    * Includes both collection-defined variables (with values) and undefined ones (empty value).
    */
   discoveredVariables: Variable[];
+  /** Pre-built environment file from importers that support multi-env (e.g. Insomnia v5 sub-environments) */
+  environmentFile?: EnvironmentFile;
 }
 
 // ─── Pb Script Directives ───────────────────────────────────────────────────
