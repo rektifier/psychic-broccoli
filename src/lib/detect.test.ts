@@ -35,6 +35,31 @@ describe('detectImportFormat', () => {
     expect(detectImportFormat(content)).toBe('insomnia');
   });
 
+  it('detects Insomnia v5 YAML collection export', () => {
+    const content = 'type: collection.insomnia.rest/5.0\nname: My API\ncollection: []';
+    expect(detectImportFormat(content)).toBe('insomnia');
+  });
+
+  it('detects Insomnia v5 YAML spec export', () => {
+    const content = 'type: spec.insomnia.rest/5.0\nname: My API\ncollection: []';
+    expect(detectImportFormat(content)).toBe('insomnia');
+  });
+
+  it('detects Insomnia v5 YAML environment export', () => {
+    const content = 'type: environment.insomnia.rest/5.0\nname: Env';
+    expect(detectImportFormat(content)).toBe('insomnia');
+  });
+
+  it('detects Insomnia v5 YAML mock export', () => {
+    const content = 'type: mock.insomnia.rest/5.0\nname: Mock';
+    expect(detectImportFormat(content)).toBe('insomnia');
+  });
+
+  it('detects Insomnia v5 YAML mcpClient export', () => {
+    const content = 'type: mcpClient.insomnia/5.0\nname: MCP';
+    expect(detectImportFormat(content)).toBe('insomnia');
+  });
+
   // ── OpenAPI ──
   it('detects OpenAPI 3.x JSON by openapi field', () => {
     const content = JSON.stringify({ openapi: '3.0.0', paths: {} });

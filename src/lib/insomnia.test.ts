@@ -153,4 +153,135 @@ name: Bad
 `;
     expect(() => importInsomniaExport(yaml)).toThrow();
   });
+
+  it('extracts sub-environments into environmentFile', () => {
+    const yaml = `
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: My API
+collection:
+  - url: "{{ _.baseUrl }}/test"
+    name: Test
+    method: GET
+environments:
+  name: Base Environment
+  data:
+    baseUrl: https://api.example.com
+    apiKey: shared-key
+  subEnvironments:
+    - name: dev
+      data:
+        baseUrl: http://localhost:3000
+        debug: "true"
+    - name: prod
+      data:
+        baseUrl: https://prod.example.com
+        apiKey: prod-secret
+`;
+    const result = importInsomniaExport(yaml);
+    expect(result.environmentFile).toBeDefined();
+    expect(result.environmentFile!['$shared']).toEqual({ baseUrl: 'https://api.example.com', apiKey: 'shared-key' });
+    expect(result.environmentFile!['dev']).toEqual({ baseUrl: 'http://localhost:3000', debug: 'true' });
+    expect(result.environmentFile!['prod']).toEqual({ baseUrl: 'https://prod.example.com', apiKey: 'prod-secret' });
+  });
+
+  it('returns no environmentFile when no sub-environments exist', () => {
+    const yaml = `
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: Simple
+collection:
+  - url: https://example.com/test
+    name: Test
+    method: GET
+environments:
+  name: Base Environment
+  data:
+    baseUrl: https://api.example.com
+`;
+    const result = importInsomniaExport(yaml);
+    expect(result.environmentFile).toBeUndefined();
+  });
+
+  it('converts non-string primitive env values to strings', () => {
+    const yaml = `
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: Primitives
+collection:
+  - url: https://example.com
+    name: Test
+    method: GET
+environments:
+  name: Base
+  data:
+    port: 8080
+    enabled: true
+    name: my-api
+  subEnvironments:
+    - name: dev
+      data:
+        port: 3000
+        debug: false
+`;
+    const result = importInsomniaExport(yaml);
+    expect(result.environmentFile!['$shared']).toEqual({ port: '8080', enabled: 'true', name: 'my-api' });
+    expect(result.environmentFile!['dev']).toEqual({ port: '3000', debug: 'false' });
+  });
+
+  it('skips sub-environments with empty name or no data', () => {
+    const yaml = `
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: Gaps
+collection:
+  - url: https://example.com
+    name: Test
+    method: GET
+environments:
+  name: Base
+  data:
+    key: value
+  subEnvironments:
+    - name: ""
+      data:
+        a: b
+    - name: valid
+      data:
+        x: "y"
+`;
+    const result = importInsomniaExport(yaml);
+    expect(result.environmentFile!['valid']).toEqual({ x: 'y' });
+    expect(result.environmentFile!['']).toBeUndefined();
+  });
+
+  it('handles spec.insomnia.rest type with sub-environments', () => {
+    const yaml = `
+type: spec.insomnia.rest/5.0
+schema_version: "5.1"
+name: Spec Export
+collection:
+  - url: "{{ _.base_url }}/api/test"
+    name: Test endpoint
+    method: GET
+environments:
+  name: Base Environment
+  data:
+    base_url: https://api.default.com
+    countryId: se
+  subEnvironments:
+    - name: localhost
+      data:
+        base_url: http://localhost:8080
+    - name: staging
+      data:
+        base_url: https://staging.example.com
+`;
+    const result = importInsomniaExport(yaml);
+    expect(result.files).toHaveLength(1);
+    expect(result.environmentFile).toBeDefined();
+    expect(result.environmentFile!['$shared']).toEqual({ base_url: 'https://api.default.com', countryId: 'se' });
+    expect(result.environmentFile!['localhost']).toEqual({ base_url: 'http://localhost:8080' });
+    expect(result.environmentFile!['staging']).toEqual({ base_url: 'https://staging.example.com' });
+  });
 });
