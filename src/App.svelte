@@ -31,7 +31,7 @@
   } from './lib/stores';
   import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
-    serializeHttpFile, substituteAll, parseEnvironmentFile,
+    serializeHttpFile, substituteAll, parseEnvironmentFile, ensureSharedEnvironment,
     buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
     executePbDirectives, parseScriptText, applyRequestMutations,
   } from './lib/parser';
@@ -77,7 +77,7 @@
 
     try {
       // Load or create the env file
-      let currentEnv: EnvironmentFile = $envFile ?? {};
+      let currentEnv: EnvironmentFile = ensureSharedEnvironment($envFile ?? {});
 
       // Ensure the target environment exists
       if (!currentEnv[envName]) {
@@ -461,7 +461,7 @@
     const rootPath = $workspace.rootPath;
     if (!rootPath) return;
     try {
-      let current: EnvironmentFile = $envFile ? structuredClone($envFile) : {};
+      let current: EnvironmentFile = ensureSharedEnvironment($envFile ? structuredClone($envFile) : {});
 
       for (const [envName, vars] of Object.entries(imported)) {
         if (!current[envName]) current[envName] = {};
