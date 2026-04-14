@@ -2,7 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective } from '../lib/types';
+  import VariablePicker from './VariablePicker.svelte';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective, Variable } from '../lib/types';
   import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
   import { baseEnvVars, namedResults, dotenvVariables } from '../lib/stores';
   import { METHOD_COLORS } from '../lib/theme';
@@ -395,6 +396,76 @@
     updateStepOverride(stepIndex, 'directives', text === baseText ? undefined : directives);
   }
 
+  // ─── Variable picker ────────────────────────────────────────────────────────
+
+  type PickerTarget =
+    | { kind: 'url'; stepIndex: number }
+    | { kind: 'headerValue'; stepIndex: number; headerIndex: number; baseHeaders: HttpHeader[] }
+    | { kind: 'body'; stepIndex: number }
+    | { kind: 'assertions'; stepIndex: number; baseDirectives: PbDirective[] }
+    | { kind: 'beforeSend'; stepIndex: number }
+    | { kind: 'afterReceive'; stepIndex: number };
+
+  let showVarPicker = false;
+  let pickerTarget: PickerTarget | null = null;
+  let pickerCursor: number = -1;
+  let pickerFileVars: Variable[] = [];
+
+  function insertAtCursor(text: string, value: string): string {
+    if (pickerCursor >= 0 && pickerCursor <= text.length) {
+      return text.slice(0, pickerCursor) + value + text.slice(pickerCursor);
+    }
+    return text + value;
+  }
+
+  function openVarPicker(target: PickerTarget, file: FileNode | undefined) {
+    const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+    pickerCursor = active?.selectionStart ?? -1;
+    pickerTarget = target;
+    pickerFileVars = file?.variables ?? [];
+    showVarPicker = true;
+  }
+
+  function handleVarPickerInsert(e: CustomEvent<string>) {
+    const value = e.detail;
+    showVarPicker = false;
+    const t = pickerTarget;
+    if (!t) return;
+    const step = flow.steps[t.stepIndex];
+    const req = (() => {
+      const f = findFileForStep(step);
+      return f && step.requestIndex >= 0 && step.requestIndex < f.requests.length ? f.requests[step.requestIndex] : null;
+    })();
+    if (t.kind === 'url') {
+      const current = step.overrides?.url ?? req?.url ?? getUrl(step.label);
+      const base = req?.url ?? getUrl(step.label);
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'url', next === base ? undefined : next);
+    } else if (t.kind === 'body') {
+      const current = step.overrides?.body ?? req?.body ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'body', next === (req?.body ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'beforeSend') {
+      const current = step.overrides?.beforeSend ?? req?.beforeSend ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'beforeSend', next === (req?.beforeSend ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'afterReceive') {
+      const current = step.overrides?.afterReceive ?? req?.afterReceive ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'afterReceive', next === (req?.afterReceive ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'assertions') {
+      const currentText = directivesToText(step.overrides?.directives ?? t.baseDirectives);
+      const nextText = insertAtCursor(currentText, value);
+      onDirectivesTextInput(t.stepIndex, nextText, t.baseDirectives);
+    } else if (t.kind === 'headerValue') {
+      const headers = (step.overrides?.headers ?? t.baseHeaders.map(h => ({ ...h }))).map(h => ({ ...h }));
+      headers[t.headerIndex] = { ...headers[t.headerIndex], value: insertAtCursor(headers[t.headerIndex].value, value) };
+      updateStepOverride(t.stepIndex, 'headers', headers);
+    }
+    pickerCursor = -1;
+    pickerTarget = null;
+  }
+
   function resetOverrides(index: number) {
     const steps = [...flow.steps];
     steps[index] = { ...steps[index], overrides: undefined };
@@ -607,6 +678,9 @@
                       }}
                       spellcheck="false"
                     />
+                    <button class="btn-insert-var" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'url', stepIndex: i }, file)} title="Insert variable">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    </button>
                   </div>
                 </div>
 
@@ -645,6 +719,9 @@
                           on:input={(e) => updateOverrideHeader(i, hi, 'value', e.currentTarget.value, baseHeaders)}
                           spellcheck="false"
                         />
+                        <button class="btn-insert-var" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'headerValue', stepIndex: i, headerIndex: hi, baseHeaders }, file)} title="Insert variable">
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        </button>
                         <button class="override-header-remove" on:click={() => removeOverrideHeader(i, hi, baseHeaders)}>&times;</button>
                       </div>
                     {/each}
@@ -671,6 +748,25 @@
                     <button class="override-tab" class:active={activeTabLookup(step.id) === 'afterReceive'} on:click={() => setActiveTab(step.id, 'afterReceive')}>
                       After Receive
                       {#if step.overrides?.afterReceive !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                    </button>
+                    <div class="override-tab-spacer"></div>
+                    <button
+                      class="btn-insert-var"
+                      on:mousedown|preventDefault
+                      on:click={() => {
+                        const tab = activeTabLookup(step.id);
+                        const kind = tab === 'body' ? 'body'
+                          : tab === 'assertions' ? 'assertions'
+                          : tab === 'beforeSend' ? 'beforeSend'
+                          : 'afterReceive';
+                        const target = kind === 'assertions'
+                          ? { kind, stepIndex: i, baseDirectives } as const
+                          : { kind, stepIndex: i } as const;
+                        openVarPicker(target, file);
+                      }}
+                      title="Insert variable"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                     </button>
                   </div>
                   <div class="override-tab-content">
@@ -765,6 +861,15 @@
     on:close={() => showPicker = false}
   />
 {/if}
+
+<VariablePicker
+  visible={showVarPicker}
+  fileVariables={pickerFileVars}
+  envVariables={$baseEnvVars}
+  namedResults={$namedResults}
+  on:insert={handleVarPickerInsert}
+  on:close={() => { showVarPicker = false; pickerTarget = null; }}
+/>
 
 <style>
   .flow-editor {
@@ -1448,6 +1553,27 @@
     background: color-mix(in srgb, var(--color-error) 9%, transparent);
     color: var(--color-error);
   }
+  .btn-insert-var {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: all var(--duration-normal);
+  }
+  .btn-insert-var:hover {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  }
+  .override-tab-spacer { flex: 1; }
   .override-body {
     padding: var(--space-1\.5) var(--space-2);
     border: 1px solid var(--color-divider);
