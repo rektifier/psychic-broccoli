@@ -400,9 +400,9 @@
 
   type PickerTarget =
     | { kind: 'url'; stepIndex: number }
-    | { kind: 'headerValue'; stepIndex: number; headerIndex: number; baseHeaders: HttpHeader[] }
+    | { kind: 'headerValue'; stepIndex: number; headerIndex: number }
     | { kind: 'body'; stepIndex: number }
-    | { kind: 'assertions'; stepIndex: number; baseDirectives: PbDirective[] }
+    | { kind: 'assertions'; stepIndex: number }
     | { kind: 'beforeSend'; stepIndex: number }
     | { kind: 'afterReceive'; stepIndex: number };
 
@@ -432,13 +432,15 @@
     const t = pickerTarget;
     if (!t) return;
     const step = flow.steps[t.stepIndex];
-    const req = (() => {
-      const f = findFileForStep(step);
-      return f && step.requestIndex >= 0 && step.requestIndex < f.requests.length ? f.requests[step.requestIndex] : null;
-    })();
+    const file = findFileForStep(step);
+    const req = file && step.requestIndex >= 0 && step.requestIndex < file.requests.length
+      ? file.requests[step.requestIndex]
+      : null;
+    const baseHeaders = req?.headers ?? [];
+    const baseDirectives = req?.directives ?? [];
     if (t.kind === 'url') {
-      const current = step.overrides?.url ?? req?.url ?? getUrl(step.label);
       const base = req?.url ?? getUrl(step.label);
+      const current = step.overrides?.url ?? base;
       const next = insertAtCursor(current, value);
       updateStepOverride(t.stepIndex, 'url', next === base ? undefined : next);
     } else if (t.kind === 'body') {
@@ -454,11 +456,11 @@
       const next = insertAtCursor(current, value);
       updateStepOverride(t.stepIndex, 'afterReceive', next === (req?.afterReceive ?? '') ? undefined : next || undefined);
     } else if (t.kind === 'assertions') {
-      const currentText = directivesToText(step.overrides?.directives ?? t.baseDirectives);
+      const currentText = directivesToText(step.overrides?.directives ?? baseDirectives);
       const nextText = insertAtCursor(currentText, value);
-      onDirectivesTextInput(t.stepIndex, nextText, t.baseDirectives);
+      onDirectivesTextInput(t.stepIndex, nextText, baseDirectives);
     } else if (t.kind === 'headerValue') {
-      const headers = (step.overrides?.headers ?? t.baseHeaders.map(h => ({ ...h }))).map(h => ({ ...h }));
+      const headers = (step.overrides?.headers ?? baseHeaders).map(h => ({ ...h }));
       headers[t.headerIndex] = { ...headers[t.headerIndex], value: insertAtCursor(headers[t.headerIndex].value, value) };
       updateStepOverride(t.stepIndex, 'headers', headers);
     }
@@ -678,7 +680,7 @@
                       }}
                       spellcheck="false"
                     />
-                    <button class="btn-insert-var" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'url', stepIndex: i }, file)} title="Insert variable">
+                    <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'url', stepIndex: i }, file)} title="Insert variable">
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                     </button>
                   </div>
@@ -719,7 +721,7 @@
                           on:input={(e) => updateOverrideHeader(i, hi, 'value', e.currentTarget.value, baseHeaders)}
                           spellcheck="false"
                         />
-                        <button class="btn-insert-var" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'headerValue', stepIndex: i, headerIndex: hi, baseHeaders }, file)} title="Insert variable">
+                        <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'headerValue', stepIndex: i, headerIndex: hi }, file)} title="Insert variable">
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                         </button>
                         <button class="override-header-remove" on:click={() => removeOverrideHeader(i, hi, baseHeaders)}>&times;</button>
@@ -759,10 +761,7 @@
                           : tab === 'assertions' ? 'assertions'
                           : tab === 'beforeSend' ? 'beforeSend'
                           : 'afterReceive';
-                        const target = kind === 'assertions'
-                          ? { kind, stepIndex: i, baseDirectives } as const
-                          : { kind, stepIndex: i } as const;
-                        openVarPicker(target, file);
+                        openVarPicker({ kind, stepIndex: i }, file);
                       }}
                       title="Insert variable"
                     >
