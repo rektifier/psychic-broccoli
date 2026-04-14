@@ -48,6 +48,28 @@
   $: brokenCount = flow.steps.filter(isStepBroken).length;
   $: hasAnyBroken = brokenCount > 0;
 
+  $: resolvedStepUrls = (() => {
+    const env = $baseEnvVars;
+    const dotenv = $dotenvVariables;
+    return flow.steps.map((step) => {
+      const file = findFileForStep(step);
+      const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
+        ? file.requests[step.requestIndex]
+        : null;
+      const rawUrl = req ? req.url : getUrl(step.label);
+      if (!rawUrl || !rawUrl.includes('{{')) return '';
+      const nonEmptyEnv: Record<string, string> = {};
+      for (const [k, v] of Object.entries(env)) if (v) nonEmptyEnv[k] = v;
+      const resolved = substituteAll(rawUrl, {
+        fileVariables: [],
+        environmentVariables: nonEmptyEnv,
+        namedResults: {},
+        dotenvVariables: dotenv,
+      });
+      return resolved !== rawUrl ? resolved : '';
+    });
+  })();
+
   function getStepStatus(stepId: string): FlowStepResult | undefined {
     return runState?.stepResults.find(r => r.stepId === stepId);
   }
@@ -230,23 +252,6 @@
   function getUrl(label: string): string {
     const m = label.match(/^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\s+(.*)/);
     return m ? m[1] : label;
-  }
-
-  /** Resolve a raw URL using current environment/variables. Returns '' if no change. */
-  function resolveStepUrl(rawUrl: string, file: FileNode | undefined): string {
-    if (!rawUrl || !rawUrl.includes('{{')) return '';
-    // Only resolve environment variables; runtime/file-scoped variables stay as {{placeholders}}
-    const nonEmptyEnv: Record<string, string> = {};
-    for (const [k, v] of Object.entries($baseEnvVars)) {
-      if (v) nonEmptyEnv[k] = v;
-    }
-    const resolved = substituteAll(rawUrl, {
-      fileVariables: [],
-      environmentVariables: nonEmptyEnv,
-      namedResults: {},
-      dotenvVariables: $dotenvVariables,
-    });
-    return resolved !== rawUrl ? resolved : '';
   }
 
   /** Compute URL suffixes for requests in a file, stripping common prefix segments. */
@@ -484,7 +489,7 @@
           {@const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0) ? file.requests[step.requestIndex] : null}
           {@const rawUrl = req ? req.url : getUrl(step.label)}
           {@const requestName = req?.name ?? ''}
-          {@const resolvedUrl = resolveStepUrl(rawUrl, file)}
+          {@const resolvedUrl = resolvedStepUrls[i] ?? ''}
           {@const baseHeaders = req?.headers ?? []}
           {@const baseDirectives = req?.directives ?? []}
           <div
