@@ -102,9 +102,9 @@ export async function runFlow(
       dotenvVariables,
     };
 
-    // Flow step's own varName takes precedence over the underlying request's `# @name`.
-    const effectiveAlias = step.varName ?? request.varName ?? null;
-    const stepResult = await executeStep(step.id, request, ctx, localNamedResults, localEnvOverrides, localGlobals, effectiveAlias);
+    // Post-normalization invariant (flowAlias.ts): step.varName is always set
+    // and supersedes the underlying request's `# @name`.
+    const stepResult = await executeStep(step.id, request, ctx, localNamedResults, localEnvOverrides, localGlobals, step.varName);
     stepResults.push(stepResult);
     callbacks.onStepComplete(step.id, stepResult);
 

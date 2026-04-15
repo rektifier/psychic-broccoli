@@ -40,11 +40,12 @@ function parseOverrides(raw: any): FlowStepOverrides | undefined {
 function parseFlowStep(raw: any): FlowStep {
   // Legacy flows don't carry `aliasLocked`. Infer:
   //   - explicit boolean: honor it
-  //   - has a non-null varName: treat as user-customized (preserve the name)
-  //   - null varName: auto (will get Step{N} during normalization)
+  //   - varName matches auto shape `Step{N}`: treat as auto (re-normalized)
+  //   - non-null custom varName: preserve as locked
+  //   - null varName: auto
   const aliasLocked = typeof raw.aliasLocked === 'boolean'
     ? raw.aliasLocked
-    : (raw.varName != null);
+    : (raw.varName != null && !/^Step\d+$/.test(raw.varName));
   return {
     id: raw.id ?? crypto.randomUUID(),
     filePath: raw.filePath ?? '',

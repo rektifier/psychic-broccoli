@@ -277,20 +277,42 @@
     save();
   }
 
-  /** Set the step's response alias. Any non-empty value that differs from the current
-   *  auto name locks the alias (user-customized). Empty input, or a value matching the
-   *  position's auto name, unlocks and triggers regeneration. */
+  /** Draft alias values keyed by step id. Keeps the input responsive on every
+   *  keystroke without running `applyAliasSync` / `save()` until the user commits
+   *  (blur, Enter, or native `change`). */
+  let aliasDraft: Record<string, string> = {};
+
+  const AUTO_ALIAS_SHAPE = /^Step\d+$/;
+
+  /** Commit the alias draft for step `index`. Empty input, a value matching the
+   *  position's auto name, or any `Step{N}`-shaped value unlocks the alias -
+   *  auto-shaped names are system-managed and cannot be user-locked.
+   *  Other non-empty values lock the alias as user-customized. */
   function setStepAlias(index: number, raw: string) {
     const trimmed = raw.trim();
     const steps = [...flow.steps];
     const auto = autoAliasFor(index);
-    if (trimmed === '' || trimmed === auto) {
+    if (trimmed === '' || trimmed === auto || AUTO_ALIAS_SHAPE.test(trimmed)) {
       steps[index] = { ...steps[index], varName: null, aliasLocked: false };
     } else {
       steps[index] = { ...steps[index], varName: trimmed, aliasLocked: true };
     }
     flow = { ...flow, steps: applyAliasSync(steps) };
+    delete aliasDraft[steps[index].id];
+    aliasDraft = aliasDraft;
     save();
+  }
+
+  function onAliasInput(stepId: string, value: string) {
+    aliasDraft = { ...aliasDraft, [stepId]: value };
+  }
+
+  function commitAliasDraft(index: number) {
+    const stepId = flow.steps[index]?.id;
+    if (stepId == null) return;
+    const draft = aliasDraft[stepId];
+    if (draft === undefined) return;
+    setStepAlias(index, draft);
   }
 
   /** "Reset to auto" affordance: unlocks the step so it takes the auto Step{N} name. */
@@ -753,9 +775,12 @@
                       class="override-input"
                       class:showing-base={!step.aliasLocked}
                       type="text"
-                      value={step.varName ?? ''}
+                      value={aliasDraft[step.id] ?? (step.varName ?? '')}
                       placeholder={autoAliasFor(i)}
-                      on:input={(e) => setStepAlias(i, e.currentTarget.value)}
+                      on:input={(e) => onAliasInput(step.id, e.currentTarget.value)}
+                      on:change={() => commitAliasDraft(i)}
+                      on:blur={() => commitAliasDraft(i)}
+                      on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitAliasDraft(i); } }}
                       spellcheck="false"
                     />
                     {#if step.aliasLocked}
@@ -763,7 +788,7 @@
                         type="button"
                         class="btn-alias-reset"
                         on:click={() => resetStepAlias(i)}
-                        title="Reset to auto alias (Step{i + 1}) and cascade the rename into later steps"
+                        title="Reset to auto alias (Step{i + 1}) and rewrite references across all steps"
                       >Reset</button>
                     {/if}
                   </div>

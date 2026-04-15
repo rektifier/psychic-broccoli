@@ -31,7 +31,7 @@
     transition: background var(--duration-fast);
   }
   .picker-row:hover { background: var(--color-bg-subtle); }
-  .picker-row.inserted { background: #E8F5E9; }
+  .picker-row.inserted { background: color-mix(in srgb, var(--color-success) 12%, transparent); }
   .picker-row.row-nested { padding-left: var(--space-6); }
 
   .row-key {
