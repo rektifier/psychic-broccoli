@@ -66,18 +66,33 @@
     return map;
   })();
 
+  /** Variables set by `pb.set` / `pb.global` during the flow's most recent run.
+   *  Available only after a completed run (flowRunner attaches them to the record).
+   *  Both kinds are merged: from the user's perspective inside the flow they are
+   *  just "variables this flow defines." */
+  $: flowScopeVars = (() => {
+    const v = lastRunRecord?.variables;
+    if (!v) return {};
+    return { ...v.setVars, ...v.globalVars };
+  })();
+
   $: resolvedStepUrls = (() => {
     const env = $baseEnvVars;
     const dotenv = $dotenvVariables;
+    const scope = flowScopeVars;
     return flow.steps.map((step) => {
       const file = findFileForStep(step);
       const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
         ? file.requests[step.requestIndex]
         : null;
-      const rawUrl = req ? req.url : getUrl(step.label);
+      // Prefer the step's override URL (what the user is actively editing) over the base.
+      const rawUrl = step.overrides?.url ?? (req ? req.url : getUrl(step.label));
       if (!rawUrl || !rawUrl.includes('{{')) return '';
+      // Merge env with flow-scope vars (pb.set / pb.global captured on last run) so
+      // URLs that reference them (e.g. {{sessionId}}) resolve in the preview.
       const nonEmptyEnv: Record<string, string> = {};
       for (const [k, v] of Object.entries(env)) if (v) nonEmptyEnv[k] = v;
+      for (const [k, v] of Object.entries(scope)) if (v != null && v !== '') nonEmptyEnv[k] = String(v);
       const resolved = substituteAll(rawUrl, {
         fileVariables: [],
         environmentVariables: nonEmptyEnv,
@@ -957,6 +972,8 @@
   envVariables={$baseEnvVars}
   namedResults={pickerNamedResults}
   flowAliases={pickerFlowAliases}
+  flowName={flow.name}
+  flowSetVars={flowScopeVars}
   on:insert={handleVarPickerInsert}
   on:close={() => { showVarPicker = false; pickerTarget = null; }}
 />

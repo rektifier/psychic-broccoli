@@ -10,9 +10,15 @@
   /** When non-null, scopes the response section to these aliases (from the active test flow).
    *  Aliases without a captured result still appear with placeholder body/header rows. */
   export let flowAliases: { name: string; stepNumber: number }[] | null = null;
+  /** Flow display name; used as the header of the flow-scope variables section. */
+  export let flowName: string = '';
+  /** Variables set via `pb.set` / `pb.global` during the flow's most recent run.
+   *  Rendered as a collapsible section at the top of the flow-scoped picker. */
+  export let flowSetVars: Record<string, string> = {};
 
   let expandedAliases: Record<string, boolean> = {};
-  $: if (visible) { expandedAliases = {}; }
+  let flowVarsExpanded = false;
+  $: if (visible) { expandedAliases = {}; flowVarsExpanded = false; }
   function toggleAlias(name: string) {
     expandedAliases = { ...expandedAliases, [name]: !expandedAliases[name] };
   }
@@ -132,9 +138,17 @@
         : flowAliases)
     : [];
 
+  // Flow-scope variables (pb.set / pb.global captured last run), filtered by search.
+  $: flowSetEntries = Object.entries(flowSetVars);
+  $: filteredFlowSet = searchQueryLower
+    ? flowSetEntries.filter(([k, v]) =>
+        k.toLowerCase().includes(searchQueryLower) ||
+        v.toLowerCase().includes(searchQueryLower))
+    : flowSetEntries;
+
   $: totalVisible = filteredEnv.length + filteredFile.length + filteredDynamic.length
     + (flowAliases
-        ? filteredFlowAliases.length
+        ? filteredFlowAliases.length + filteredFlowSet.length
         : filteredResponseGroups.reduce((s, g) => s + g.bodyFields.length + g.headerFields.length, 0));
 
   function doInsert(key: string, value: string) {
@@ -194,8 +208,29 @@
               <p class="empty-hint">Try a different search term.</p>
             </div>
           {:else}
-            <!-- Flow-scoped: one collapsible group per preceding-step alias (rendered first in flow picker) -->
+            <!-- Flow-scoped sections (rendered first in flow picker) -->
             {#if flowAliases !== null}
+              <!-- Flow-scope variables: pb.set / pb.global captured on the most recent run. -->
+              {#if filteredFlowSet.length > 0}
+                <button
+                  class="group-header group-header-button"
+                  class:open={flowVarsExpanded}
+                  on:click={() => (flowVarsExpanded = !flowVarsExpanded)}
+                  aria-expanded={flowVarsExpanded}
+                  title="Variables set by this flow via pb.set or pb.global on its last run"
+                >
+                  <span class="chevron" aria-hidden="true">{flowVarsExpanded ? '▾' : '▸'}</span>
+                  <span class="group-label">{flowName || 'Flow variables'}</span>
+                  <span class="group-count">{filteredFlowSet.length}</span>
+                </button>
+                {#if flowVarsExpanded}
+                  {#each filteredFlowSet as [key, value]}
+                    {@const rowKey = `flowvar.${key}`}
+                    <PickerRow nested label={key} {value} inserted={insertedKey === rowKey} on:click={() => doInsert(rowKey, `{{${key}}}`)} />
+                  {/each}
+                {/if}
+              {/if}
+
               {#each filteredFlowAliases as alias}
                 {@const group = responseGroupMap[alias.name]}
                 {@const isOpen = expandedAliases[alias.name] === true}
