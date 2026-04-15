@@ -102,7 +102,9 @@ export async function runFlow(
       dotenvVariables,
     };
 
-    const stepResult = await executeStep(step.id, request, ctx, localNamedResults, localEnvOverrides, localGlobals);
+    // Flow step's own varName takes precedence over the underlying request's `# @name`.
+    const effectiveAlias = step.varName ?? request.varName ?? null;
+    const stepResult = await executeStep(step.id, request, ctx, localNamedResults, localEnvOverrides, localGlobals, effectiveAlias);
     stepResults.push(stepResult);
     callbacks.onStepComplete(step.id, stepResult);
 
@@ -145,6 +147,7 @@ async function executeStep(
   localNamedResults: Record<string, NamedRequestResult>,
   localEnvOverrides: Record<string, string>,
   localGlobals: Record<string, string>,
+  effectiveAlias: string | null,
 ): Promise<FlowStepResult> {
   const startTime = performance.now();
 
@@ -211,9 +214,10 @@ async function executeStep(
       size: new TextEncoder().encode(res.body).length,
     };
 
-    // Store named result for chaining
-    if (request.varName) {
-      localNamedResults[request.varName] = { request: sentRequest, response };
+    // Store named result for chaining. The flow step's alias (if any) wins over the
+    // underlying request's `# @name`, so flows can name responses independently of .http files.
+    if (effectiveAlias) {
+      localNamedResults[effectiveAlias] = { request: sentRequest, response };
     }
 
     // Execute pb directives + afterReceive scripts

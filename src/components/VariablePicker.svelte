@@ -1,11 +1,21 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { Variable, NamedRequestResult } from '../lib/types';
+  import PickerRow from './PickerRow.svelte';
 
   export let fileVariables: Variable[] = [];
   export let envVariables: Record<string, string> = {};
   export let namedResults: Record<string, NamedRequestResult> = {};
   export let visible: boolean = false;
+  /** When non-null, scopes the response section to these aliases (from the active test flow).
+   *  Aliases without a captured result still appear with placeholder body/header rows. */
+  export let flowAliases: { name: string; stepNumber: number }[] | null = null;
+
+  let expandedAliases: Record<string, boolean> = {};
+  $: if (visible) { expandedAliases = {}; }
+  function toggleAlias(name: string) {
+    expandedAliases = { ...expandedAliases, [name]: !expandedAliases[name] };
+  }
 
   const dispatch = createEventDispatcher();
 
@@ -16,10 +26,6 @@
   $: if (visible) { searchQuery = ''; insertedKey = null; }
 
   $: searchQueryLower = searchQuery.trim().toLowerCase();
-
-  function truncate(str: string, max: number): string {
-    return str.length > max ? str.slice(0, max) + '...' : str;
-  }
 
   // Flatten JSON object into dot-path entries
   function flattenJson(obj: any, prefix: string = '$', maxDepth: number = 4): { path: string; value: string }[] {
@@ -115,9 +121,21 @@
       : group.headerFields,
   })).filter(g => g.bodyFields.length > 0 || g.headerFields.length > 0);
 
+  $: responseGroupMap = Object.fromEntries(responseGroups.map(g => [g.name, g]));
+
   $: hasEnvOrFile = envEntries.length > 0 || fileOnly.length > 0;
+
+  // Flow-scoped aliases filtered by search query (match on name).
+  $: filteredFlowAliases = flowAliases
+    ? (searchQueryLower
+        ? flowAliases.filter(a => a.name.toLowerCase().includes(searchQueryLower))
+        : flowAliases)
+    : [];
+
   $: totalVisible = filteredEnv.length + filteredFile.length + filteredDynamic.length
-    + filteredResponseGroups.reduce((s, g) => s + g.bodyFields.length + g.headerFields.length, 0);
+    + (flowAliases
+        ? filteredFlowAliases.length
+        : filteredResponseGroups.reduce((s, g) => s + g.bodyFields.length + g.headerFields.length, 0));
 
   function doInsert(key: string, value: string) {
     insertedKey = key;
@@ -176,6 +194,69 @@
               <p class="empty-hint">Try a different search term.</p>
             </div>
           {:else}
+            <!-- Flow-scoped: one collapsible group per preceding-step alias (rendered first in flow picker) -->
+            {#if flowAliases !== null}
+              {#each filteredFlowAliases as alias}
+                {@const group = responseGroupMap[alias.name]}
+                {@const isOpen = expandedAliases[alias.name] === true}
+                {@const bodyFields = group ? (searchQueryLower
+                  ? group.bodyFields.filter(f => f.path.toLowerCase().includes(searchQueryLower) || f.value.toLowerCase().includes(searchQueryLower))
+                  : group.bodyFields) : []}
+                {@const headerFields = group ? (searchQueryLower
+                  ? group.headerFields.filter(f => f.path.toLowerCase().includes(searchQueryLower) || f.value.toLowerCase().includes(searchQueryLower))
+                  : group.headerFields) : []}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <button
+                  class="group-header group-header-button"
+                  class:open={isOpen}
+                  on:click={() => toggleAlias(alias.name)}
+                  aria-expanded={isOpen}
+                >
+                  <span class="chevron" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+                  <span class="step-pill">{alias.stepNumber}</span>
+                  <span class="group-label">{alias.name} - Response</span>
+                  {#if group}
+                    <span class="status-badge" class:success={group.status < 400} class:error={group.status >= 400}>{group.status}</span>
+                  {:else}
+                    <span class="status-badge pending">not run</span>
+                  {/if}
+                </button>
+                {#if isOpen}
+                  <div class="sub-header">Body</div>
+                  {#if group && bodyFields.length > 0}
+                    {#each bodyFields.slice(0, 12) as field}
+                      {@const rowKey = `${alias.name}.body.${field.path}`}
+                      <PickerRow nested label={field.path} value={field.value} inserted={insertedKey === rowKey} on:click={() => insertResponseBody(alias.name, field.path)} />
+                    {/each}
+                    {#if bodyFields.length > 12}
+                      <div class="empty-hint">{bodyFields.length - 12} more fields...</div>
+                    {/if}
+                  {:else}
+                    {@const bodyKey = `${alias.name}.body.pending`}
+                    <PickerRow nested label="$" value={group ? 'no matches' : 'fill in JSONPath after $'} inserted={insertedKey === bodyKey} on:click={() => doInsert(bodyKey, `{{${alias.name}.response.body.$.}}`)} />
+                  {/if}
+
+                  <div class="sub-header">Headers</div>
+                  {#if group && headerFields.length > 0}
+                    {#each headerFields as field}
+                      {@const rowKey = `${alias.name}.hdr.${field.path}`}
+                      <PickerRow nested label={field.path} value={field.value} inserted={insertedKey === rowKey} on:click={() => insertResponseHeader(alias.name, field.path)} />
+                    {/each}
+                  {:else}
+                    {@const hdrKey = `${alias.name}.hdr.pending`}
+                    <PickerRow nested label="headers" value={group ? 'no matches' : 'fill in header name'} inserted={insertedKey === hdrKey} on:click={() => doInsert(hdrKey, `{{${alias.name}.response.headers.}}`)} />
+                  {/if}
+                {/if}
+              {/each}
+
+              {#if filteredFlowAliases.length === 0 && !searchQuery}
+                <div class="group-header">
+                  <span class="group-label">From earlier steps in this flow</span>
+                </div>
+                <div class="empty-hint">No preceding steps have a response alias. Add <code>{'#'} @name alias</code> to a request above this step.</div>
+              {/if}
+            {/if}
+
             <!-- Environment variables -->
             {#if filteredEnv.length > 0}
               <div class="group-header">
@@ -183,11 +264,7 @@
                 <span class="group-count">{filteredEnv.length}</span>
               </div>
               {#each filteredEnv as [key, value]}
-                <button class="picker-row" class:inserted={insertedKey === key} on:click={() => insertEnvVar(key)}>
-                  <span class="row-key">{key}</span>
-                  <span class="row-value">{truncate(value, 30)}</span>
-                  <span class="row-action">{insertedKey === key ? 'Inserted' : 'Insert'}</span>
-                </button>
+                <PickerRow label={key} {value} inserted={insertedKey === key} on:click={() => insertEnvVar(key)} />
               {/each}
             {/if}
 
@@ -198,11 +275,7 @@
                 <span class="group-count">{filteredFile.length}</span>
               </div>
               {#each filteredFile as v}
-                <button class="picker-row" class:inserted={insertedKey === v.key} on:click={() => insertEnvVar(v.key)}>
-                  <span class="row-key">{v.key}</span>
-                  <span class="row-value">{truncate(v.value, 30)}</span>
-                  <span class="row-action">{insertedKey === v.key ? 'Inserted' : 'Insert'}</span>
-                </button>
+                <PickerRow label={v.key} value={v.value} inserted={insertedKey === v.key} on:click={() => insertEnvVar(v.key)} />
               {/each}
             {/if}
 
@@ -220,59 +293,50 @@
                 <span class="group-count">{filteredDynamic.length}</span>
               </div>
               {#each filteredDynamic as d}
-                <button class="picker-row" class:inserted={insertedKey === d.key} on:click={() => doInsert(d.key, d.insert)}>
-                  <span class="row-key">{d.key}</span>
-                  <span class="row-value">{d.value}</span>
-                  <span class="row-action">{insertedKey === d.key ? 'Inserted' : 'Insert'}</span>
-                </button>
+                <PickerRow label={d.key} value={d.value} inserted={insertedKey === d.key} on:click={() => doInsert(d.key, d.insert)} />
               {/each}
             {/if}
 
-            <!-- Response groups -->
-            {#each filteredResponseGroups as group}
-              {#if group.bodyFields.length > 0}
-                <div class="group-header">
-                  <span class="group-label">Response body - {group.name}</span>
-                  <span class="status-badge" class:success={group.status < 400} class:error={group.status >= 400}>
-                    {group.status}
-                  </span>
-                  <span class="group-count">{group.bodyFields.length}</span>
-                </div>
-                {#each group.bodyFields.slice(0, 12) as field}
-                  {@const rowKey = `${group.name}.body.${field.path}`}
-                  <button class="picker-row" class:inserted={insertedKey === rowKey} on:click={() => insertResponseBody(group.name, field.path)}>
-                    <span class="row-key">{field.path}</span>
-                    <span class="row-value">{truncate(field.value, 30)}</span>
-                    <span class="row-action">{insertedKey === rowKey ? 'Inserted' : 'Insert'}</span>
-                  </button>
-                {/each}
-                {#if group.bodyFields.length > 12}
-                  <div class="empty-hint">{group.bodyFields.length - 12} more fields...</div>
+            <!-- Response groups - non-flow picker (unchanged) -->
+            {#if flowAliases === null}
+              {#each filteredResponseGroups as group}
+                {#if group.bodyFields.length > 0}
+                  <div class="group-header">
+                    <span class="group-label">Response body - {group.name}</span>
+                    <span class="status-badge" class:success={group.status < 400} class:error={group.status >= 400}>
+                      {group.status}
+                    </span>
+                    <span class="group-count">{group.bodyFields.length}</span>
+                  </div>
+                  {#each group.bodyFields.slice(0, 12) as field}
+                    {@const rowKey = `${group.name}.body.${field.path}`}
+                    <PickerRow label={field.path} value={field.value} inserted={insertedKey === rowKey} on:click={() => insertResponseBody(group.name, field.path)} />
+                  {/each}
+                  {#if group.bodyFields.length > 12}
+                    <div class="empty-hint">{group.bodyFields.length - 12} more fields...</div>
+                  {/if}
                 {/if}
-              {/if}
 
-              {#if group.headerFields.length > 0}
+                {#if group.headerFields.length > 0}
+                  <div class="group-header">
+                    <span class="group-label">Response headers - {group.name}</span>
+                    <span class="group-count">{group.headerFields.length}</span>
+                  </div>
+                  {#each group.headerFields as field}
+                    {@const rowKey = `${group.name}.hdr.${field.path}`}
+                    <PickerRow label={field.path} value={field.value} inserted={insertedKey === rowKey} on:click={() => insertResponseHeader(group.name, field.path)} />
+                  {/each}
+                {/if}
+              {/each}
+
+              {#if responseGroups.length === 0 && !searchQuery}
                 <div class="group-header">
-                  <span class="group-label">Response headers - {group.name}</span>
-                  <span class="group-count">{group.headerFields.length}</span>
+                  <span class="group-label">Response references</span>
                 </div>
-                {#each group.headerFields as field}
-                  {@const rowKey = `${group.name}.hdr.${field.path}`}
-                  <button class="picker-row" class:inserted={insertedKey === rowKey} on:click={() => insertResponseHeader(group.name, field.path)}>
-                    <span class="row-key">{field.path}</span>
-                    <span class="row-value">{truncate(field.value, 30)}</span>
-                    <span class="row-action">{insertedKey === rowKey ? 'Inserted' : 'Insert'}</span>
-                  </button>
-                {/each}
+                <div class="empty-hint">Send a request with a response alias first (right-click a request to set one).</div>
               {/if}
-            {/each}
-
-            {#if responseGroups.length === 0 && !searchQuery}
-              <div class="group-header">
-                <span class="group-label">Response references</span>
-              </div>
-              <div class="empty-hint">Send a request with a response alias first (right-click a request to set one).</div>
             {/if}
+
           {/if}
         </div>
       </div>
@@ -363,63 +427,54 @@
   }
   .status-badge.success { background: color-mix(in srgb, var(--color-success) 9%, transparent); color: var(--color-success); }
   .status-badge.error { background: color-mix(in srgb, var(--color-error) 9%, transparent); color: var(--color-error); }
+  .status-badge.pending { background: color-mix(in srgb, var(--color-text-muted) 12%, transparent); color: var(--color-text-muted); }
 
-  .picker-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: 100%;
-    padding: 7px var(--space-4);
+  .group-header-button {
     border: none;
-    background: transparent;
-    color: var(--color-text);
-    font-family: inherit;
-    font-size: var(--text-base);
+    border-top: 1px solid var(--color-divider);
+    background: var(--color-bg-sidebar);
+    font: inherit;
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--color-text-faint);
     cursor: pointer;
     text-align: left;
-    transition: background var(--duration-fast);
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
   }
-  .picker-row:hover { background: var(--color-bg-subtle); }
-  .picker-row.inserted { background: #E8F5E9; }
-
-  .row-key {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    color: var(--color-warning);
-    font-weight: var(--weight-semibold);
+  .chevron {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    width: 12px;
+    display: inline-flex;
+    justify-content: center;
+  }
+  .step-pill {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    color: var(--color-accent-flow);
+    background: color-mix(in srgb, var(--color-accent-flow) 10%, transparent);
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
     flex-shrink: 0;
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
-  .row-value {
-    color: var(--color-text-faint);
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: right;
-  }
-
-  .row-action {
-    font-size: var(--text-2xs);
+  .sub-header {
+    font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
-    color: var(--color-text-placeholder);
-    flex-shrink: 0;
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity var(--duration-fast);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: var(--space-1\.5) var(--space-2) var(--space-1\.5) var(--space-6);
+    background: color-mix(in srgb, var(--color-text-muted) 6%, transparent);
+    border-top: 1px solid var(--color-divider);
+    border-bottom: 1px solid var(--color-divider);
   }
-  .picker-row:hover .row-action { opacity: 1; }
-  .picker-row.inserted .row-action {
-    opacity: 1;
-    color: var(--color-success);
-  }
-
   .empty-hint {
     padding: var(--space-2) var(--space-4);
     font-size: var(--text-sm);

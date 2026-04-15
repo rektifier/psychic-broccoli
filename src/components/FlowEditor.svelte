@@ -3,9 +3,10 @@
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
   import VariablePicker from './VariablePicker.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective, Variable } from '../lib/types';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective, Variable, NamedRequestResult } from '../lib/types';
   import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
-  import { baseEnvVars, namedResults, dotenvVariables } from '../lib/stores';
+  import { applyAliasSync, autoAliasFor } from '../lib/flowAlias';
+  import { baseEnvVars, dotenvVariables } from '../lib/stores';
   import { METHOD_COLORS } from '../lib/theme';
 
   export let flow: FlowDefinition;
@@ -48,6 +49,22 @@
 
   $: brokenCount = flow.steps.filter(isStepBroken).length;
   $: hasAnyBroken = brokenCount > 0;
+
+  /** Captured responses from the most recent flow run, keyed by step alias.
+   *  Flow-run results never reach the global `$namedResults` store, so the
+   *  VariablePicker needs this flow-scoped map to preview body/header values. */
+  $: flowLocalNamedResults = (() => {
+    const source = runState?.stepResults ?? lastRunRecord?.stepResults ?? [];
+    const map: Record<string, NamedRequestResult> = {};
+    for (const result of source) {
+      if (!result.response || !result.sentRequest) continue;
+      const step = flow.steps.find(s => s.id === result.stepId);
+      const alias = step?.varName;
+      if (!alias) continue;
+      map[alias] = { request: result.sentRequest, response: result.response };
+    }
+    return map;
+  })();
 
   $: resolvedStepUrls = (() => {
     const env = $baseEnvVars;
@@ -157,7 +174,7 @@
     // Adjust target index after removal
     const target = insertSlot > draggingIndex ? insertSlot - 1 : insertSlot;
     steps.splice(target, 0, moved);
-    flow = { ...flow, steps };
+    flow = { ...flow, steps: applyAliasSync(steps) };
     save();
     draggingIndex = -1;
     insertSlot = -1;
@@ -181,7 +198,7 @@
     const steps = [...flow.steps];
     const [moved] = steps.splice(from, 1);
     steps.splice(to, 0, moved);
-    flow = { ...flow, steps };
+    flow = { ...flow, steps: applyAliasSync(steps) };
     save();
   }
 
@@ -228,12 +245,13 @@
   }
 
   function addStep(e: CustomEvent<FlowStep>) {
-    flow = { ...flow, steps: [...flow.steps, e.detail] };
+    flow = { ...flow, steps: applyAliasSync([...flow.steps, e.detail]) };
     save();
   }
 
   function removeStep(index: number) {
-    flow = { ...flow, steps: flow.steps.filter((_, i) => i !== index) };
+    const next = flow.steps.filter((_, i) => i !== index);
+    flow = { ...flow, steps: applyAliasSync(next) };
     save();
   }
 
@@ -241,6 +259,30 @@
     const steps = [...flow.steps];
     steps[index] = { ...steps[index], continueOnFailure: !steps[index].continueOnFailure };
     flow = { ...flow, steps };
+    save();
+  }
+
+  /** Set the step's response alias. Any non-empty value that differs from the current
+   *  auto name locks the alias (user-customized). Empty input, or a value matching the
+   *  position's auto name, unlocks and triggers regeneration. */
+  function setStepAlias(index: number, raw: string) {
+    const trimmed = raw.trim();
+    const steps = [...flow.steps];
+    const auto = autoAliasFor(index);
+    if (trimmed === '' || trimmed === auto) {
+      steps[index] = { ...steps[index], varName: null, aliasLocked: false };
+    } else {
+      steps[index] = { ...steps[index], varName: trimmed, aliasLocked: true };
+    }
+    flow = { ...flow, steps: applyAliasSync(steps) };
+    save();
+  }
+
+  /** "Reset to auto" affordance: unlocks the step so it takes the auto Step{N} name. */
+  function resetStepAlias(index: number) {
+    const steps = [...flow.steps];
+    steps[index] = { ...steps[index], varName: null, aliasLocked: false };
+    flow = { ...flow, steps: applyAliasSync(steps) };
     save();
   }
 
@@ -415,6 +457,19 @@
   let pickerTarget: PickerTarget | null = null;
   let pickerCursor: number = -1;
   let pickerFileVars: Variable[] = [];
+  let pickerNamedResults: Record<string, NamedRequestResult> = {};
+  let pickerFlowAliases: { name: string; stepNumber: number }[] = [];
+
+  /** Collect aliases from every step before `stepIndex`. `applyAliasSync` guarantees
+   *  every step has a unique non-null `varName`, so this is a straight map. */
+  function collectPrecedingFlowAliases(stepIndex: number): { name: string; stepNumber: number }[] {
+    const out: { name: string; stepNumber: number }[] = [];
+    for (let i = 0; i < stepIndex && i < flow.steps.length; i++) {
+      const name = flow.steps[i].varName;
+      if (name) out.push({ name, stepNumber: i + 1 });
+    }
+    return out;
+  }
 
   function insertAtCursor(text: string, value: string): string {
     if (pickerCursor >= 0 && pickerCursor <= text.length) {
@@ -428,6 +483,13 @@
     pickerCursor = active?.selectionStart ?? -1;
     pickerTarget = target;
     pickerFileVars = file?.variables ?? [];
+    const aliases = collectPrecedingFlowAliases(target.stepIndex);
+    pickerFlowAliases = aliases;
+    const scoped: Record<string, NamedRequestResult> = {};
+    for (const { name } of aliases) {
+      if (flowLocalNamedResults[name]) scoped[name] = flowLocalNamedResults[name];
+    }
+    pickerNamedResults = scoped;
     showVarPicker = true;
   }
 
@@ -671,6 +733,29 @@
               <div class="override-panel" on:mousedown|stopPropagation on:dragstart|preventDefault|stopPropagation>
                 <div class="override-section">
                   <div class="override-row">
+                    <span class="override-label" title="Flow-local alias for this step's response. Referenced as {'{'}{'{'}alias.response.body.$....{'}'}{'}'} in later steps. Auto-named Step{i + 1} unless you customize it.">Alias{#if step.aliasLocked}<span class="modified-dot" title="Custom"></span>{/if}</span>
+                    <input
+                      class="override-input"
+                      class:showing-base={!step.aliasLocked}
+                      type="text"
+                      value={step.varName ?? ''}
+                      placeholder={autoAliasFor(i)}
+                      on:input={(e) => setStepAlias(i, e.currentTarget.value)}
+                      spellcheck="false"
+                    />
+                    {#if step.aliasLocked}
+                      <button
+                        type="button"
+                        class="btn-alias-reset"
+                        on:click={() => resetStepAlias(i)}
+                        title="Reset to auto alias (Step{i + 1}) and cascade the rename into later steps"
+                      >Reset</button>
+                    {/if}
+                  </div>
+                </div>
+
+                <div class="override-section">
+                  <div class="override-row">
                     <span class="override-label">URL{#if step.overrides?.url !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                     <input
                       class="override-input"
@@ -870,7 +955,8 @@
   visible={showVarPicker}
   fileVariables={pickerFileVars}
   envVariables={$baseEnvVars}
-  namedResults={$namedResults}
+  namedResults={pickerNamedResults}
+  flowAliases={pickerFlowAliases}
   on:insert={handleVarPickerInsert}
   on:close={() => { showVarPicker = false; pickerTarget = null; }}
 />
@@ -1576,6 +1662,21 @@
     border-color: var(--color-warning);
     color: var(--color-warning);
     background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  }
+  .btn-alias-reset {
+    font-size: var(--text-xs);
+    padding: 2px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .btn-alias-reset:hover {
+    border-color: var(--color-accent-flow);
+    color: var(--color-accent-flow);
+    background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent);
   }
   .override-tab-spacer { flex: 1; }
   .override-body {

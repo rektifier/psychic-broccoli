@@ -1,6 +1,7 @@
 import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps/plugin-fs';
 import { join, basename } from '@tauri-apps/api/path';
 import type { FlowDefinition, FlowRunRecord, FlowStep, FlowStepOverrides } from './types';
+import { applyAliasSync } from './flowAlias';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -14,11 +15,15 @@ const MAX_HISTORY_PER_FLOW = 20;
 /** Parse a .pb-flow.json file's contents into a FlowDefinition. */
 export function parseFlowFile(content: string): FlowDefinition {
   const raw = JSON.parse(content);
+  const steps = Array.isArray(raw.steps) ? raw.steps.map(parseFlowStep) : [];
+  // One-time normalization: ensures every step has an auto alias if unlocked.
+  // Legacy flows without `aliasLocked`: parseFlowStep infers it from varName presence.
+  const normalized = applyAliasSync(steps);
   return {
     version: raw.version ?? 1,
     name: raw.name ?? 'Untitled Flow',
     description: raw.description ?? '',
-    steps: Array.isArray(raw.steps) ? raw.steps.map(parseFlowStep) : [],
+    steps: normalized,
   };
 }
 
@@ -33,11 +38,19 @@ function parseOverrides(raw: any): FlowStepOverrides | undefined {
 }
 
 function parseFlowStep(raw: any): FlowStep {
+  // Legacy flows don't carry `aliasLocked`. Infer:
+  //   - explicit boolean: honor it
+  //   - has a non-null varName: treat as user-customized (preserve the name)
+  //   - null varName: auto (will get Step{N} during normalization)
+  const aliasLocked = typeof raw.aliasLocked === 'boolean'
+    ? raw.aliasLocked
+    : (raw.varName != null);
   return {
     id: raw.id ?? crypto.randomUUID(),
     filePath: raw.filePath ?? '',
     requestIndex: raw.requestIndex ?? 0,
     varName: raw.varName ?? null,
+    aliasLocked,
     label: raw.label ?? '',
     continueOnFailure: raw.continueOnFailure ?? false,
     overrides: parseOverrides(raw.overrides),
