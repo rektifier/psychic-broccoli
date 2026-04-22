@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import type { HttpMethod, HttpHeader, HttpRequest, Variable, ConvertedFile, ImportResult } from './types';
+import type { HttpMethod, HttpHeader, HttpRequest, Variable, ConvertedFile, ImportResult, EnvironmentFile } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
 
 // ─── Shared Types ──────────────────────────────────────────────────────────
@@ -62,7 +62,14 @@ interface V5Item {
 interface V5Environment {
   name?: string;
   data?: Record<string, unknown>;
+  subEnvironments?: V5SubEnvironment[];
   meta?: { id?: string };
+}
+
+interface V5SubEnvironment {
+  name: string;
+  data?: Record<string, unknown>;
+  meta?: { id?: string; sortKey?: number };
 }
 
 // ─── v4 JSON Types ─────────────────────────────────────────────────────────
@@ -154,9 +161,44 @@ function importV5Yaml(content: string): ImportResult {
     });
   }
 
+  // Build multi-environment file from sub-environments
+  const environmentFile = buildV5EnvironmentFile(data.environments);
+
   const discoveredVariables = extractVariableRefs(files, envVars);
 
-  return { files, collectionName, variables: envVars, discoveredVariables };
+  return { files, collectionName, variables: envVars, discoveredVariables, environmentFile };
+}
+
+function buildV5EnvironmentFile(env?: V5Environment): EnvironmentFile | undefined {
+  if (!env?.subEnvironments || env.subEnvironments.length === 0) return undefined;
+
+  const result: EnvironmentFile = {};
+
+  // Base environment data becomes $shared
+  if (env.data) {
+    const shared: Record<string, string> = {};
+    for (const [key, value] of Object.entries(env.data)) {
+      if (value != null && typeof value !== 'object') shared[key] = String(value);
+    }
+    if (Object.keys(shared).length > 0) result['$shared'] = shared;
+  }
+
+  // Each sub-environment becomes a named environment, sorted by sortKey
+  const sorted = [...env.subEnvironments].sort(
+    (a, b) => (a.meta?.sortKey ?? 0) - (b.meta?.sortKey ?? 0),
+  );
+  for (const sub of sorted) {
+    if (!sub.name || !sub.data) continue;
+    const vars: Record<string, string> = {};
+    for (const [key, value] of Object.entries(sub.data)) {
+      if (value != null && typeof value !== 'object') vars[key] = String(value);
+    }
+    if (Object.keys(vars).length > 0) {
+      result[sub.name] = vars;
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function collectV5Names(items: V5Item[], nameById: Map<string, string>): void {

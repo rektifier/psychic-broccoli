@@ -2,7 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective } from '../lib/types';
+  import VariablePicker from './VariablePicker.svelte';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective, Variable } from '../lib/types';
   import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
   import { baseEnvVars, namedResults, dotenvVariables } from '../lib/stores';
   import { METHOD_COLORS } from '../lib/theme';
@@ -47,6 +48,28 @@
 
   $: brokenCount = flow.steps.filter(isStepBroken).length;
   $: hasAnyBroken = brokenCount > 0;
+
+  $: resolvedStepUrls = (() => {
+    const env = $baseEnvVars;
+    const dotenv = $dotenvVariables;
+    return flow.steps.map((step) => {
+      const file = findFileForStep(step);
+      const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
+        ? file.requests[step.requestIndex]
+        : null;
+      const rawUrl = req ? req.url : getUrl(step.label);
+      if (!rawUrl || !rawUrl.includes('{{')) return '';
+      const nonEmptyEnv: Record<string, string> = {};
+      for (const [k, v] of Object.entries(env)) if (v) nonEmptyEnv[k] = v;
+      const resolved = substituteAll(rawUrl, {
+        fileVariables: [],
+        environmentVariables: nonEmptyEnv,
+        namedResults: {},
+        dotenvVariables: dotenv,
+      });
+      return resolved !== rawUrl ? resolved : '';
+    });
+  })();
 
   function getStepStatus(stepId: string): FlowStepResult | undefined {
     return runState?.stepResults.find(r => r.stepId === stepId);
@@ -232,23 +255,6 @@
     return m ? m[1] : label;
   }
 
-  /** Resolve a raw URL using current environment/variables. Returns '' if no change. */
-  function resolveStepUrl(rawUrl: string, file: FileNode | undefined): string {
-    if (!rawUrl || !rawUrl.includes('{{')) return '';
-    // Only resolve environment variables; runtime/file-scoped variables stay as {{placeholders}}
-    const nonEmptyEnv: Record<string, string> = {};
-    for (const [k, v] of Object.entries($baseEnvVars)) {
-      if (v) nonEmptyEnv[k] = v;
-    }
-    const resolved = substituteAll(rawUrl, {
-      fileVariables: [],
-      environmentVariables: nonEmptyEnv,
-      namedResults: {},
-      dotenvVariables: $dotenvVariables,
-    });
-    return resolved !== rawUrl ? resolved : '';
-  }
-
   /** Compute URL suffixes for requests in a file, stripping common prefix segments. */
   function computeFileSuffixes(requests: { url: string }[]): string[] {
     if (requests.length === 0) return [];
@@ -395,6 +401,78 @@
     updateStepOverride(stepIndex, 'directives', text === baseText ? undefined : directives);
   }
 
+  // ─── Variable picker ────────────────────────────────────────────────────────
+
+  type PickerTarget =
+    | { kind: 'url'; stepIndex: number }
+    | { kind: 'headerValue'; stepIndex: number; headerIndex: number }
+    | { kind: 'body'; stepIndex: number }
+    | { kind: 'assertions'; stepIndex: number }
+    | { kind: 'beforeSend'; stepIndex: number }
+    | { kind: 'afterReceive'; stepIndex: number };
+
+  let showVarPicker = false;
+  let pickerTarget: PickerTarget | null = null;
+  let pickerCursor: number = -1;
+  let pickerFileVars: Variable[] = [];
+
+  function insertAtCursor(text: string, value: string): string {
+    if (pickerCursor >= 0 && pickerCursor <= text.length) {
+      return text.slice(0, pickerCursor) + value + text.slice(pickerCursor);
+    }
+    return text + value;
+  }
+
+  function openVarPicker(target: PickerTarget, file: FileNode | undefined) {
+    const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+    pickerCursor = active?.selectionStart ?? -1;
+    pickerTarget = target;
+    pickerFileVars = file?.variables ?? [];
+    showVarPicker = true;
+  }
+
+  function handleVarPickerInsert(e: CustomEvent<string>) {
+    const value = e.detail;
+    showVarPicker = false;
+    const t = pickerTarget;
+    if (!t) return;
+    const step = flow.steps[t.stepIndex];
+    const file = findFileForStep(step);
+    const req = file && step.requestIndex >= 0 && step.requestIndex < file.requests.length
+      ? file.requests[step.requestIndex]
+      : null;
+    const baseHeaders = req?.headers ?? [];
+    const baseDirectives = req?.directives ?? [];
+    if (t.kind === 'url') {
+      const base = req?.url ?? getUrl(step.label);
+      const current = step.overrides?.url ?? base;
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'url', next === base ? undefined : next);
+    } else if (t.kind === 'body') {
+      const current = step.overrides?.body ?? req?.body ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'body', next === (req?.body ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'beforeSend') {
+      const current = step.overrides?.beforeSend ?? req?.beforeSend ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'beforeSend', next === (req?.beforeSend ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'afterReceive') {
+      const current = step.overrides?.afterReceive ?? req?.afterReceive ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'afterReceive', next === (req?.afterReceive ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'assertions') {
+      const currentText = directivesToText(step.overrides?.directives ?? baseDirectives);
+      const nextText = insertAtCursor(currentText, value);
+      onDirectivesTextInput(t.stepIndex, nextText, baseDirectives);
+    } else if (t.kind === 'headerValue') {
+      const headers = (step.overrides?.headers ?? baseHeaders).map(h => ({ ...h }));
+      headers[t.headerIndex] = { ...headers[t.headerIndex], value: insertAtCursor(headers[t.headerIndex].value, value) };
+      updateStepOverride(t.stepIndex, 'headers', headers);
+    }
+    pickerCursor = -1;
+    pickerTarget = null;
+  }
+
   function resetOverrides(index: number) {
     const steps = [...flow.steps];
     steps[index] = { ...steps[index], overrides: undefined };
@@ -484,7 +562,7 @@
           {@const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0) ? file.requests[step.requestIndex] : null}
           {@const rawUrl = req ? req.url : getUrl(step.label)}
           {@const requestName = req?.name ?? ''}
-          {@const resolvedUrl = resolveStepUrl(rawUrl, file)}
+          {@const resolvedUrl = resolvedStepUrls[i] ?? ''}
           {@const baseHeaders = req?.headers ?? []}
           {@const baseDirectives = req?.directives ?? []}
           <div
@@ -607,6 +685,9 @@
                       }}
                       spellcheck="false"
                     />
+                    <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'url', stepIndex: i }, file)} title="Insert variable">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    </button>
                   </div>
                 </div>
 
@@ -645,6 +726,9 @@
                           on:input={(e) => updateOverrideHeader(i, hi, 'value', e.currentTarget.value, baseHeaders)}
                           spellcheck="false"
                         />
+                        <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'headerValue', stepIndex: i, headerIndex: hi }, file)} title="Insert variable">
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        </button>
                         <button class="override-header-remove" on:click={() => removeOverrideHeader(i, hi, baseHeaders)}>&times;</button>
                       </div>
                     {/each}
@@ -671,6 +755,22 @@
                     <button class="override-tab" class:active={activeTabLookup(step.id) === 'afterReceive'} on:click={() => setActiveTab(step.id, 'afterReceive')}>
                       After Receive
                       {#if step.overrides?.afterReceive !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                    </button>
+                    <div class="override-tab-spacer"></div>
+                    <button
+                      class="btn-insert-var"
+                      on:mousedown|preventDefault
+                      on:click={() => {
+                        const tab = activeTabLookup(step.id);
+                        const kind = tab === 'body' ? 'body'
+                          : tab === 'assertions' ? 'assertions'
+                          : tab === 'beforeSend' ? 'beforeSend'
+                          : 'afterReceive';
+                        openVarPicker({ kind, stepIndex: i }, file);
+                      }}
+                      title="Insert variable"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                     </button>
                   </div>
                   <div class="override-tab-content">
@@ -765,6 +865,15 @@
     on:close={() => showPicker = false}
   />
 {/if}
+
+<VariablePicker
+  visible={showVarPicker}
+  fileVariables={pickerFileVars}
+  envVariables={$baseEnvVars}
+  namedResults={$namedResults}
+  on:insert={handleVarPickerInsert}
+  on:close={() => { showVarPicker = false; pickerTarget = null; }}
+/>
 
 <style>
   .flow-editor {
@@ -1448,6 +1557,27 @@
     background: color-mix(in srgb, var(--color-error) 9%, transparent);
     color: var(--color-error);
   }
+  .btn-insert-var {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: all var(--duration-normal);
+  }
+  .btn-insert-var:hover {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  }
+  .override-tab-spacer { flex: 1; }
   .override-body {
     padding: var(--space-1\.5) var(--space-2);
     border: 1px solid var(--color-divider);
