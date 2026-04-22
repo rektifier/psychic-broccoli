@@ -31,7 +31,7 @@
   } from './lib/stores';
   import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
-    serializeHttpFile, substituteAll, parseEnvironmentFile,
+    serializeHttpFile, substituteAll, parseEnvironmentFile, ensureSharedEnvironment,
     buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
     executePbDirectives, parseScriptText, applyRequestMutations,
   } from './lib/parser';
@@ -77,7 +77,7 @@
 
     try {
       // Load or create the env file
-      let currentEnv: EnvironmentFile = $envFile ?? {};
+      let currentEnv: EnvironmentFile = ensureSharedEnvironment($envFile ?? {});
 
       // Ensure the target environment exists
       if (!currentEnv[envName]) {
@@ -445,11 +445,45 @@
     return written;
   }
 
-  /** After writing files, show the env modal if there are discovered variables. */
-  function showEnvModalIfNeeded(result: ImportResult) {
+  /** After writing files, write the env file directly if multi-env, or show the modal. */
+  async function showEnvModalIfNeeded(result: ImportResult) {
+    if (result.environmentFile && Object.keys(result.environmentFile).length > 0) {
+      await writeImportedEnvironmentFile(result.environmentFile);
+      return;
+    }
     if (result.discoveredVariables.length > 0) {
       pendingImportVars = result.discoveredVariables;
       showImportEnvModal = true;
+    }
+  }
+
+  async function writeImportedEnvironmentFile(imported: EnvironmentFile) {
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+    try {
+      let current: EnvironmentFile = ensureSharedEnvironment($envFile ? structuredClone($envFile) : {});
+
+      for (const [envName, vars] of Object.entries(imported)) {
+        if (!current[envName]) current[envName] = {};
+        for (const [key, value] of Object.entries(vars)) {
+          if (typeof value === 'string' && !(key in current[envName])) {
+            current[envName][key] = value;
+          }
+        }
+      }
+
+      const envPath = await join(rootPath, 'http-client.env.json');
+      await writeTextFile(envPath, JSON.stringify(current, null, 2));
+      envFile.set(current);
+
+      const envNames = Object.keys(imported).filter(n => n !== '$shared');
+      if (!$activeEnvironment && envNames.length > 0) {
+        activeEnvironment.set(envNames[0]);
+      }
+
+      addToast(`Imported ${envNames.length} environment${envNames.length !== 1 ? 's' : ''}: ${envNames.join(', ')}`, 'info');
+    } catch (e: any) {
+      addToast(`Failed to write environment file: ${e.message || e}`, 'error');
     }
   }
 
@@ -471,7 +505,7 @@
       }
       const written = await writeImportedFiles(result);
       addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
-      showEnvModalIfNeeded(result);
+      await showEnvModalIfNeeded(result);
     } catch (e: any) {
       addToast(`Import failed: ${e.message || e}`, 'error');
     }
@@ -489,7 +523,7 @@
       const result = importOpenApiSpec(e.detail.content);
       const written = await writeImportedFiles(result);
       addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
-      showEnvModalIfNeeded(result);
+      await showEnvModalIfNeeded(result);
     } catch (e: any) {
       addToast(`Import failed: ${e.message || e}`, 'error');
     }
@@ -1034,18 +1068,9 @@
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
     runningFlowPath = null;
 
-    // Propagate flow variables back to app stores
-    // Note: flow set vars are not propagated - they are file-scoped and only
-    // meaningful within the flow's isolated execution context. Only globals
-    // and named results cross the boundary back to the workspace.
-    if (record.variables) {
-      if (Object.keys(record.variables.globalVars).length > 0) {
-        pbGlobals.update(g => ({ ...g, ...record.variables!.globalVars }));
-      }
-      if (Object.keys(record.variables.namedResults).length > 0) {
-        namedResults.update(nr => ({ ...nr, ...record.variables!.namedResults }));
-      }
-    }
+    // Flow runs are fully isolated: their named results, set vars, and pb
+    // globals stay inside the FlowRunRecord and do not cross back into the
+    // workspace stores the regular request editor / inspector reads from.
 
     // Persist and update history
     try {

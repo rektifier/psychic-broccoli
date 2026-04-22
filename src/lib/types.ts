@@ -181,6 +181,8 @@ export interface ImportResult {
    * Includes both collection-defined variables (with values) and undefined ones (empty value).
    */
   discoveredVariables: Variable[];
+  /** Pre-built environment file from importers that support multi-env (e.g. Insomnia v5 sub-environments) */
+  environmentFile?: EnvironmentFile;
 }
 
 // ─── Pb Script Directives ───────────────────────────────────────────────────
@@ -230,8 +232,14 @@ export interface FlowStep {
   filePath: string;
   /** Index of the request within that file */
   requestIndex: number;
-  /** @name alias from the request, used as fallback when indices shift */
+  /** Alias under which this step's response is stored in the flow's named-results map.
+   *  When set, takes precedence over the underlying request's `# @name` - lets a flow
+   *  name a step's response independently of the .http file. Also used as a fallback
+   *  to locate the request when `requestIndex` drifts. */
   varName: string | null;
+  /** Whether `varName` is user-customized (true) or system-managed auto alias (false).
+   *  Auto aliases take the form "Step{N}" and are regenerated on reorder/add/remove. */
+  aliasLocked: boolean;
   /** Cached display label (e.g. "POST /api/login") */
   label: string;
   /** If true, the runner continues to the next step even if this step fails */

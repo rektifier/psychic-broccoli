@@ -1074,6 +1074,17 @@ export function parseEnvironmentFile(jsonString: string): EnvironmentFile | null
 }
 
 /**
+ * Ensure `$shared` exists on an env file as a baseline for the variable resolution cascade.
+ * Mutates and returns the passed object. No-op when `$shared` already exists.
+ */
+export function ensureSharedEnvironment(envFile: EnvironmentFile): EnvironmentFile {
+  if (!envFile['$shared']) {
+    envFile['$shared'] = {};
+  }
+  return envFile;
+}
+
+/**
  * Get the list of selectable environment names from an env file.
  * Excludes the special "$shared" environment.
  */
