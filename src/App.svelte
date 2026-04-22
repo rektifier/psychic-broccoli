@@ -1068,18 +1068,9 @@
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
     runningFlowPath = null;
 
-    // Propagate flow variables back to app stores
-    // Note: flow set vars are not propagated - they are file-scoped and only
-    // meaningful within the flow's isolated execution context. Only globals
-    // and named results cross the boundary back to the workspace.
-    if (record.variables) {
-      if (Object.keys(record.variables.globalVars).length > 0) {
-        pbGlobals.update(g => ({ ...g, ...record.variables!.globalVars }));
-      }
-      if (Object.keys(record.variables.namedResults).length > 0) {
-        namedResults.update(nr => ({ ...nr, ...record.variables!.namedResults }));
-      }
-    }
+    // Flow runs are fully isolated: their named results, set vars, and pb
+    // globals stay inside the FlowRunRecord and do not cross back into the
+    // workspace stores the regular request editor / inspector reads from.
 
     // Persist and update history
     try {
