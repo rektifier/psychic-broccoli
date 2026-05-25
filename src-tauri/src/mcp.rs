@@ -567,6 +567,15 @@ fn tool_schemas() -> serde_json::Value {
                 "required": ["flowFilePath"],
                 "additionalProperties": false
             }
+        },
+        {
+            "name": "get_last_result",
+            "description": "Read the response from the user's most recent manually-triggered request, without executing anything. Returns the same shape as execute_request (status, headers, body, timing, and the outcome of any pb assertions), or null if no request has been run yet in the current session. Reflects the state at call time: a later manual request changes what a subsequent call returns.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
         }
     ])
 }
@@ -589,6 +598,7 @@ async fn handle_tool_call(msg: &serde_json::Value, state: &McpState) -> Option<s
         Some("list_requests") => tool_list_requests(state, arguments).await,
         Some("execute_request") => tool_execute_request(state, arguments).await,
         Some("execute_flow") => tool_execute_flow(state, arguments).await,
+        Some("get_last_result") => tool_get_last_result(state, arguments).await,
         Some(other) => Err(format!("Unknown tool: {}", other)),
         None => Err("Missing tool name".to_string()),
     };
@@ -721,6 +731,31 @@ async fn tool_execute_flow(
         "execute_flow",
         params,
         FLOW_BRIDGE_TIMEOUT_SECS,
+    )
+    .await
+}
+
+/// `get_last_result`: read the user's most recent manual request result.
+///
+/// Takes no arguments and mutates nothing. The frontend snapshots the live
+/// `currentResponse`/`pbAssertionResults` stores and returns them in the
+/// `execute_request` shape, or JSON `null` if no request has run yet this
+/// session. Because it reads at call time, a later manual request changes what
+/// a subsequent call returns.
+async fn tool_get_last_result(
+    state: &McpState,
+    _arguments: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let app = state
+        .app
+        .as_ref()
+        .ok_or_else(|| "MCP bridge unavailable".to_string())?;
+    bridge_request(
+        app,
+        &state.pending,
+        "get_last_result",
+        json!({}),
+        BRIDGE_TIMEOUT_SECS,
     )
     .await
 }
@@ -914,6 +949,39 @@ mod tests {
         assert_eq!(schema["type"], json!("object"));
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&json!("flowFilePath")));
+    }
+
+    #[test]
+    fn tools_list_advertises_get_last_result() {
+        let msg = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
+        let resp = handle_rpc_message(&msg, SERVER_NAME, "v").unwrap();
+        let tools = resp["result"]["tools"].as_array().unwrap();
+        let glr = tools
+            .iter()
+            .find(|t| t["name"] == json!("get_last_result"))
+            .expect("get_last_result tool advertised");
+        let schema = &glr["inputSchema"];
+        assert_eq!(schema["type"], json!("object"));
+        assert_eq!(schema["additionalProperties"], json!(false));
+        // Takes no input.
+        assert!(schema.get("required").is_none());
+    }
+
+    #[tokio::test]
+    async fn get_last_result_dispatches_via_bridge() {
+        // No frontend listening and `app` is None, so the bridge cannot run: the
+        // tool is reached (not "Unknown tool") and surfaces a bridge error.
+        let (state, _tx) = test_state("t");
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "tools/call",
+            "params": { "name": "get_last_result", "arguments": {} }
+        });
+        let resp = handle_tool_call(&msg, &state).await.unwrap();
+        assert_eq!(resp["result"]["isError"], json!(true));
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(!text.contains("Unknown tool"), "got: {}", text);
     }
 
     #[tokio::test]

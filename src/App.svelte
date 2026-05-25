@@ -495,6 +495,24 @@
     return { status: overall, summary: record.summary, steps };
   }
 
+  /**
+   * Snapshot the user's most recent manual request result for the MCP
+   * `get_last_result` tool. Reads the live UI stores without mutating them and
+   * returns the `execute_request` shape, or `null` if no request has run yet.
+   */
+  function snapshotLastResult() {
+    const response = get(currentResponse);
+    if (!response) return null;
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      body: response.body,
+      time: response.time,
+      assertions: get(pbAssertionResults).map((a) => ({ label: a.label, passed: a.passed })),
+    };
+  }
+
   async function handleBridgeRequest(req: BridgeRequest) {
     try {
       switch (req.kind) {
@@ -506,6 +524,9 @@
           break;
         case 'execute_flow':
           respondBridge(req.id, { ok: true, data: await executeFlowSilently(req.params as ExecuteFlowParams) });
+          break;
+        case 'get_last_result':
+          respondBridge(req.id, { ok: true, data: snapshotLastResult() });
           break;
         default:
           respondBridge(req.id, { ok: false, error: `Unknown MCP bridge request: ${req.kind}` });
