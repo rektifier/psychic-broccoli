@@ -518,7 +518,7 @@ fn tool_schemas() -> serde_json::Value {
     json!([
         {
             "name": "list_requests",
-            "description": "List every HTTP request across all .http files in the currently open workspace. Returns an empty array when no workspace folder is open.",
+            "description": "Lists every HTTP request available in the open workspace by scanning all .http files. Use this tool when the user asks to see available requests, list requests, show what HTTP calls exist, or explore the workspace. Call this first to obtain valid filePath and requestIndex values before calling execute_request. Do not use this to run a request; use execute_request instead. Returns an empty array when no workspace folder is open in the app.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -527,22 +527,22 @@ fn tool_schemas() -> serde_json::Value {
         },
         {
             "name": "execute_request",
-            "description": "Execute a single HTTP request from the open workspace and return its response, including the outcome of any pb assertions. Variables are resolved using the given environment, falling back to the active environment when omitted. Runs silently: the app's response pane and tabs are left unchanged.",
+            "description": "Executes a single HTTP request from the open workspace and returns its full response: status code, headers, body, timing, and the outcome of any pb assertions. Use this tool when the user asks to run, execute, send, or test a specific request. Call list_requests first to get a valid filePath and requestIndex if you do not already have them. Do not use this to run a sequence of requests; use execute_flow instead. Variables are resolved using the given environment; if omitted, the active environment is used. Runs silently: the app UI is not updated.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "filePath": {
                         "type": "string",
-                        "description": "Workspace-relative path to the .http file, as returned by list_requests."
+                        "description": "Workspace-relative path to the .http file. Use the filePath value returned by list_requests."
                     },
                     "requestIndex": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Zero-based index of the request within the file, as returned by list_requests."
+                        "description": "Zero-based index of the request within the file. Use the requestIndex value returned by list_requests."
                     },
                     "environment": {
                         "type": "string",
-                        "description": "Optional environment name used to resolve variables. Defaults to the active environment."
+                        "description": "Environment name used to resolve variables (e.g. 'Development', 'Production'). Omit to use the active environment."
                     }
                 },
                 "required": ["filePath", "requestIndex"],
@@ -551,7 +551,7 @@ fn tool_schemas() -> serde_json::Value {
         },
         {
             "name": "execute_flow",
-            "description": "Run an entire .pb-flow.json flow from the open workspace and return its run record: an overall status, a passed/failed/skipped summary, and per-step results including the outcome of any pb assertions. Steps run in order with variable chaining between them, and each step's continueOnFailure flag is respected. Variables are resolved using the given environment, falling back to the active environment when omitted. Runs silently: the app's flow panel and run history are left unchanged.",
+            "description": "Runs an entire flow from the open workspace and returns its full run record: overall status, a passed/failed/skipped step summary, and per-step results including pb assertion outcomes. Use this tool when the user asks to run, execute, or trigger a flow or an ordered sequence of requests. Do not use this for a single request; use execute_request instead. Steps run in order with variable chaining and each step's continueOnFailure flag is respected. Variables are resolved using the given environment; if omitted, the active environment is used. Runs silently: the app's flow panel and run history are not updated.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -561,7 +561,7 @@ fn tool_schemas() -> serde_json::Value {
                     },
                     "environment": {
                         "type": "string",
-                        "description": "Optional environment name used to resolve variables. Defaults to the active environment."
+                        "description": "Environment name used to resolve variables (e.g. 'Development', 'Production'). Omit to use the active environment."
                     }
                 },
                 "required": ["flowFilePath"],
@@ -570,7 +570,7 @@ fn tool_schemas() -> serde_json::Value {
         },
         {
             "name": "get_last_result",
-            "description": "Read the response from the user's most recent manually-triggered request, without executing anything. Returns the same shape as execute_request (status, headers, body, timing, and the outcome of any pb assertions), or null if no request has been run yet in the current session. Reflects the state at call time: a later manual request changes what a subsequent call returns.",
+            "description": "Returns the response from the user's most recent manually triggered request, without executing anything. Use this tool when the user asks about the last result, what the previous response was, or wants to inspect the most recent request outcome without re-running it. Do not use this when the user wants to run a request; use execute_request instead. Returns the same shape as execute_request (status, headers, body, timing, and pb assertion outcomes), or null if no request has been run yet in the current session. Reflects the state at call time: a later manual request changes what a subsequent call returns.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
