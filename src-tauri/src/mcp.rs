@@ -59,6 +59,9 @@ const EVENT_BRIDGE_REQUEST: &str = "mcp:request";
 const EVENT_BRIDGE_RESPONSE: &str = "mcp:response";
 /// How long a tool waits for the frontend to answer a bridge request.
 const BRIDGE_TIMEOUT_SECS: u64 = 5;
+/// A flow runs many HTTP requests in sequence, so it needs a far longer budget
+/// than the single-shot bridge default before the bridge gives up waiting.
+const FLOW_BRIDGE_TIMEOUT_SECS: u64 = 300;
 
 /* ---------------------------------------------------------------- settings */
 
@@ -464,12 +467,15 @@ fn handle_rpc_message(
 ///
 /// Returns the `data` payload on success, or an error string (frontend-reported
 /// error, timeout, or transport failure) that the caller surfaces as a tool
-/// error. Subsequent tools should follow this same `kind`-dispatched pattern.
+/// error. `timeout_secs` bounds the wait: single-shot tools pass
+/// [`BRIDGE_TIMEOUT_SECS`]; longer-running ones (e.g. flows) pass a larger value.
+/// Subsequent tools should follow this same `kind`-dispatched pattern.
 async fn bridge_request(
     app: &AppHandle,
     pending: &PendingBridge,
     kind: &str,
     params: serde_json::Value,
+    timeout_secs: u64,
 ) -> Result<serde_json::Value, String> {
     let id = uuid::Uuid::new_v4().simple().to_string();
     let (tx, rx) = oneshot::channel::<BridgeResponse>();
@@ -489,7 +495,7 @@ async fn bridge_request(
         return Err(format!("Failed to emit bridge request: {}", e));
     }
 
-    match tokio::time::timeout(Duration::from_secs(BRIDGE_TIMEOUT_SECS), rx).await {
+    match tokio::time::timeout(Duration::from_secs(timeout_secs), rx).await {
         Ok(Ok(resp)) if resp.ok => Ok(resp.data.unwrap_or(serde_json::Value::Null)),
         Ok(Ok(resp)) => Err(resp
             .error
@@ -500,10 +506,7 @@ async fn bridge_request(
             if let Ok(mut map) = pending.lock() {
                 map.remove(&id);
             }
-            Err(format!(
-                "Frontend did not respond within {}s",
-                BRIDGE_TIMEOUT_SECS
-            ))
+            Err(format!("Frontend did not respond within {}s", timeout_secs))
         }
     }
 }
@@ -545,6 +548,25 @@ fn tool_schemas() -> serde_json::Value {
                 "required": ["filePath", "requestIndex"],
                 "additionalProperties": false
             }
+        },
+        {
+            "name": "execute_flow",
+            "description": "Run an entire .pb-flow.json flow from the open workspace and return its run record: an overall status, a passed/failed/skipped summary, and per-step results including the outcome of any pb assertions. Steps run in order with variable chaining between them, and each step's continueOnFailure flag is respected. Variables are resolved using the given environment, falling back to the active environment when omitted. Runs silently: the app's flow panel and run history are left unchanged.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "flowFilePath": {
+                        "type": "string",
+                        "description": "Workspace-relative path to the .pb-flow.json flow file (e.g. 'flows/login.pb-flow.json')."
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional environment name used to resolve variables. Defaults to the active environment."
+                    }
+                },
+                "required": ["flowFilePath"],
+                "additionalProperties": false
+            }
         }
     ])
 }
@@ -566,6 +588,7 @@ async fn handle_tool_call(msg: &serde_json::Value, state: &McpState) -> Option<s
     let outcome = match tool_name {
         Some("list_requests") => tool_list_requests(state, arguments).await,
         Some("execute_request") => tool_execute_request(state, arguments).await,
+        Some("execute_flow") => tool_execute_flow(state, arguments).await,
         Some(other) => Err(format!("Unknown tool: {}", other)),
         None => Err("Missing tool name".to_string()),
     };
@@ -604,7 +627,14 @@ async fn tool_list_requests(
         .app
         .as_ref()
         .ok_or_else(|| "MCP bridge unavailable".to_string())?;
-    bridge_request(app, &state.pending, "list_requests", json!({})).await
+    bridge_request(
+        app,
+        &state.pending,
+        "list_requests",
+        json!({}),
+        BRIDGE_TIMEOUT_SECS,
+    )
+    .await
 }
 
 /// `execute_request`: fire one request silently and return its response.
@@ -643,7 +673,56 @@ async fn tool_execute_request(
         "requestIndex": request_index,
         "environment": environment,
     });
-    bridge_request(app, &state.pending, "execute_request", params).await
+    bridge_request(
+        app,
+        &state.pending,
+        "execute_request",
+        params,
+        BRIDGE_TIMEOUT_SECS,
+    )
+    .await
+}
+
+/// `execute_flow`: run a whole flow silently and return its structured run record.
+///
+/// Argument shape is validated here; loading the flow file, resolving variables,
+/// executing every step in order (with chaining and pb assertions), respecting
+/// each step's `continueOnFailure`, and computing the summary all happen on the
+/// frontend (which owns the live workspace state) and come back through the
+/// bridge. The frontend reports a missing or invalid flow file as a bridge error,
+/// which surfaces here as a tool error. No UI stores or run history are touched.
+async fn tool_execute_flow(
+    state: &McpState,
+    arguments: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let flow_file_path = arguments
+        .get("flowFilePath")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "execute_flow requires a string 'flowFilePath'".to_string())?;
+    // `environment` is optional; reject a non-string if present rather than silently ignoring it.
+    let environment = match arguments.get("environment") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        Some(_) => return Err("'environment' must be a string when provided".to_string()),
+    };
+
+    let app = state
+        .app
+        .as_ref()
+        .ok_or_else(|| "MCP bridge unavailable".to_string())?;
+
+    let params = json!({
+        "flowFilePath": flow_file_path,
+        "environment": environment,
+    });
+    bridge_request(
+        app,
+        &state.pending,
+        "execute_flow",
+        params,
+        FLOW_BRIDGE_TIMEOUT_SECS,
+    )
+    .await
 }
 
 /* ------------------------------------------------------------- Tauri glue */
@@ -820,6 +899,58 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("filePath"));
+    }
+
+    #[test]
+    fn tools_list_advertises_execute_flow() {
+        let msg = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
+        let resp = handle_rpc_message(&msg, SERVER_NAME, "v").unwrap();
+        let tools = resp["result"]["tools"].as_array().unwrap();
+        let ef = tools
+            .iter()
+            .find(|t| t["name"] == json!("execute_flow"))
+            .expect("execute_flow tool advertised");
+        let schema = &ef["inputSchema"];
+        assert_eq!(schema["type"], json!("object"));
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&json!("flowFilePath")));
+    }
+
+    #[tokio::test]
+    async fn execute_flow_rejects_missing_arguments() {
+        let (state, _tx) = test_state("t");
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tools/call",
+            "params": { "name": "execute_flow", "arguments": {} }
+        });
+        let resp = handle_tool_call(&msg, &state).await.unwrap();
+        assert_eq!(resp["result"]["isError"], json!(true));
+        assert!(resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("flowFilePath"));
+    }
+
+    #[tokio::test]
+    async fn execute_flow_rejects_non_string_environment() {
+        let (state, _tx) = test_state("t");
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "tools/call",
+            "params": {
+                "name": "execute_flow",
+                "arguments": { "flowFilePath": "flows/x.pb-flow.json", "environment": 5 }
+            }
+        });
+        let resp = handle_tool_call(&msg, &state).await.unwrap();
+        assert_eq!(resp["result"]["isError"], json!(true));
+        assert!(resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("environment"));
     }
 
     #[test]
