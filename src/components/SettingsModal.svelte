@@ -232,7 +232,11 @@
     padding: var(--space-4);
   }
   .section {
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
   }
   .section:last-child {
     margin-bottom: 0;
