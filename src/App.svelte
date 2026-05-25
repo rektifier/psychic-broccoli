@@ -33,7 +33,7 @@
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile, ensureSharedEnvironment,
     buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
-    executePbDirectives, parseScriptText, applyRequestMutations,
+    executePbDirectives, parseScriptText, applyRequestMutations, resolveEnvironmentVariables,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
@@ -49,8 +49,10 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir, rename } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
+  import { listen, emit } from '@tauri-apps/api/event';
   import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
 
   let showEnvEditor = false;
   let showVarInspector = false;
@@ -229,8 +231,196 @@
     refreshKeyVaultSecrets();
   });
 
+  // ─── MCP Bridge ───
+  // The embedded MCP server (Rust) reaches live app state through Tauri events:
+  // it emits `mcp:request` with { id, kind, params }; we do the work for `kind`
+  // and emit `mcp:response` with { id, ok, data?, error? }, matched by `id`.
+  // New MCP tools that need frontend state add a `kind` branch here.
+
+  interface BridgeRequest {
+    id: string;
+    kind: string;
+    params: unknown;
+  }
+
+  function respondBridge(id: string, payload: { ok: true; data: unknown } | { ok: false; error: string }) {
+    emit('mcp:response', { id, ...payload }).catch(() => {});
+  }
+
+  /** Gather every request across all .http files in the open workspace. */
+  function collectWorkspaceRequests() {
+    const ws = get(workspace);
+    if (!ws.rootPath) return [];
+    return getAllFileNodes(ws.tree).flatMap((file) => {
+      const filePath = file.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/');
+      return file.requests.map((req, requestIndex) => ({
+        filePath,
+        requestIndex,
+        name: req.name,
+        method: req.method,
+        url: req.url,
+      }));
+    });
+  }
+
+  interface ExecuteRequestParams {
+    filePath: string;
+    requestIndex: number;
+    environment?: string | null;
+  }
+
+  /**
+   * Run a single request for the MCP `execute_request` tool and return the
+   * structured result. This is the silent twin of `sendRequest`: it must never
+   * touch UI stores (`currentResponse`, `currentSentRequest`, `pbAssertionResults`,
+   * tabs, `namedResults`, `pbGlobals`, `pbFileOverrides`). All runtime state from
+   * pb directives is kept in locals and discarded after the call.
+   */
+  async function executeRequestSilently(params: ExecuteRequestParams) {
+    const ws = get(workspace);
+    if (!ws.rootPath) throw new Error('No workspace folder is open');
+
+    const normalized = params.filePath.replaceAll('\\', '/');
+    const file = getAllFileNodes(ws.tree).find(
+      (f) => f.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/') === normalized,
+    );
+    if (!file) throw new Error(`File not found in workspace: ${params.filePath}`);
+
+    const request = file.requests[params.requestIndex];
+    if (!request) {
+      throw new Error(`No request at index ${params.requestIndex} in ${params.filePath}`);
+    }
+
+    // Resolve environment variables for the requested environment, falling back to
+    // the active one. For the active environment, reuse the fully-resolved store so
+    // Key Vault secrets, globals, and pb.set overrides are included exactly as the
+    // UI sees them; for any other environment, resolve it fresh from the env files.
+    const active = get(activeEnvironment);
+    const effectiveEnv = params.environment ?? active;
+    let environmentVariables: Record<string, string>;
+    if (effectiveEnv && effectiveEnv === active) {
+      environmentVariables = { ...get(resolvedEnvVars) };
+    } else if (effectiveEnv) {
+      environmentVariables = {
+        ...resolveEnvironmentVariables(effectiveEnv, get(envFile), get(userEnvFile)),
+        ...get(pbGlobals),
+        ...(get(pbFileOverrides)[file.path] ?? {}),
+      };
+    } else {
+      environmentVariables = { ...get(pbGlobals) };
+    }
+
+    const ctx: SubstitutionContext = {
+      fileVariables: file.variables,
+      environmentVariables,
+      // Read-only copy: chaining can resolve existing named results, but the
+      // silent run must not mutate the shared store.
+      namedResults: { ...get(namedResults) },
+      dotenvVariables: get(dotenvVariables),
+    };
+
+    const startTime = performance.now();
+    let url = substituteAll(request.url, ctx);
+    let body = substituteAll(request.body, ctx);
+    let headers: Record<string, string> = {};
+    for (const h of request.headers) {
+      if (h.enabled) headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
+    }
+
+    // beforeSend scripts — runtime vars stay local and never reach the stores.
+    const localEnvOverrides: Record<string, string> = {};
+    const localGlobals: Record<string, string> = {};
+    const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
+    if (beforeSendDirectives.length > 0) {
+      const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
+      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
+      const dummyResponse: HttpResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
+      const bsResult = executePbDirectives(
+        beforeSendDirectives, dummyResponse,
+        { url, method: request.method, headers, body },
+        mergedVars, ctx.namedResults,
+      );
+      const mutated = applyRequestMutations(
+        { url, method: request.method, headers, body },
+        bsResult.requestMutations,
+      );
+      url = mutated.url;
+      headers = mutated.headers;
+      body = mutated.body;
+      Object.assign(localEnvOverrides, bsResult.setVars);
+      Object.assign(localGlobals, bsResult.globalVars);
+      Object.assign(localEnvOverrides, bsResult.globalVars);
+    }
+
+    const sentRequest = { method: request.method, url, headers, body };
+    const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
+      await invoke('http_request', {
+        payload: {
+          method: request.method,
+          url,
+          headers,
+          body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
+        },
+      });
+
+    const elapsed = performance.now() - startTime;
+    const response: HttpResponse = {
+      status: res.status,
+      statusText: res.status_text,
+      headers: res.headers,
+      body: res.body,
+      time: Math.round(elapsed),
+      size: new TextEncoder().encode(res.body).length,
+    };
+
+    // pb directives + afterReceive scripts — assertion results only; no store writes.
+    const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
+    const allDirectives = [
+      ...(request.directives || []).filter((d) => d.enabled !== false),
+      ...afterReceiveDirectives,
+    ];
+    let assertionResults: PbAssertionResult[] = [];
+    if (allDirectives.length > 0) {
+      const mergedVars: Record<string, string> = { ...ctx.environmentVariables, ...localEnvOverrides, ...localGlobals };
+      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
+      const pbResult = executePbDirectives(allDirectives, response, sentRequest, mergedVars, ctx.namedResults);
+      assertionResults = pbResult.assertionResults;
+    }
+
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      body: response.body,
+      time: response.time,
+      assertions: assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
+    };
+  }
+
+  async function handleBridgeRequest(req: BridgeRequest) {
+    try {
+      switch (req.kind) {
+        case 'list_requests':
+          respondBridge(req.id, { ok: true, data: collectWorkspaceRequests() });
+          break;
+        case 'execute_request':
+          respondBridge(req.id, { ok: true, data: await executeRequestSilently(req.params as ExecuteRequestParams) });
+          break;
+        default:
+          respondBridge(req.id, { ok: false, error: `Unknown MCP bridge request: ${req.kind}` });
+      }
+    } catch (e) {
+      respondBridge(req.id, { ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  const mcpBridgeUnlisten = listen<BridgeRequest>('mcp:request', (event) => {
+    void handleBridgeRequest(event.payload);
+  });
+
   onDestroy(() => {
     unsubKv();
+    mcpBridgeUnlisten.then((unlisten) => unlisten());
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
     document.removeEventListener('mousemove', onSidebarDividerMove);
@@ -1150,8 +1340,8 @@
 <SettingsModal
   visible={showSettings}
   currentTheme={currentTheme}
-  on:changeTheme={(e) => { currentTheme = e.detail; setTheme(e.detail); }}
-  on:close={() => showSettings = false}
+  onchangeTheme={(id) => { currentTheme = id; setTheme(id); }}
+  onclose={() => showSettings = false}
 />
 <VariableInspector
   visible={showVarInspector}
