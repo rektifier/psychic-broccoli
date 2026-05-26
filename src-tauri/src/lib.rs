@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use futures_util::StreamExt;
 
+mod mcp;
+
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const MAX_RESPONSE_BYTES: usize = 50 * 1024 * 1024; // 50 MB
 const MAX_REDIRECTS: usize = 5;
@@ -351,14 +353,23 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .manage(mcp::McpServerState::default())
+        .setup(|app| {
+            mcp::init(app.handle());
+            Ok(())
+        });
 
     #[cfg(feature = "keyvault")]
     {
         builder = builder.invoke_handler(tauri::generate_handler![
             http_request,
             extract_getting_started,
-            keyvault_cmd::fetch_keyvault_secret
+            keyvault_cmd::fetch_keyvault_secret,
+            mcp::mcp_get_settings,
+            mcp::mcp_is_running,
+            mcp::mcp_set_enabled,
+            mcp::mcp_set_port
         ]);
     }
 
@@ -366,7 +377,11 @@ pub fn run() {
     {
         builder = builder.invoke_handler(tauri::generate_handler![
             http_request,
-            extract_getting_started
+            extract_getting_started,
+            mcp::mcp_get_settings,
+            mcp::mcp_is_running,
+            mcp::mcp_set_enabled,
+            mcp::mcp_set_port
         ]);
     }
 
