@@ -22,7 +22,7 @@
     pbAssertionResults, pbGlobals,
     keyVaultState, varSourcePrefs,
     updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
-    addFileToTree, renameFileInTree, editingFilePath,
+    addFileToTree, addFolderToTree, renameFolderInTree, renameFileInTree, editingFilePath, editingFolderPath,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
@@ -43,6 +43,7 @@
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile } from './lib/parser';
   import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR } from './lib/flowIO';
+  import { generateFolderName } from './lib/folderCreate';
   import { runFlow } from './lib/flowRunner';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
@@ -1137,6 +1138,66 @@
     editingFilePath.set(filePath);
   }
 
+  async function handleCreateFolder(e: CustomEvent<string | null>) {
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const parentDir = e.detail || rootPath;
+
+    // Collect sibling names in the target parent
+    const siblings = new Set<string>();
+    function collectSiblings(nodes: TreeNode[], targetPath: string) {
+      for (const n of nodes) {
+        if (n.type === 'folder' && n.path === targetPath) {
+          for (const c of n.children) siblings.add(c.name);
+          return;
+        }
+        if (n.type === 'folder') collectSiblings(n.children, targetPath);
+      }
+    }
+    if (parentDir === rootPath) {
+      for (const n of $workspace.tree) siblings.add(n.name);
+    } else {
+      collectSiblings($workspace.tree, parentDir);
+    }
+
+    const folderName = generateFolderName(siblings);
+    const folderPath = await join(parentDir, folderName);
+
+    try {
+      const { mkdir } = await import('@tauri-apps/plugin-fs');
+      await mkdir(folderPath, { recursive: true });
+    } catch (err) {
+      addToast(`Failed to create folder: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    addFolderToTree(parentDir === rootPath ? null : parentDir, {
+      type: 'folder',
+      name: folderName,
+      path: folderPath,
+      children: [],
+      expanded: true,
+    });
+    editingFolderPath.set(folderPath);
+  }
+
+  async function handleRenameFolder(e: CustomEvent<{ oldPath: string; newName: string }>) {
+    const { oldPath, newName } = e.detail;
+    const dir = await dirname(oldPath);
+    const newPath = await join(dir, newName);
+
+    try {
+      await rename(oldPath, newPath);
+    } catch (err) {
+      addToast(`Failed to rename folder: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    renameFolderInTree(oldPath, newPath, newName);
+    editingFolderPath.set(null);
+  }
+
   async function handleRenameFile(e: CustomEvent<{ oldPath: string; newName: string }>) {
     const { oldPath, newName } = e.detail;
 
@@ -1220,6 +1281,7 @@
 
   function handleCancelRename() {
     editingFilePath.set(null);
+    editingFolderPath.set(null);
   }
 
   function handleToggleFolder(e: CustomEvent<string>) {
@@ -1515,6 +1577,7 @@
         rootName={$workspace.rootName}
         hasWorkspace={!!$workspace.rootPath}
         editingFilePath={$editingFilePath}
+        editingFolderPath={$editingFolderPath}
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
         flows={$flows}
@@ -1529,7 +1592,9 @@
         on:deleteRequest={handleDeleteRequest}
         on:deleteFile={handleDeleteFile}
         on:createFile={handleCreateFile}
+        on:createFolder={handleCreateFolder}
         on:renameFile={handleRenameFile}
+        on:renameFolder={handleRenameFolder}
         on:duplicateFile={handleDuplicateFile}
         on:cancelRename={handleCancelRename}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}

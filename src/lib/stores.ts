@@ -309,6 +309,9 @@ export function markFileSaved(filePath: string) {
 /** Path of a file currently in inline-rename mode (used to trigger editing from App). */
 export const editingFilePath = writable<string | null>(null);
 
+/** Path of a folder currently in inline-rename mode. */
+export const editingFolderPath = writable<string | null>(null);
+
 /** Add a file node to the tree under the given parent folder path. */
 export function addFileToTree(parentPath: string | null, fileNode: FileNode) {
   workspace.update(ws => {
@@ -319,6 +322,27 @@ export function addFileToTree(parentPath: string | null, fileNode: FileNode) {
       return nodes.map(node => {
         if (node.type === 'folder' && node.path === parentPath) {
           return { ...node, children: [...node.children, fileNode] };
+        }
+        if (node.type === 'folder') {
+          return { ...node, children: insert(node.children) };
+        }
+        return node;
+      });
+    }
+    return { ...ws, tree: insert(ws.tree) };
+  });
+}
+
+/** Add a folder node to the tree under the given parent folder path. */
+export function addFolderToTree(parentPath: string | null, folderNode: FolderNode) {
+  workspace.update(ws => {
+    if (!parentPath || parentPath === ws.rootPath) {
+      return { ...ws, tree: [...ws.tree, folderNode] };
+    }
+    function insert(nodes: TreeNode[]): TreeNode[] {
+      return nodes.map(node => {
+        if (node.type === 'folder' && node.path === parentPath) {
+          return { ...node, children: [...node.children, folderNode] };
         }
         if (node.type === 'folder') {
           return { ...node, children: insert(node.children) };
@@ -362,6 +386,36 @@ export function renameFileInTree(oldPath: string, newPath: string, newName: stri
       name: newName,
     })),
   }));
+}
+
+/** Rename a folder in the tree, updating its name, path, and all descendant paths. */
+export function renameFolderInTree(oldPath: string, newPath: string, newName: string) {
+  function rewriteDescendants(nodes: TreeNode[]): TreeNode[] {
+    return nodes.map(n => {
+      if (n.type === 'file') {
+        if (!n.path.startsWith(oldPath + '/') && !n.path.startsWith(oldPath + '\\')) return n;
+        return { ...n, path: newPath + n.path.slice(oldPath.length) };
+      }
+      const childPath = n.path.startsWith(oldPath + '/') || n.path.startsWith(oldPath + '\\')
+        ? newPath + n.path.slice(oldPath.length)
+        : n.path;
+      return { ...n, path: childPath, children: rewriteDescendants(n.children) };
+    });
+  }
+
+  function update(nodes: TreeNode[]): TreeNode[] {
+    return nodes.map(n => {
+      if (n.type === 'folder' && n.path === oldPath) {
+        return { ...n, name: newName, path: newPath, children: rewriteDescendants(n.children) };
+      }
+      if (n.type === 'folder') {
+        return { ...n, children: update(n.children) };
+      }
+      return n;
+    });
+  }
+
+  workspace.update(ws => ({ ...ws, tree: update(ws.tree) }));
 }
 
 /** Toggle a folder's expanded state. */
