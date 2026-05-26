@@ -18,6 +18,7 @@
 
   // File management props
   export let editingFilePath: string | null = null;
+  export let editingFolderPath: string | null = null;
 
   // Flow props
   export let flows: Record<string, FlowDefinition> = {};
@@ -289,6 +290,17 @@
         <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
+    <button
+      class="btn-display-mode"
+      class:disabled={!hasWorkspace}
+      on:click={() => { if (hasWorkspace) dispatch('createFolder', null); }}
+      title={!hasWorkspace ? 'Open a folder first' : 'New folder'}
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+        <path d="M2 12V5.5a1 1 0 011-1h3l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z" fill="#B0883020" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M8 7.5v4M6 9.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+    </button>
   </div>
   <div class="tree-scroll">
     {#if tree.length === 0}
@@ -313,7 +325,9 @@
           {usedNames}
           forceExpand={!!filterText.trim()}
           {editingFilePath}
+          {editingFolderPath}
           siblingNames={tree.filter(n => n.type === 'file').map(n => n.name)}
+          siblingFolderNames={tree.map(n => n.name)}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -322,8 +336,10 @@
           on:deleteFile
           on:nameRequest
           on:renameFile
+          on:renameFolder
           on:duplicateFile
           on:createFile
+          on:createFolder
           on:cancelRename
         />
       {/each}
