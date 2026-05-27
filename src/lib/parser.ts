@@ -1227,6 +1227,12 @@ export interface DiscoveredFile {
   content: string;
 }
 
+/** A directory discovered on disk with no .http files (empty or non-http-only). */
+export interface DiscoveredFolder {
+  /** Path relative to workspace root, using '/' separators */
+  relativePath: string;
+}
+
 /**
  * Create a FileNode from a parsed .http file.
  */
@@ -1246,13 +1252,55 @@ export function createFileNode(absolutePath: string, fileName: string, content: 
 }
 
 /**
- * Build a workspace tree from a flat list of discovered .http files.
+ * Build a workspace tree from a flat list of discovered .http files and optional empty folders.
+ * All FolderNode.path values are absolute (joining rootDir with the relative folder path).
  *
  * Input:  [ { relativePath: "Customers/auth.http", ... }, ... ]
  * Output: FolderNode("Customers") → FileNode("auth.http") → requests
  */
-export function buildWorkspaceTree(files: DiscoveredFile[]): TreeNode[] {
+export function buildWorkspaceTree(files: DiscoveredFile[], emptyFolders: DiscoveredFolder[] = [], rootDir = ''): TreeNode[] {
   const root: TreeNode[] = [];
+
+  // Build an absolute path from the root and a relative folder path.
+  // Uses the same separator logic as the absolutePath values in DiscoveredFile.
+  function absPath(relPath: string): string {
+    if (!rootDir) return relPath;
+    const sep = rootDir.includes('\\') ? '\\' : '/';
+    return rootDir + sep + relPath.replaceAll('/', sep);
+  }
+
+  function ensureFolder(relativePath: string): void {
+    const parts = relativePath.split('/');
+    let currentLevel = root;
+    let currentRelPath = '';
+
+    for (const folderName of parts) {
+      currentRelPath += (currentRelPath ? '/' : '') + folderName;
+
+      let folder = currentLevel.find(
+        (n): n is FolderNode => n.type === 'folder' && n.name === folderName
+      );
+
+      if (!folder) {
+        folder = {
+          type: 'folder',
+          name: folderName,
+          path: absPath(currentRelPath),
+          children: [],
+          expanded: false,
+        };
+        currentLevel.push(folder);
+      }
+
+      currentLevel = folder.children;
+    }
+  }
+
+  // Pre-create all discovered empty/empty-subtree folder paths so they appear in the tree
+  const sortedFolders = [...emptyFolders].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  for (const folder of sortedFolders) {
+    ensureFolder(folder.relativePath);
+  }
 
   // Sort files so folder structure is stable
   const sorted = [...files].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
@@ -1263,10 +1311,10 @@ export function buildWorkspaceTree(files: DiscoveredFile[]): TreeNode[] {
 
     // Walk/create folder path
     let currentLevel = root;
-    let currentPath = '';
+    let currentRelPath = '';
 
     for (const folderName of parts) {
-      currentPath += (currentPath ? '/' : '') + folderName;
+      currentRelPath += (currentRelPath ? '/' : '') + folderName;
 
       let folder = currentLevel.find(
         (n): n is FolderNode => n.type === 'folder' && n.name === folderName
@@ -1276,9 +1324,9 @@ export function buildWorkspaceTree(files: DiscoveredFile[]): TreeNode[] {
         folder = {
           type: 'folder',
           name: folderName,
-          path: currentPath,
+          path: absPath(currentRelPath),
           children: [],
-          expanded: false, // Default to collapsed
+          expanded: false,
         };
         currentLevel.push(folder);
       }

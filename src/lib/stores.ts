@@ -294,6 +294,50 @@ export function removeFileFromTree(filePath: string) {
   workspace.update(ws => ({ ...ws, tree: filterTree(ws.tree) }));
 }
 
+/** Remove a folder and all its contents from the workspace tree, closing all affected tabs. */
+export function removeFolderFromTree(folderPath: string) {
+  function collectFilePaths(nodes: TreeNode[]): string[] {
+    const paths: string[] = [];
+    for (const n of nodes) {
+      if (n.type === 'file') paths.push(n.path);
+      if (n.type === 'folder') paths.push(...collectFilePaths(n.children));
+    }
+    return paths;
+  }
+
+  function findFolder(nodes: TreeNode[]): FolderNode | null {
+    for (const n of nodes) {
+      if (n.type === 'folder' && n.path === folderPath) return n as FolderNode;
+      if (n.type === 'folder') {
+        const found = findFolder(n.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  function filterTree(nodes: TreeNode[]): TreeNode[] {
+    return nodes
+      .filter(n => !(n.type === 'folder' && n.path === folderPath))
+      .map(n => n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n);
+  }
+
+  const folder = findFolder(get(workspace).tree);
+  if (folder) {
+    const filePaths = collectFilePaths(folder.children);
+    for (const fp of filePaths) {
+      const file = findFileNode(get(workspace).tree, fp);
+      if (file) {
+        for (let i = file.requests.length - 1; i >= 0; i--) {
+          closeTab({ filePath: fp, requestIndex: i });
+        }
+      }
+    }
+  }
+
+  workspace.update(ws => ({ ...ws, tree: filterTree(ws.tree) }));
+}
+
 /** Mark a file as saved (not dirty). */
 export function markFileSaved(filePath: string) {
   workspace.update(ws => ({

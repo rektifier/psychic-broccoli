@@ -56,6 +56,7 @@
   let showFileMenu = false;
   let fileMenuPos = { x: 0, y: 0 };
   let confirmDeleteFile = false;
+  let confirmDeleteFolder = false;
 
   // Inline file rename state
   let renamingFile = false;
@@ -189,10 +190,12 @@
     e.preventDefault();
     e.stopPropagation();
     showFolderMenu = true;
+    confirmDeleteFolder = false;
     folderMenuPos = { x: e.clientX, y: e.clientY };
 
     const dismiss = () => {
       showFolderMenu = false;
+      confirmDeleteFolder = false;
       window.removeEventListener('click', dismiss);
       window.removeEventListener('contextmenu', dismiss);
     };
@@ -298,10 +301,24 @@
   {#if showFolderMenu}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="file-context-menu folder-context-menu" style="left: {folderMenuPos.x}px; top: {folderMenuPos.y}px" on:click|stopPropagation on:keydown|stopPropagation>
-      <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFile', node.path); showFolderMenu = false; }}>New .http file</button>
-      <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFolder', node.path); showFolderMenu = false; }}>New subfolder</button>
-      <div class="context-menu-divider"></div>
-      <button class="file-context-item" on:click|stopPropagation={() => { showFolderMenu = false; enterFolderRename(); }}>Rename</button>
+      {#if confirmDeleteFolder}
+        <span class="confirm-delete-text">Has items, delete anyway?</span>
+        <button class="confirm-delete-yes" on:click|stopPropagation={() => { dispatch('deleteFolder', node.path); showFolderMenu = false; confirmDeleteFolder = false; }}>Yes</button>
+        <button class="confirm-delete-no" on:click|stopPropagation={() => { showFolderMenu = false; confirmDeleteFolder = false; }}>No</button>
+      {:else}
+        <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFile', node.path); showFolderMenu = false; }}>New .http file</button>
+        <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFolder', node.path); showFolderMenu = false; }}>New subfolder</button>
+        <div class="context-menu-divider"></div>
+        <button class="file-context-item" on:click|stopPropagation={() => { showFolderMenu = false; enterFolderRename(); }}>Rename</button>
+        <button class="file-context-item file-context-delete" on:click|stopPropagation={() => {
+          if (node.type === 'folder' && node.children.length === 0) {
+            dispatch('deleteFolder', node.path);
+            showFolderMenu = false;
+          } else {
+            confirmDeleteFolder = true;
+          }
+        }}>Delete folder</button>
+      {/if}
     </div>
   {/if}
 
@@ -332,6 +349,7 @@
           on:duplicateFile
           on:createFile
           on:createFolder
+          on:deleteFolder
           on:cancelRename
         />
       {/each}
