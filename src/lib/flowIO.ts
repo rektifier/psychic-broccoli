@@ -1,4 +1,4 @@
-import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, readDir, mkdir, remove, rename } from '@tauri-apps/plugin-fs';
 import { join, basename } from '@tauri-apps/api/path';
 import type { FlowDefinition, FlowRunRecord, FlowStep, FlowStepOverrides } from './types';
 import { applyAliasSync } from './flowAlias';
@@ -71,6 +71,40 @@ export function createEmptyFlow(name: string): FlowDefinition {
     description: '',
     steps: [],
   };
+}
+
+// ─── Migration ───────────────────────────────────────────────────────────────
+
+/**
+ * Renames legacy `flows/` to `.flows/` if `flows/` exists and `.flows/` does not.
+ * Returns true if migration was performed, false otherwise.
+ */
+export async function migrateFlowsDirectory(rootPath: string): Promise<boolean> {
+  const legacyDir = await join(rootPath, 'flows');
+  const dotDir = await join(rootPath, FLOWS_DIR);
+
+  let legacyExists = false;
+  try {
+    await readDir(legacyDir);
+    legacyExists = true;
+  } catch {
+    // flows/ doesn't exist
+  }
+
+  if (!legacyExists) return false;
+
+  let dotExists = false;
+  try {
+    await readDir(dotDir);
+    dotExists = true;
+  } catch {
+    // .flows/ doesn't exist - good, proceed with migration
+  }
+
+  if (dotExists) return false;
+
+  await rename(legacyDir, dotDir);
+  return true;
 }
 
 // ─── Flow Discovery ──────────────────────────────────────────────────────────

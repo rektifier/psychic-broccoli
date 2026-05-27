@@ -42,7 +42,7 @@
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult, KeyVaultState } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile, DiscoveredFolder } from './lib/parser';
-  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR } from './lib/flowIO';
+  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR, migrateFlowsDirectory } from './lib/flowIO';
   import { generateFolderName } from './lib/folderCreate';
   import { runFlow } from './lib/flowRunner';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
@@ -639,6 +639,12 @@
 
     // Auto-discover env files from workspace root
     await tryLoadEnvFiles(rootPath);
+
+    // Migrate legacy flows/ to .flows/ if needed
+    try {
+      const migrated = await migrateFlowsDirectory(rootPath);
+      if (migrated) addToast("Workspace updated: renamed 'flows' to '.flows'", 'info');
+    } catch { /* best effort */ }
 
     // Discover test flows and load run history
     try {
