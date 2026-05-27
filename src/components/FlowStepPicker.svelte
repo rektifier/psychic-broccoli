@@ -38,7 +38,8 @@
       id: crypto.randomUUID(),
       filePath: relativePath,
       requestIndex,
-      varName: req.varName,
+      varName: null,
+      aliasLocked: false,
       label: `${req.method} ${req.url}`,
       continueOnFailure: false,
     };

@@ -21,8 +21,8 @@
     resolvedEnvVars, baseEnvVarsWithSource, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
     keyVaultState, varSourcePrefs,
-    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
-    addFileToTree, renameFileInTree, editingFilePath,
+    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree, removeFolderFromTree,
+    addFileToTree, addFolderToTree, renameFolderInTree, renameFileInTree, editingFilePath, editingFolderPath,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
@@ -33,7 +33,7 @@
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile, ensureSharedEnvironment,
     buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
-    executePbDirectives, parseScriptText, applyRequestMutations,
+    executePbDirectives, parseScriptText, applyRequestMutations, resolveEnvironmentVariables,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
@@ -41,16 +41,19 @@
   import { importOpenApiSpec } from './lib/openapi';
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult, KeyVaultState } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
-  import type { DiscoveredFile } from './lib/parser';
-  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
+  import type { DiscoveredFile, DiscoveredFolder } from './lib/parser';
+  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR } from './lib/flowIO';
+  import { generateFolderName } from './lib/folderCreate';
   import { runFlow } from './lib/flowRunner';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile, readDir, rename } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
+  import { listen, emit } from '@tauri-apps/api/event';
   import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
 
   let showEnvEditor = false;
   let showVarInspector = false;
@@ -229,8 +232,318 @@
     refreshKeyVaultSecrets();
   });
 
+  // ─── MCP Bridge ───
+  // The embedded MCP server (Rust) reaches live app state through Tauri events:
+  // it emits `mcp:request` with { id, kind, params }; we do the work for `kind`
+  // and emit `mcp:response` with { id, ok, data?, error? }, matched by `id`.
+  // New MCP tools that need frontend state add a `kind` branch here.
+
+  interface BridgeRequest {
+    id: string;
+    kind: string;
+    params: unknown;
+  }
+
+  function respondBridge(id: string, payload: { ok: true; data: unknown } | { ok: false; error: string }) {
+    emit('mcp:response', { id, ...payload }).catch(() => {});
+  }
+
+  /** Gather every request across all .http files in the open workspace. */
+  function collectWorkspaceRequests() {
+    const ws = get(workspace);
+    if (!ws.rootPath) return [];
+    return getAllFileNodes(ws.tree).flatMap((file) => {
+      const filePath = file.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/');
+      return file.requests.map((req, requestIndex) => ({
+        filePath,
+        requestIndex,
+        name: req.name,
+        method: req.method,
+        url: req.url,
+      }));
+    });
+  }
+
+  interface ExecuteRequestParams {
+    filePath: string;
+    requestIndex: number;
+    environment?: string | null;
+  }
+
+  /**
+   * Run a single request for the MCP `execute_request` tool and return the
+   * structured result. This is the silent twin of `sendRequest`: it must never
+   * touch UI stores (`currentResponse`, `currentSentRequest`, `pbAssertionResults`,
+   * tabs, `namedResults`, `pbGlobals`, `pbFileOverrides`). All runtime state from
+   * pb directives is kept in locals and discarded after the call.
+   */
+  async function executeRequestSilently(params: ExecuteRequestParams) {
+    const ws = get(workspace);
+    if (!ws.rootPath) throw new Error('No workspace folder is open');
+
+    const normalized = params.filePath.replaceAll('\\', '/');
+    const file = getAllFileNodes(ws.tree).find(
+      (f) => f.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/') === normalized,
+    );
+    if (!file) throw new Error(`File not found in workspace: ${params.filePath}`);
+
+    const request = file.requests[params.requestIndex];
+    if (!request) {
+      throw new Error(`No request at index ${params.requestIndex} in ${params.filePath}`);
+    }
+
+    // Resolve environment variables for the requested environment, falling back to
+    // the active one. For the active environment, reuse the fully-resolved store so
+    // Key Vault secrets, globals, and pb.set overrides are included exactly as the
+    // UI sees them; for any other environment, resolve it fresh from the env files.
+    const active = get(activeEnvironment);
+    const effectiveEnv = params.environment ?? active;
+    let environmentVariables: Record<string, string>;
+    if (effectiveEnv && effectiveEnv === active) {
+      environmentVariables = { ...get(resolvedEnvVars) };
+    } else if (effectiveEnv) {
+      environmentVariables = {
+        ...resolveEnvironmentVariables(effectiveEnv, get(envFile), get(userEnvFile)),
+        ...get(pbGlobals),
+        ...(get(pbFileOverrides)[file.path] ?? {}),
+      };
+    } else {
+      environmentVariables = { ...get(pbGlobals) };
+    }
+
+    const ctx: SubstitutionContext = {
+      fileVariables: file.variables,
+      environmentVariables,
+      // Read-only copy: chaining can resolve existing named results, but the
+      // silent run must not mutate the shared store.
+      namedResults: { ...get(namedResults) },
+      dotenvVariables: get(dotenvVariables),
+    };
+
+    const startTime = performance.now();
+    let url = substituteAll(request.url, ctx);
+    let body = substituteAll(request.body, ctx);
+    let headers: Record<string, string> = {};
+    for (const h of request.headers) {
+      if (h.enabled) headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
+    }
+
+    // beforeSend scripts — runtime vars stay local and never reach the stores.
+    const localEnvOverrides: Record<string, string> = {};
+    const localGlobals: Record<string, string> = {};
+    const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
+    if (beforeSendDirectives.length > 0) {
+      const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
+      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
+      const dummyResponse: HttpResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
+      const bsResult = executePbDirectives(
+        beforeSendDirectives, dummyResponse,
+        { url, method: request.method, headers, body },
+        mergedVars, ctx.namedResults,
+      );
+      const mutated = applyRequestMutations(
+        { url, method: request.method, headers, body },
+        bsResult.requestMutations,
+      );
+      url = mutated.url;
+      headers = mutated.headers;
+      body = mutated.body;
+      Object.assign(localEnvOverrides, bsResult.setVars);
+      Object.assign(localGlobals, bsResult.globalVars);
+      Object.assign(localEnvOverrides, bsResult.globalVars);
+    }
+
+    const sentRequest = { method: request.method, url, headers, body };
+    const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
+      await invoke('http_request', {
+        payload: {
+          method: request.method,
+          url,
+          headers,
+          body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
+        },
+      });
+
+    const elapsed = performance.now() - startTime;
+    const response: HttpResponse = {
+      status: res.status,
+      statusText: res.status_text,
+      headers: res.headers,
+      body: res.body,
+      time: Math.round(elapsed),
+      size: new TextEncoder().encode(res.body).length,
+    };
+
+    // pb directives + afterReceive scripts — assertion results only; no store writes.
+    const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
+    const allDirectives = [
+      ...(request.directives || []).filter((d) => d.enabled !== false),
+      ...afterReceiveDirectives,
+    ];
+    let assertionResults: PbAssertionResult[] = [];
+    if (allDirectives.length > 0) {
+      const mergedVars: Record<string, string> = { ...ctx.environmentVariables, ...localEnvOverrides, ...localGlobals };
+      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
+      const pbResult = executePbDirectives(allDirectives, response, sentRequest, mergedVars, ctx.namedResults);
+      assertionResults = pbResult.assertionResults;
+    }
+
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      body: response.body,
+      time: response.time,
+      assertions: assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
+    };
+  }
+
+  interface ExecuteFlowParams {
+    flowFilePath: string;
+    environment?: string | null;
+  }
+
+  /**
+   * Run a whole flow for the MCP `execute_flow` tool and return the structured
+   * run record. This is the silent twin of `handleRunFlow`: it loads and runs the
+   * flow but must never touch UI stores (`flowRunState`, `flowRunHistory`,
+   * `lastFlowRunRecords`, tabs) and must not persist a results file. `runFlow`
+   * keeps all run state in isolated locals, which are discarded after mapping.
+   */
+  async function executeFlowSilently(params: ExecuteFlowParams) {
+    const ws = get(workspace);
+    if (!ws.rootPath) throw new Error('No workspace folder is open');
+
+    const relPath = params.flowFilePath.replaceAll('\\', '/');
+    if (!relPath.endsWith('.pb-flow.json')) {
+      throw new Error(`Not a flow file (expected .pb-flow.json): ${params.flowFilePath}`);
+    }
+    const absolutePath = await join(ws.rootPath, relPath);
+
+    let content: string;
+    try {
+      content = await readTextFile(absolutePath);
+    } catch {
+      throw new Error(`Flow file not found: ${params.flowFilePath}`);
+    }
+
+    let raw: unknown;
+    try {
+      raw = JSON.parse(content);
+    } catch {
+      throw new Error(`Flow file is not valid JSON: ${params.flowFilePath}`);
+    }
+    if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { steps?: unknown }).steps)) {
+      throw new Error(`Not a valid flow file: ${params.flowFilePath}`);
+    }
+    const flow = parseFlowFile(content);
+
+    // Resolve environment variables for the requested environment, falling back to
+    // the active one. Mirror executeRequestSilently: reuse the resolved store for
+    // the active env (so Key Vault secrets, globals, and pb.set overrides are
+    // included as the UI sees them); resolve any other env fresh from the files.
+    const active = get(activeEnvironment);
+    const effectiveEnv = params.environment ?? active;
+    let environmentVariables: Record<string, string>;
+    if (effectiveEnv && effectiveEnv === active) {
+      environmentVariables = { ...get(resolvedEnvVars) };
+    } else if (effectiveEnv) {
+      environmentVariables = {
+        ...resolveEnvironmentVariables(effectiveEnv, get(envFile), get(userEnvFile)),
+        ...get(pbGlobals),
+      };
+    } else {
+      environmentVariables = { ...get(pbGlobals) };
+    }
+
+    // No-op callbacks: a silent run reports nothing to the UI. runFlow returns a
+    // fully isolated record; we never write it to stores or to disk.
+    const record = await runFlow(
+      flow,
+      ws.rootPath,
+      ws.tree,
+      environmentVariables,
+      get(dotenvVariables),
+      effectiveEnv,
+      { onStepStart() {}, onStepComplete() {} },
+    );
+
+    // Map the internal record onto the tool's output shape. The flow runner stores
+    // both network errors and assertion/HTTP failures as `failed`; split them back
+    // out so a network-level failure (non-null `error`) surfaces as `error`.
+    const stepById = new Map(flow.steps.map((s) => [s.id, s]));
+    const steps = record.stepResults.map((r) => {
+      const status: 'passed' | 'failed' | 'skipped' | 'error' =
+        r.status === 'failed' && r.error != null ? 'error'
+        : r.status === 'passed' ? 'passed'
+        : r.status === 'skipped' ? 'skipped'
+        : 'failed';
+      return {
+        id: r.stepId,
+        label: stepById.get(r.stepId)?.label ?? '',
+        status,
+        durationMs: r.durationMs,
+        assertions: r.assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
+        error: r.error,
+      };
+    });
+
+    const overall: 'passed' | 'failed' | 'error' =
+      steps.some((s) => s.status === 'error') ? 'error'
+      : steps.some((s) => s.status === 'failed') ? 'failed'
+      : 'passed';
+
+    return { status: overall, summary: record.summary, steps };
+  }
+
+  /**
+   * Snapshot the user's most recent manual request result for the MCP
+   * `get_last_result` tool. Reads the live UI stores without mutating them and
+   * returns the `execute_request` shape, or `null` if no request has run yet.
+   */
+  function snapshotLastResult() {
+    const response = get(currentResponse);
+    if (!response) return null;
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      body: response.body,
+      time: response.time,
+      assertions: get(pbAssertionResults).map((a) => ({ label: a.label, passed: a.passed })),
+    };
+  }
+
+  async function handleBridgeRequest(req: BridgeRequest) {
+    try {
+      switch (req.kind) {
+        case 'list_requests':
+          respondBridge(req.id, { ok: true, data: collectWorkspaceRequests() });
+          break;
+        case 'execute_request':
+          respondBridge(req.id, { ok: true, data: await executeRequestSilently(req.params as ExecuteRequestParams) });
+          break;
+        case 'execute_flow':
+          respondBridge(req.id, { ok: true, data: await executeFlowSilently(req.params as ExecuteFlowParams) });
+          break;
+        case 'get_last_result':
+          respondBridge(req.id, { ok: true, data: snapshotLastResult() });
+          break;
+        default:
+          respondBridge(req.id, { ok: false, error: `Unknown MCP bridge request: ${req.kind}` });
+      }
+    } catch (e) {
+      respondBridge(req.id, { ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  const mcpBridgeUnlisten = listen<BridgeRequest>('mcp:request', (event) => {
+    void handleBridgeRequest(event.payload);
+  });
+
   onDestroy(() => {
     unsubKv();
+    mcpBridgeUnlisten.then((unlisten) => unlisten());
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
     document.removeEventListener('mousemove', onSidebarDividerMove);
@@ -307,8 +620,8 @@
   // ─── Open Folder (scan for .http files) ───
 
   async function openFolderByPath(rootPath: string) {
-    const discovered = await scanForHttpFiles(rootPath, rootPath);
-    const tree = buildWorkspaceTree(discovered);
+    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
+    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
     const rootName = await basename(rootPath);
 
     workspace.set({ rootPath, rootName, tree });
@@ -368,22 +681,55 @@
 
   // ── Recursively scan a directory for .http/.rest files ──
 
-  async function scanForHttpFiles(dir: string, rootDir: string): Promise<DiscoveredFile[]> {
+  async function scanDir(
+    dir: string,
+    rootDir: string,
+    emptyFolderSink: DiscoveredFolder[],
+  ): Promise<DiscoveredFile[]> {
     const entries = await readDir(dir);
     const results: DiscoveredFile[] = [];
+    let hasHttpDescendant = false;
 
     for (const entry of entries) {
       const fullPath = await join(dir, entry.name);
       if (entry.isDirectory) {
-        results.push(...await scanForHttpFiles(fullPath, rootDir));
+        const subFiles = await scanDir(fullPath, rootDir, emptyFolderSink);
+        results.push(...subFiles);
+        if (subFiles.length > 0) hasHttpDescendant = true;
       } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
         const content = await readTextFile(fullPath);
-        // Compute relative path by stripping root prefix and normalizing separators
         const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
         results.push({ absolutePath: fullPath, relativePath, content });
+        hasHttpDescendant = true;
       }
     }
+
+    if (!hasHttpDescendant) {
+      const relDir = dir.substring(rootDir.length + 1).replaceAll('\\', '/');
+      emptyFolderSink.push({ relativePath: relDir });
+    }
+
     return results;
+  }
+
+  async function scanForHttpFiles(rootDir: string): Promise<{ files: DiscoveredFile[]; emptyFolders: DiscoveredFolder[] }> {
+    const emptyFolders: DiscoveredFolder[] = [];
+    const entries = await readDir(rootDir);
+    const files: DiscoveredFile[] = [];
+
+    for (const entry of entries) {
+      const fullPath = await join(rootDir, entry.name);
+      if (entry.isDirectory) {
+        const subFiles = await scanDir(fullPath, rootDir, emptyFolders);
+        files.push(...subFiles);
+      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
+        const content = await readTextFile(fullPath);
+        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
+        files.push({ absolutePath: fullPath, relativePath, content });
+      }
+    }
+
+    return { files, emptyFolders };
   }
 
   // ── Auto-discover env files from workspace root ──
@@ -437,8 +783,8 @@
     }
 
     // Refresh workspace tree
-    const discovered = await scanForHttpFiles(rootPath, rootPath);
-    const tree = buildWorkspaceTree(discovered);
+    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
+    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
     const rootName = await basename(rootPath);
     workspace.set({ rootPath, rootName, tree });
 
@@ -781,6 +1127,20 @@
     removeFileFromTree(filePath);
   }
 
+  async function handleDeleteFolder(e: CustomEvent<string>) {
+    const folderPath = e.detail;
+
+    try {
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      await remove(folderPath, { recursive: true });
+    } catch (err) {
+      addToast(`Failed to delete folder: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    removeFolderFromTree(folderPath);
+  }
+
   async function handleCreateFile(e: CustomEvent<string | null>) {
     const rootPath = $workspace.rootPath;
     if (!rootPath) return;
@@ -823,6 +1183,66 @@
     fileNode.savedContent = content;
     addFileToTree(folderPath === rootPath ? null : folderPath, fileNode);
     editingFilePath.set(filePath);
+  }
+
+  async function handleCreateFolder(e: CustomEvent<string | null>) {
+    const rootPath = $workspace.rootPath;
+    if (!rootPath) return;
+
+    const parentDir = e.detail || rootPath;
+
+    // Collect sibling names in the target parent
+    const siblings = new Set<string>();
+    function collectSiblings(nodes: TreeNode[], targetPath: string) {
+      for (const n of nodes) {
+        if (n.type === 'folder' && n.path === targetPath) {
+          for (const c of n.children) siblings.add(c.name);
+          return;
+        }
+        if (n.type === 'folder') collectSiblings(n.children, targetPath);
+      }
+    }
+    if (parentDir === rootPath) {
+      for (const n of $workspace.tree) siblings.add(n.name);
+    } else {
+      collectSiblings($workspace.tree, parentDir);
+    }
+
+    const folderName = generateFolderName(siblings);
+    const folderPath = await join(parentDir, folderName);
+
+    try {
+      const { mkdir } = await import('@tauri-apps/plugin-fs');
+      await mkdir(folderPath, { recursive: true });
+    } catch (err) {
+      addToast(`Failed to create folder: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    addFolderToTree(parentDir === rootPath ? null : parentDir, {
+      type: 'folder',
+      name: folderName,
+      path: folderPath,
+      children: [],
+      expanded: true,
+    });
+    editingFolderPath.set(folderPath);
+  }
+
+  async function handleRenameFolder(e: CustomEvent<{ oldPath: string; newName: string }>) {
+    const { oldPath, newName } = e.detail;
+    const dir = await dirname(oldPath);
+    const newPath = await join(dir, newName);
+
+    try {
+      await rename(oldPath, newPath);
+    } catch (err) {
+      addToast(`Failed to rename folder: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    renameFolderInTree(oldPath, newPath, newName);
+    editingFolderPath.set(null);
   }
 
   async function handleRenameFile(e: CustomEvent<{ oldPath: string; newName: string }>) {
@@ -908,6 +1328,7 @@
 
   function handleCancelRename() {
     editingFilePath.set(null);
+    editingFolderPath.set(null);
   }
 
   function handleToggleFolder(e: CustomEvent<string>) {
@@ -1068,18 +1489,9 @@
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
     runningFlowPath = null;
 
-    // Propagate flow variables back to app stores
-    // Note: flow set vars are not propagated - they are file-scoped and only
-    // meaningful within the flow's isolated execution context. Only globals
-    // and named results cross the boundary back to the workspace.
-    if (record.variables) {
-      if (Object.keys(record.variables.globalVars).length > 0) {
-        pbGlobals.update(g => ({ ...g, ...record.variables!.globalVars }));
-      }
-      if (Object.keys(record.variables.namedResults).length > 0) {
-        namedResults.update(nr => ({ ...nr, ...record.variables!.namedResults }));
-      }
-    }
+    // Flow runs are fully isolated: their named results, set vars, and pb
+    // globals stay inside the FlowRunRecord and do not cross back into the
+    // workspace stores the regular request editor / inspector reads from.
 
     // Persist and update history
     try {
@@ -1159,8 +1571,8 @@
 <SettingsModal
   visible={showSettings}
   currentTheme={currentTheme}
-  on:changeTheme={(e) => { currentTheme = e.detail; setTheme(e.detail); }}
-  on:close={() => showSettings = false}
+  onchangeTheme={(id) => { currentTheme = id; setTheme(id); }}
+  onclose={() => showSettings = false}
 />
 <VariableInspector
   visible={showVarInspector}
@@ -1212,6 +1624,7 @@
         rootName={$workspace.rootName}
         hasWorkspace={!!$workspace.rootPath}
         editingFilePath={$editingFilePath}
+        editingFolderPath={$editingFolderPath}
         environments={$availableEnvironments}
         activeEnv={$activeEnvironment}
         flows={$flows}
@@ -1225,8 +1638,11 @@
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
         on:deleteFile={handleDeleteFile}
+        on:deleteFolder={handleDeleteFolder}
         on:createFile={handleCreateFile}
+        on:createFolder={handleCreateFolder}
         on:renameFile={handleRenameFile}
+        on:renameFolder={handleRenameFolder}
         on:duplicateFile={handleDuplicateFile}
         on:cancelRename={handleCancelRename}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}

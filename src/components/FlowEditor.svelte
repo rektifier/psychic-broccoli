@@ -2,9 +2,11 @@
   import { createEventDispatcher } from 'svelte';
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective } from '../lib/types';
+  import VariablePicker from './VariablePicker.svelte';
+  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective, Variable, NamedRequestResult } from '../lib/types';
   import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
-  import { baseEnvVars, namedResults, dotenvVariables } from '../lib/stores';
+  import { applyAliasSync, autoAliasFor } from '../lib/flowAlias';
+  import { baseEnvVars, dotenvVariables } from '../lib/stores';
   import { METHOD_COLORS } from '../lib/theme';
 
   export let flow: FlowDefinition;
@@ -47,6 +49,59 @@
 
   $: brokenCount = flow.steps.filter(isStepBroken).length;
   $: hasAnyBroken = brokenCount > 0;
+
+  /** Captured responses from the most recent flow run, keyed by step alias.
+   *  Flow-run results never reach the global `$namedResults` store, so the
+   *  VariablePicker needs this flow-scoped map to preview body/header values. */
+  $: flowLocalNamedResults = (() => {
+    const source = runState?.stepResults ?? lastRunRecord?.stepResults ?? [];
+    const map: Record<string, NamedRequestResult> = {};
+    for (const result of source) {
+      if (!result.response || !result.sentRequest) continue;
+      const step = flow.steps.find(s => s.id === result.stepId);
+      const alias = step?.varName;
+      if (!alias) continue;
+      map[alias] = { request: result.sentRequest, response: result.response };
+    }
+    return map;
+  })();
+
+  /** Variables set by `pb.set` / `pb.global` during the flow's most recent run.
+   *  Available only after a completed run (flowRunner attaches them to the record).
+   *  Both kinds are merged: from the user's perspective inside the flow they are
+   *  just "variables this flow defines." */
+  $: flowScopeVars = (() => {
+    const v = lastRunRecord?.variables;
+    if (!v) return {};
+    return { ...v.setVars, ...v.globalVars };
+  })();
+
+  $: resolvedStepUrls = (() => {
+    const env = $baseEnvVars;
+    const dotenv = $dotenvVariables;
+    const scope = flowScopeVars;
+    return flow.steps.map((step) => {
+      const file = findFileForStep(step);
+      const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
+        ? file.requests[step.requestIndex]
+        : null;
+      // Prefer the step's override URL (what the user is actively editing) over the base.
+      const rawUrl = step.overrides?.url ?? (req ? req.url : getUrl(step.label));
+      if (!rawUrl || !rawUrl.includes('{{')) return '';
+      // Merge env with flow-scope vars (pb.set / pb.global captured on last run) so
+      // URLs that reference them (e.g. {{sessionId}}) resolve in the preview.
+      const nonEmptyEnv: Record<string, string> = {};
+      for (const [k, v] of Object.entries(env)) if (v) nonEmptyEnv[k] = v;
+      for (const [k, v] of Object.entries(scope)) if (v != null && v !== '') nonEmptyEnv[k] = String(v);
+      const resolved = substituteAll(rawUrl, {
+        fileVariables: [],
+        environmentVariables: nonEmptyEnv,
+        namedResults: {},
+        dotenvVariables: dotenv,
+      });
+      return resolved !== rawUrl ? resolved : '';
+    });
+  })();
 
   function getStepStatus(stepId: string): FlowStepResult | undefined {
     return runState?.stepResults.find(r => r.stepId === stepId);
@@ -134,7 +189,7 @@
     // Adjust target index after removal
     const target = insertSlot > draggingIndex ? insertSlot - 1 : insertSlot;
     steps.splice(target, 0, moved);
-    flow = { ...flow, steps };
+    flow = { ...flow, steps: applyAliasSync(steps) };
     save();
     draggingIndex = -1;
     insertSlot = -1;
@@ -158,7 +213,7 @@
     const steps = [...flow.steps];
     const [moved] = steps.splice(from, 1);
     steps.splice(to, 0, moved);
-    flow = { ...flow, steps };
+    flow = { ...flow, steps: applyAliasSync(steps) };
     save();
   }
 
@@ -205,12 +260,13 @@
   }
 
   function addStep(e: CustomEvent<FlowStep>) {
-    flow = { ...flow, steps: [...flow.steps, e.detail] };
+    flow = { ...flow, steps: applyAliasSync([...flow.steps, e.detail]) };
     save();
   }
 
   function removeStep(index: number) {
-    flow = { ...flow, steps: flow.steps.filter((_, i) => i !== index) };
+    const next = flow.steps.filter((_, i) => i !== index);
+    flow = { ...flow, steps: applyAliasSync(next) };
     save();
   }
 
@@ -218,6 +274,52 @@
     const steps = [...flow.steps];
     steps[index] = { ...steps[index], continueOnFailure: !steps[index].continueOnFailure };
     flow = { ...flow, steps };
+    save();
+  }
+
+  /** Draft alias values keyed by step id. Keeps the input responsive on every
+   *  keystroke without running `applyAliasSync` / `save()` until the user commits
+   *  (blur, Enter, or native `change`). */
+  let aliasDraft: Record<string, string> = {};
+
+  const AUTO_ALIAS_SHAPE = /^Step\d+$/;
+
+  /** Commit the alias draft for step `index`. Empty input, a value matching the
+   *  position's auto name, or any `Step{N}`-shaped value unlocks the alias -
+   *  auto-shaped names are system-managed and cannot be user-locked.
+   *  Other non-empty values lock the alias as user-customized. */
+  function setStepAlias(index: number, raw: string) {
+    const trimmed = raw.trim();
+    const steps = [...flow.steps];
+    const auto = autoAliasFor(index);
+    if (trimmed === '' || trimmed === auto || AUTO_ALIAS_SHAPE.test(trimmed)) {
+      steps[index] = { ...steps[index], varName: null, aliasLocked: false };
+    } else {
+      steps[index] = { ...steps[index], varName: trimmed, aliasLocked: true };
+    }
+    flow = { ...flow, steps: applyAliasSync(steps) };
+    delete aliasDraft[steps[index].id];
+    aliasDraft = aliasDraft;
+    save();
+  }
+
+  function onAliasInput(stepId: string, value: string) {
+    aliasDraft = { ...aliasDraft, [stepId]: value };
+  }
+
+  function commitAliasDraft(index: number) {
+    const stepId = flow.steps[index]?.id;
+    if (stepId == null) return;
+    const draft = aliasDraft[stepId];
+    if (draft === undefined) return;
+    setStepAlias(index, draft);
+  }
+
+  /** "Reset to auto" affordance: unlocks the step so it takes the auto Step{N} name. */
+  function resetStepAlias(index: number) {
+    const steps = [...flow.steps];
+    steps[index] = { ...steps[index], varName: null, aliasLocked: false };
+    flow = { ...flow, steps: applyAliasSync(steps) };
     save();
   }
 
@@ -230,23 +332,6 @@
   function getUrl(label: string): string {
     const m = label.match(/^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\s+(.*)/);
     return m ? m[1] : label;
-  }
-
-  /** Resolve a raw URL using current environment/variables. Returns '' if no change. */
-  function resolveStepUrl(rawUrl: string, file: FileNode | undefined): string {
-    if (!rawUrl || !rawUrl.includes('{{')) return '';
-    // Only resolve environment variables; runtime/file-scoped variables stay as {{placeholders}}
-    const nonEmptyEnv: Record<string, string> = {};
-    for (const [k, v] of Object.entries($baseEnvVars)) {
-      if (v) nonEmptyEnv[k] = v;
-    }
-    const resolved = substituteAll(rawUrl, {
-      fileVariables: [],
-      environmentVariables: nonEmptyEnv,
-      namedResults: {},
-      dotenvVariables: $dotenvVariables,
-    });
-    return resolved !== rawUrl ? resolved : '';
   }
 
   /** Compute URL suffixes for requests in a file, stripping common prefix segments. */
@@ -395,6 +480,98 @@
     updateStepOverride(stepIndex, 'directives', text === baseText ? undefined : directives);
   }
 
+  // ─── Variable picker ────────────────────────────────────────────────────────
+
+  type PickerTarget =
+    | { kind: 'url'; stepIndex: number }
+    | { kind: 'headerValue'; stepIndex: number; headerIndex: number }
+    | { kind: 'body'; stepIndex: number }
+    | { kind: 'assertions'; stepIndex: number }
+    | { kind: 'beforeSend'; stepIndex: number }
+    | { kind: 'afterReceive'; stepIndex: number };
+
+  let showVarPicker = false;
+  let pickerTarget: PickerTarget | null = null;
+  let pickerCursor: number = -1;
+  let pickerFileVars: Variable[] = [];
+  let pickerNamedResults: Record<string, NamedRequestResult> = {};
+  let pickerFlowAliases: { name: string; stepNumber: number }[] = [];
+
+  /** Collect aliases from every step before `stepIndex`. `applyAliasSync` guarantees
+   *  every step has a unique non-null `varName`, so this is a straight map. */
+  function collectPrecedingFlowAliases(stepIndex: number): { name: string; stepNumber: number }[] {
+    const out: { name: string; stepNumber: number }[] = [];
+    for (let i = 0; i < stepIndex && i < flow.steps.length; i++) {
+      const name = flow.steps[i].varName;
+      if (name) out.push({ name, stepNumber: i + 1 });
+    }
+    return out;
+  }
+
+  function insertAtCursor(text: string, value: string): string {
+    if (pickerCursor >= 0 && pickerCursor <= text.length) {
+      return text.slice(0, pickerCursor) + value + text.slice(pickerCursor);
+    }
+    return text + value;
+  }
+
+  function openVarPicker(target: PickerTarget, file: FileNode | undefined) {
+    const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+    pickerCursor = active?.selectionStart ?? -1;
+    pickerTarget = target;
+    pickerFileVars = file?.variables ?? [];
+    const aliases = collectPrecedingFlowAliases(target.stepIndex);
+    pickerFlowAliases = aliases;
+    const scoped: Record<string, NamedRequestResult> = {};
+    for (const { name } of aliases) {
+      if (flowLocalNamedResults[name]) scoped[name] = flowLocalNamedResults[name];
+    }
+    pickerNamedResults = scoped;
+    showVarPicker = true;
+  }
+
+  function handleVarPickerInsert(e: CustomEvent<string>) {
+    const value = e.detail;
+    showVarPicker = false;
+    const t = pickerTarget;
+    if (!t) return;
+    const step = flow.steps[t.stepIndex];
+    const file = findFileForStep(step);
+    const req = file && step.requestIndex >= 0 && step.requestIndex < file.requests.length
+      ? file.requests[step.requestIndex]
+      : null;
+    const baseHeaders = req?.headers ?? [];
+    const baseDirectives = req?.directives ?? [];
+    if (t.kind === 'url') {
+      const base = req?.url ?? getUrl(step.label);
+      const current = step.overrides?.url ?? base;
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'url', next === base ? undefined : next);
+    } else if (t.kind === 'body') {
+      const current = step.overrides?.body ?? req?.body ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'body', next === (req?.body ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'beforeSend') {
+      const current = step.overrides?.beforeSend ?? req?.beforeSend ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'beforeSend', next === (req?.beforeSend ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'afterReceive') {
+      const current = step.overrides?.afterReceive ?? req?.afterReceive ?? '';
+      const next = insertAtCursor(current, value);
+      updateStepOverride(t.stepIndex, 'afterReceive', next === (req?.afterReceive ?? '') ? undefined : next || undefined);
+    } else if (t.kind === 'assertions') {
+      const currentText = directivesToText(step.overrides?.directives ?? baseDirectives);
+      const nextText = insertAtCursor(currentText, value);
+      onDirectivesTextInput(t.stepIndex, nextText, baseDirectives);
+    } else if (t.kind === 'headerValue') {
+      const headers = (step.overrides?.headers ?? baseHeaders).map(h => ({ ...h }));
+      headers[t.headerIndex] = { ...headers[t.headerIndex], value: insertAtCursor(headers[t.headerIndex].value, value) };
+      updateStepOverride(t.stepIndex, 'headers', headers);
+    }
+    pickerCursor = -1;
+    pickerTarget = null;
+  }
+
   function resetOverrides(index: number) {
     const steps = [...flow.steps];
     steps[index] = { ...steps[index], overrides: undefined };
@@ -484,7 +661,7 @@
           {@const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0) ? file.requests[step.requestIndex] : null}
           {@const rawUrl = req ? req.url : getUrl(step.label)}
           {@const requestName = req?.name ?? ''}
-          {@const resolvedUrl = resolveStepUrl(rawUrl, file)}
+          {@const resolvedUrl = resolvedStepUrls[i] ?? ''}
           {@const baseHeaders = req?.headers ?? []}
           {@const baseDirectives = req?.directives ?? []}
           <div
@@ -593,6 +770,32 @@
               <div class="override-panel" on:mousedown|stopPropagation on:dragstart|preventDefault|stopPropagation>
                 <div class="override-section">
                   <div class="override-row">
+                    <span class="override-label" title="Flow-local alias for this step's response. Referenced as {'{'}{'{'}alias.response.body.$....{'}'}{'}'} in later steps. Auto-named Step{i + 1} unless you customize it.">Alias{#if step.aliasLocked}<span class="modified-dot" title="Custom"></span>{/if}</span>
+                    <input
+                      class="override-input"
+                      class:showing-base={!step.aliasLocked}
+                      type="text"
+                      value={aliasDraft[step.id] ?? (step.varName ?? '')}
+                      placeholder={autoAliasFor(i)}
+                      on:input={(e) => onAliasInput(step.id, e.currentTarget.value)}
+                      on:change={() => commitAliasDraft(i)}
+                      on:blur={() => commitAliasDraft(i)}
+                      on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitAliasDraft(i); } }}
+                      spellcheck="false"
+                    />
+                    {#if step.aliasLocked}
+                      <button
+                        type="button"
+                        class="btn-alias-reset"
+                        on:click={() => resetStepAlias(i)}
+                        title="Reset to auto alias (Step{i + 1}) and rewrite references across all steps"
+                      >Reset</button>
+                    {/if}
+                  </div>
+                </div>
+
+                <div class="override-section">
+                  <div class="override-row">
                     <span class="override-label">URL{#if step.overrides?.url !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
                     <input
                       class="override-input"
@@ -607,6 +810,9 @@
                       }}
                       spellcheck="false"
                     />
+                    <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'url', stepIndex: i }, file)} title="Insert variable">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    </button>
                   </div>
                 </div>
 
@@ -645,6 +851,9 @@
                           on:input={(e) => updateOverrideHeader(i, hi, 'value', e.currentTarget.value, baseHeaders)}
                           spellcheck="false"
                         />
+                        <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'headerValue', stepIndex: i, headerIndex: hi }, file)} title="Insert variable">
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        </button>
                         <button class="override-header-remove" on:click={() => removeOverrideHeader(i, hi, baseHeaders)}>&times;</button>
                       </div>
                     {/each}
@@ -671,6 +880,22 @@
                     <button class="override-tab" class:active={activeTabLookup(step.id) === 'afterReceive'} on:click={() => setActiveTab(step.id, 'afterReceive')}>
                       After Receive
                       {#if step.overrides?.afterReceive !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                    </button>
+                    <div class="override-tab-spacer"></div>
+                    <button
+                      class="btn-insert-var"
+                      on:mousedown|preventDefault
+                      on:click={() => {
+                        const tab = activeTabLookup(step.id);
+                        const kind = tab === 'body' ? 'body'
+                          : tab === 'assertions' ? 'assertions'
+                          : tab === 'beforeSend' ? 'beforeSend'
+                          : 'afterReceive';
+                        openVarPicker({ kind, stepIndex: i }, file);
+                      }}
+                      title="Insert variable"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                     </button>
                   </div>
                   <div class="override-tab-content">
@@ -765,6 +990,18 @@
     on:close={() => showPicker = false}
   />
 {/if}
+
+<VariablePicker
+  visible={showVarPicker}
+  fileVariables={pickerFileVars}
+  envVariables={$baseEnvVars}
+  namedResults={pickerNamedResults}
+  flowAliases={pickerFlowAliases}
+  flowName={flow.name}
+  flowSetVars={flowScopeVars}
+  on:insert={handleVarPickerInsert}
+  on:close={() => { showVarPicker = false; pickerTarget = null; }}
+/>
 
 <style>
   .flow-editor {
@@ -1448,6 +1685,42 @@
     background: color-mix(in srgb, var(--color-error) 9%, transparent);
     color: var(--color-error);
   }
+  .btn-insert-var {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: all var(--duration-normal);
+  }
+  .btn-insert-var:hover {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  }
+  .btn-alias-reset {
+    font-size: var(--text-xs);
+    padding: 2px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .btn-alias-reset:hover {
+    border-color: var(--color-accent-flow);
+    color: var(--color-accent-flow);
+    background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent);
+  }
+  .override-tab-spacer { flex: 1; }
   .override-body {
     padding: var(--space-1\.5) var(--space-2);
     border: 1px solid var(--color-divider);

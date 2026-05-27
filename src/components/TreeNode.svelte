@@ -12,8 +12,12 @@
   export let forceExpand: boolean = false;
   /** When set and matches this node's path, auto-enter inline rename mode */
   export let editingFilePath: string | null = null;
+  /** When set and matches this folder's path, auto-enter inline folder rename mode */
+  export let editingFolderPath: string | null = null;
   /** Sibling file names in the same folder (for collision detection) */
   export let siblingNames: string[] = [];
+  /** Sibling folder/file names in the same folder (for folder rename collision detection) */
+  export let siblingFolderNames: string[] = [];
 
   const dispatch = createEventDispatcher();
 
@@ -52,6 +56,7 @@
   let showFileMenu = false;
   let fileMenuPos = { x: 0, y: 0 };
   let confirmDeleteFile = false;
+  let confirmDeleteFolder = false;
 
   // Inline file rename state
   let renamingFile = false;
@@ -63,9 +68,20 @@
   let showFolderMenu = false;
   let folderMenuPos = { x: 0, y: 0 };
 
+  // Inline folder rename state
+  let renamingFolder = false;
+  let renamingFolderValue = '';
+  let folderRenameInputEl: HTMLInputElement;
+  let cancelledFolderRename = false;
+
   // Auto-enter rename mode when editingFilePath matches this node
   $: if (node.type === 'file' && editingFilePath === node.path && !renamingFile) {
     enterFileRename();
+  }
+
+  // Auto-enter folder rename mode when editingFolderPath matches this folder
+  $: if (node.type === 'folder' && editingFolderPath === node.path && !renamingFolder) {
+    enterFolderRename();
   }
 
   function enterFileRename() {
@@ -111,6 +127,45 @@
     dispatch('cancelRename');
   }
 
+  function enterFolderRename() {
+    cancelledFolderRename = false;
+    renamingFolder = true;
+    renamingFolderValue = node.type === 'folder' ? node.name : '';
+    tick().then(() => {
+      folderRenameInputEl?.focus();
+      folderRenameInputEl?.select();
+    });
+  }
+
+  $: folderRenameError = (() => {
+    if (!renamingFolder) return '';
+    const v = renamingFolderValue.trim();
+    if (!v) return 'Name required';
+    if (INVALID_FS_CHARS.test(v)) return 'Invalid character';
+    if (node.type === 'folder' && v !== node.name && siblingFolderNames.includes(v)) return 'Name in use';
+    return '';
+  })();
+
+  function confirmFolderRename() {
+    if (!renamingFolder) return;
+    if (cancelledFolderRename) { cancelledFolderRename = false; return; }
+    if (folderRenameError) return;
+    const newName = renamingFolderValue.trim();
+    renamingFolder = false;
+    renamingFolderValue = '';
+    if (node.type === 'folder' && newName !== node.name) {
+      dispatch('renameFolder', { oldPath: node.path, newName });
+    }
+    dispatch('cancelRename');
+  }
+
+  function cancelFolderRename() {
+    cancelledFolderRename = true;
+    renamingFolder = false;
+    renamingFolderValue = '';
+    dispatch('cancelRename');
+  }
+
   function handleFileContextMenu(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -135,10 +190,12 @@
     e.preventDefault();
     e.stopPropagation();
     showFolderMenu = true;
+    confirmDeleteFolder = false;
     folderMenuPos = { x: e.clientX, y: e.clientY };
 
     const dismiss = () => {
       showFolderMenu = false;
+      confirmDeleteFolder = false;
       window.removeEventListener('click', dismiss);
       window.removeEventListener('contextmenu', dismiss);
     };
@@ -195,28 +252,73 @@
 
 {#if node.type === 'folder'}
   <!-- Folder -->
-  <button
-    class="tree-row folder-row"
-    style="padding-left: {12 + depth * 16}px"
-    on:click={() => dispatch('toggleFolder', node.path)}
-    on:contextmenu={handleFolderContextMenu}
-  >
-    <span class="chevron" class:open={node.expanded}>
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-        <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  {#if renamingFolder}
+    <div class="tree-row folder-row folder-rename-row" style="padding-left: {12 + depth * 16}px">
+      <span class="chevron">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <svg class="icon folder-icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
+        <path d="M2 12V4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z"
+          fill="#B0883020" stroke="#B08830" stroke-width="1.2"/>
       </svg>
-    </span>
-    <svg class="icon folder-icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <path d="M2 12V4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z"
-        fill="#B0883020" stroke="#B08830" stroke-width="1.2"/>
-    </svg>
-    <span class="node-name">{node.name}</span>
-  </button>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        bind:this={folderRenameInputEl}
+        class="file-rename-input"
+        class:naming-error={!!folderRenameError}
+        bind:value={renamingFolderValue}
+        on:keydown={(e) => { if (e.key === 'Enter') confirmFolderRename(); if (e.key === 'Escape') cancelFolderRename(); }}
+        on:blur={confirmFolderRename}
+        spellcheck="false"
+        autofocus
+      />
+      {#if folderRenameError}
+        <span class="naming-duplicate-hint">{folderRenameError}</span>
+      {/if}
+    </div>
+  {:else}
+    <button
+      class="tree-row folder-row"
+      style="padding-left: {12 + depth * 16}px"
+      on:click={() => dispatch('toggleFolder', node.path)}
+      on:contextmenu={handleFolderContextMenu}
+    >
+      <span class="chevron" class:open={node.expanded}>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <svg class="icon folder-icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
+        <path d="M2 12V4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z"
+          fill="#B0883020" stroke="#B08830" stroke-width="1.2"/>
+      </svg>
+      <span class="node-name">{node.name}</span>
+    </button>
+  {/if}
 
   {#if showFolderMenu}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="file-context-menu folder-context-menu" style="left: {folderMenuPos.x}px; top: {folderMenuPos.y}px" on:click|stopPropagation on:keydown|stopPropagation>
-      <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFile', node.path); showFolderMenu = false; }}>New .http file</button>
+      {#if confirmDeleteFolder}
+        <span class="confirm-delete-text">Has items, delete anyway?</span>
+        <button class="confirm-delete-yes" on:click|stopPropagation={() => { dispatch('deleteFolder', node.path); showFolderMenu = false; confirmDeleteFolder = false; }}>Yes</button>
+        <button class="confirm-delete-no" on:click|stopPropagation={() => { showFolderMenu = false; confirmDeleteFolder = false; }}>No</button>
+      {:else}
+        <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFile', node.path); showFolderMenu = false; }}>New .http file</button>
+        <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFolder', node.path); showFolderMenu = false; }}>New subfolder</button>
+        <div class="context-menu-divider"></div>
+        <button class="file-context-item" on:click|stopPropagation={() => { showFolderMenu = false; enterFolderRename(); }}>Rename</button>
+        <button class="file-context-item file-context-delete" on:click|stopPropagation={() => {
+          if (node.type === 'folder' && node.children.length === 0) {
+            dispatch('deleteFolder', node.path);
+            showFolderMenu = false;
+          } else {
+            confirmDeleteFolder = true;
+          }
+        }}>Delete folder</button>
+      {/if}
     </div>
   {/if}
 
@@ -232,7 +334,9 @@
           {usedNames}
           {forceExpand}
           {editingFilePath}
+          {editingFolderPath}
           siblingNames={childSiblingNames(node.children)}
+          siblingFolderNames={node.children.map(c => c.name)}
           on:toggleFolder
           on:select
           on:pinRequest
@@ -241,8 +345,11 @@
           on:deleteFile
           on:nameRequest
           on:renameFile
+          on:renameFolder
           on:duplicateFile
           on:createFile
+          on:createFolder
+          on:deleteFolder
           on:cancelRename
         />
       {/each}
@@ -691,8 +798,9 @@
     margin: var(--space-0\.5) 0;
   }
 
-  /* File inline rename */
-  .file-rename-row {
+  /* Folder / file inline rename */
+  .file-rename-row,
+  .folder-rename-row {
     cursor: default;
   }
   .file-rename-input {
