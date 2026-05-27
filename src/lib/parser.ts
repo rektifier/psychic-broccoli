@@ -1297,13 +1297,17 @@ export function buildWorkspaceTree(files: DiscoveredFile[], emptyFolders: Discov
   }
 
   // Pre-create all discovered empty/empty-subtree folder paths so they appear in the tree
-  const sortedFolders = [...emptyFolders].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  const sortedFolders = [...emptyFolders]
+    .filter(f => !f.relativePath.startsWith('.'))
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
   for (const folder of sortedFolders) {
     ensureFolder(folder.relativePath);
   }
 
   // Sort files so folder structure is stable
-  const sorted = [...files].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  const sorted = [...files]
+    .filter(f => !f.relativePath.startsWith('.'))
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
   for (const file of sorted) {
     const parts = file.relativePath.split('/');

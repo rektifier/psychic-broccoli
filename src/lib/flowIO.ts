@@ -1,4 +1,4 @@
-import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, readDir, mkdir, remove, rename } from '@tauri-apps/plugin-fs';
 import { join, basename } from '@tauri-apps/api/path';
 import type { FlowDefinition, FlowRunRecord, FlowStep, FlowStepOverrides } from './types';
 import { applyAliasSync } from './flowAlias';
@@ -6,7 +6,7 @@ import { applyAliasSync } from './flowAlias';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const FLOW_EXTENSION = '.pb-flow.json';
-export const FLOWS_DIR = 'flows';
+export const FLOWS_DIR = '.flows';
 const RESULTS_DIR = `${FLOWS_DIR}/.results`;
 const MAX_HISTORY_PER_FLOW = 20;
 
@@ -73,6 +73,40 @@ export function createEmptyFlow(name: string): FlowDefinition {
   };
 }
 
+// ─── Migration ───────────────────────────────────────────────────────────────
+
+/**
+ * Renames legacy `flows/` to `.flows/` if `flows/` exists and `.flows/` does not.
+ * Returns true if migration was performed, false otherwise.
+ */
+export async function migrateFlowsDirectory(rootPath: string): Promise<boolean> {
+  const legacyDir = await join(rootPath, 'flows');
+  const dotDir = await join(rootPath, FLOWS_DIR);
+
+  let legacyExists = false;
+  try {
+    await readDir(legacyDir);
+    legacyExists = true;
+  } catch {
+    // flows/ doesn't exist
+  }
+
+  if (!legacyExists) return false;
+
+  let dotExists = false;
+  try {
+    await readDir(dotDir);
+    dotExists = true;
+  } catch {
+    // .flows/ doesn't exist - good, proceed with migration
+  }
+
+  if (dotExists) return false;
+
+  await rename(legacyDir, dotDir);
+  return true;
+}
+
 // ─── Flow Discovery ──────────────────────────────────────────────────────────
 
 export interface DiscoveredFlow {
@@ -91,7 +125,7 @@ export async function scanForFlowFiles(dir: string, rootDir: string): Promise<Di
   try {
     entries = await readDir(flowsDir) as any[];
   } catch {
-    return []; // flows/ directory doesn't exist yet
+    return []; // .flows/ directory doesn't exist yet
   }
 
   const results: DiscoveredFlow[] = [];
