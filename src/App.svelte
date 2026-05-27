@@ -21,7 +21,7 @@
     resolvedEnvVars, baseEnvVarsWithSource, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
     pbAssertionResults, pbGlobals,
     keyVaultState, varSourcePrefs,
-    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree,
+    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree, removeFolderFromTree,
     addFileToTree, addFolderToTree, renameFolderInTree, renameFileInTree, editingFilePath, editingFolderPath,
     toggleFolder, markFileSaved, addToast,
     tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
@@ -41,7 +41,7 @@
   import { importOpenApiSpec } from './lib/openapi';
   import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult, KeyVaultState } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
-  import type { DiscoveredFile } from './lib/parser';
+  import type { DiscoveredFile, DiscoveredFolder } from './lib/parser';
   import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR } from './lib/flowIO';
   import { generateFolderName } from './lib/folderCreate';
   import { runFlow } from './lib/flowRunner';
@@ -620,8 +620,8 @@
   // ─── Open Folder (scan for .http files) ───
 
   async function openFolderByPath(rootPath: string) {
-    const discovered = await scanForHttpFiles(rootPath, rootPath);
-    const tree = buildWorkspaceTree(discovered);
+    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
+    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
     const rootName = await basename(rootPath);
 
     workspace.set({ rootPath, rootName, tree });
@@ -681,22 +681,55 @@
 
   // ── Recursively scan a directory for .http/.rest files ──
 
-  async function scanForHttpFiles(dir: string, rootDir: string): Promise<DiscoveredFile[]> {
+  async function scanDir(
+    dir: string,
+    rootDir: string,
+    emptyFolderSink: DiscoveredFolder[],
+  ): Promise<DiscoveredFile[]> {
     const entries = await readDir(dir);
     const results: DiscoveredFile[] = [];
+    let hasHttpDescendant = false;
 
     for (const entry of entries) {
       const fullPath = await join(dir, entry.name);
       if (entry.isDirectory) {
-        results.push(...await scanForHttpFiles(fullPath, rootDir));
+        const subFiles = await scanDir(fullPath, rootDir, emptyFolderSink);
+        results.push(...subFiles);
+        if (subFiles.length > 0) hasHttpDescendant = true;
       } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
         const content = await readTextFile(fullPath);
-        // Compute relative path by stripping root prefix and normalizing separators
         const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
         results.push({ absolutePath: fullPath, relativePath, content });
+        hasHttpDescendant = true;
       }
     }
+
+    if (!hasHttpDescendant) {
+      const relDir = dir.substring(rootDir.length + 1).replaceAll('\\', '/');
+      emptyFolderSink.push({ relativePath: relDir });
+    }
+
     return results;
+  }
+
+  async function scanForHttpFiles(rootDir: string): Promise<{ files: DiscoveredFile[]; emptyFolders: DiscoveredFolder[] }> {
+    const emptyFolders: DiscoveredFolder[] = [];
+    const entries = await readDir(rootDir);
+    const files: DiscoveredFile[] = [];
+
+    for (const entry of entries) {
+      const fullPath = await join(rootDir, entry.name);
+      if (entry.isDirectory) {
+        const subFiles = await scanDir(fullPath, rootDir, emptyFolders);
+        files.push(...subFiles);
+      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
+        const content = await readTextFile(fullPath);
+        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
+        files.push({ absolutePath: fullPath, relativePath, content });
+      }
+    }
+
+    return { files, emptyFolders };
   }
 
   // ── Auto-discover env files from workspace root ──
@@ -750,8 +783,8 @@
     }
 
     // Refresh workspace tree
-    const discovered = await scanForHttpFiles(rootPath, rootPath);
-    const tree = buildWorkspaceTree(discovered);
+    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
+    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
     const rootName = await basename(rootPath);
     workspace.set({ rootPath, rootName, tree });
 
@@ -1092,6 +1125,20 @@
     }
 
     removeFileFromTree(filePath);
+  }
+
+  async function handleDeleteFolder(e: CustomEvent<string>) {
+    const folderPath = e.detail;
+
+    try {
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      await remove(folderPath, { recursive: true });
+    } catch (err) {
+      addToast(`Failed to delete folder: ${err instanceof Error ? err.message : err}`, 'error');
+      return;
+    }
+
+    removeFolderFromTree(folderPath);
   }
 
   async function handleCreateFile(e: CustomEvent<string | null>) {
@@ -1591,6 +1638,7 @@
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
         on:deleteFile={handleDeleteFile}
+        on:deleteFolder={handleDeleteFolder}
         on:createFile={handleCreateFile}
         on:createFolder={handleCreateFolder}
         on:renameFile={handleRenameFile}

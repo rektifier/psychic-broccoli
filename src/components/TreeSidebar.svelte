@@ -334,6 +334,7 @@
           on:addRequest
           on:deleteRequest
           on:deleteFile
+          on:deleteFolder
           on:nameRequest
           on:renameFile
           on:renameFolder
