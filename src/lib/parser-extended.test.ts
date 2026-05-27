@@ -759,6 +759,32 @@ describe('buildWorkspaceTree', () => {
     expect(tree[0].name).toBe('Users');
     expect((tree[0] as any).children).toHaveLength(2);
   });
+
+  it('excludes files inside dot-prefixed folders', () => {
+    const files = [
+      { absolutePath: '/root/.flows/my.pb-flow.json', relativePath: '.flows/my.pb-flow.json', content: '{}' },
+      { absolutePath: '/root/api.http', relativePath: 'api.http', content: 'GET https://example.com\n' },
+    ];
+    const tree = buildWorkspaceTree(files);
+    expect(tree).toHaveLength(1);
+    expect(tree[0].name).toBe('api.http');
+  });
+
+  it('excludes empty dot-prefixed folders', () => {
+    const emptyFolders = [{ relativePath: '.flows' }, { relativePath: '.git' }];
+    const tree = buildWorkspaceTree([], emptyFolders);
+    expect(tree).toHaveLength(0);
+  });
+
+  it('still shows regular flows/ folder without dot prefix', () => {
+    const files = [
+      { absolutePath: '/root/flows/my.http', relativePath: 'flows/my.http', content: 'GET https://example.com\n' },
+    ];
+    const tree = buildWorkspaceTree(files);
+    expect(tree).toHaveLength(1);
+    expect(tree[0].type).toBe('folder');
+    expect(tree[0].name).toBe('flows');
+  });
 });
 
 describe('getAllFileNodes', () => {

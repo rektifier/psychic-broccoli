@@ -691,6 +691,7 @@
     let hasHttpDescendant = false;
 
     for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
       const fullPath = await join(dir, entry.name);
       if (entry.isDirectory) {
         const subFiles = await scanDir(fullPath, rootDir, emptyFolderSink);
@@ -718,6 +719,7 @@
     const files: DiscoveredFile[] = [];
 
     for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
       const fullPath = await join(rootDir, entry.name);
       if (entry.isDirectory) {
         const subFiles = await scanDir(fullPath, rootDir, emptyFolders);

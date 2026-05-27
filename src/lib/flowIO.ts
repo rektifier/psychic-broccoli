@@ -6,7 +6,7 @@ import { applyAliasSync } from './flowAlias';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const FLOW_EXTENSION = '.pb-flow.json';
-export const FLOWS_DIR = 'flows';
+export const FLOWS_DIR = '.flows';
 const RESULTS_DIR = `${FLOWS_DIR}/.results`;
 const MAX_HISTORY_PER_FLOW = 20;
 
@@ -91,7 +91,7 @@ export async function scanForFlowFiles(dir: string, rootDir: string): Promise<Di
   try {
     entries = await readDir(flowsDir) as any[];
   } catch {
-    return []; // flows/ directory doesn't exist yet
+    return []; // .flows/ directory doesn't exist yet
   }
 
   const results: DiscoveredFlow[] = [];
