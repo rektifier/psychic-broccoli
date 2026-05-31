@@ -377,9 +377,6 @@ packages:
   '@tauri-apps/api@2.11.0':
     resolution: {integrity: sha512-7CinYODhky9lmO23xHnUFv0Xt43fbtWMyxZcLcRBlFkcgXKuEirBvHpmtJ89YMhyeGcq20Wuc47Fa4XjyniywA==}
 
-  '@tauri-apps/api@2.11.0':
-    resolution: {integrity: sha512-7CinYODhky9lmO23xHnUFv0Xt43fbtWMyxZcLcRBlFkcgXKuEirBvHpmtJ89YMhyeGcq20Wuc47Fa4XjyniywA==}
-
   '@tauri-apps/cli-darwin-arm64@2.10.1':
     resolution: {integrity: sha512-Z2OjCXiZ+fbYZy7PmP3WRnOpM9+Fy+oonKDEmUE6MwN4IGaYqgceTjwHucc/kEEYZos5GICve35f7ZiizgqEnQ==}
     engines: {node: '>= 10'}
@@ -1014,8 +1011,6 @@ snapshots:
 
   '@tauri-apps/api@2.11.0': {}
 
-  '@tauri-apps/api@2.11.0': {}
-
   '@tauri-apps/cli-darwin-arm64@2.10.1':
     optional: true
 
@@ -1299,11 +1294,7 @@ snapshots:
 
   std-env@4.1.0: {}
 
-<<<<<<< HEAD
-  svelte-check@4.4.6(picomatch@4.0.4)(svelte@5.55.7(@typescript-eslint/types@8.58.0))(typescript@6.0.3):
-=======
-  svelte-check@4.4.8(picomatch@4.0.4)(svelte@5.55.5(@typescript-eslint/types@8.58.0))(typescript@6.0.3):
->>>>>>> origin/dependabot/npm_and_yarn/svelte-check-4.4.8
+  svelte-check@4.4.8(picomatch@4.0.4)(svelte@5.55.7(@typescript-eslint/types@8.58.0))(typescript@6.0.3):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       chokidar: 4.0.3
