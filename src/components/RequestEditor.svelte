@@ -15,6 +15,32 @@
 
   const dispatch = createEventDispatcher();
 
+  function autoGrow(el: HTMLTextAreaElement) {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }
+
+  // Svelte action: keeps the name textarea sized to its content. Re-measures
+  // when the bound value changes (switching requests) and when the available
+  // width changes (resizing the editor pane), so wrapping grows/shrinks the row.
+  function autosize(node: HTMLTextAreaElement, _value: string) {
+    const grow = () => autoGrow(node);
+    let lastWidth = 0;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0].contentRect.width;
+      if (w !== lastWidth) {
+        lastWidth = w;
+        grow();
+      }
+    });
+    ro.observe(node);
+    requestAnimationFrame(grow);
+    return {
+      update: grow,
+      destroy: () => ro.disconnect(),
+    };
+  }
+
   const methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE', 'CONNECT'];
 
   export let bottomTab: 'body' | 'assertions' | 'before-send' | 'after-receive' = 'body';
@@ -238,13 +264,15 @@
 <div class="editor" on:keydown={handleKeydown}>
   <!-- Request Name -->
   <div class="name-row">
-    <input
+    <textarea
       class="name-input"
-      type="text"
+      rows="1"
       value={request.name}
-      on:input={(e) => update({ name: e.currentTarget.value })}
+      on:input={(e) => { update({ name: e.currentTarget.value }); autoGrow(e.currentTarget); }}
+      on:keydown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
       placeholder="Request name"
-    />
+      use:autosize={request.name}
+    ></textarea>
     {#if dirty}
       <button class="btn-save-file" on:click={() => dispatch('save')}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -468,7 +496,7 @@
 
   .name-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-3);
   }
   .name-input {
@@ -480,10 +508,15 @@
     font-family: inherit;
     font-size: var(--text-xl);
     font-weight: var(--weight-semibold);
+    line-height: 1.3;
     outline: none;
     border-bottom: 1px solid transparent;
     transition: border-color var(--duration-normal);
     min-width: 0;
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
   .name-input:focus {
     border-bottom-color: var(--zinc-100);
