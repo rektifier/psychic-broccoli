@@ -65,6 +65,20 @@
   let showSettings = false;
   loadTheme().then(t => currentTheme = t);
 
+  // ─── MCP status (titlebar pill) ───
+  // Plain legacy `let` (not $state) so App.svelte stays in legacy mode and
+  // the `$:` reactive statements elsewhere in this file keep working.
+  let mcpRunning = false;
+  let mcpPort = 3742;
+
+  async function refreshMcpStatus() {
+    try {
+      const settings = await invoke<{ enabled: boolean; port: number; token: string }>('mcp_get_settings');
+      mcpPort = settings.port;
+      mcpRunning = await invoke<boolean>('mcp_is_running');
+    } catch {}
+  }
+
   // ─── Import Collection Modal ───
   let showImportCollectionModal = false;
 
@@ -540,6 +554,8 @@
   const mcpBridgeUnlisten = listen<BridgeRequest>('mcp:request', (event) => {
     void handleBridgeRequest(event.payload);
   });
+
+  void refreshMcpStatus();
 
   onDestroy(() => {
     unsubKv();
@@ -1580,7 +1596,7 @@
   visible={showSettings}
   currentTheme={currentTheme}
   onchangeTheme={(id) => { currentTheme = id; setTheme(id); }}
-  onclose={() => showSettings = false}
+  onclose={() => { showSettings = false; void refreshMcpStatus(); }}
 />
 <VariableInspector
   visible={showVarInspector}
@@ -1622,7 +1638,18 @@
 />
 
 <main class="app">
-  <div class="titlebar" data-tauri-drag-region></div>
+  <div class="titlebar" data-tauri-drag-region>
+    {#if mcpRunning}
+      <button
+        class="mcp-pill"
+        on:click={() => showSettings = true}
+        title="MCP server running on port {mcpPort}"
+      >
+        <span class="mcp-dot"></span>
+        MCP :{mcpPort}
+      </button>
+    {/if}
+  </div>
 
   <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
@@ -1781,10 +1808,34 @@
   }
 
   .titlebar {
-    display: flex; justify-content: space-between; align-items: center;
-    height: 28px;
+    display: flex; justify-content: flex-end; align-items: center;
+    height: 28px; padding-right: var(--space-2);
     background: var(--color-bg-sidebar); border-bottom: 1px solid var(--color-divider);
     -webkit-app-region: drag; user-select: none; flex-shrink: 0;
+  }
+  .mcp-pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    color: var(--color-primary);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono, monospace);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+    transition: background var(--duration-normal), border-color var(--duration-normal);
+  }
+  .mcp-pill:hover {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 70%, transparent);
+  }
+  .mcp-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    box-shadow: 0 0 4px var(--color-primary);
   }
   .layout { display: flex; flex: 1; overflow: hidden; }
 
