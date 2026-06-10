@@ -750,6 +750,27 @@ interface PbEvalContext {
  *   pb.response.body.$.name != null
  *   pb.response.body.$.items.length > 0
  */
+/**
+ * Find the first occurrence of `op` in `s` that is outside of any
+ * single- or double-quoted string literal. Returns -1 if not found.
+ */
+function findTopLevelOperator(s: string, op: string): number {
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (s.startsWith(op, i)) return i;
+  }
+  return -1;
+}
+
 export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown {
   // Resolve {{variable}} references inline before evaluation
   let trimmed = expr.trim();
@@ -766,10 +787,25 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
     return ctx.variables[name] ?? `{{${name}}}`;
   });
 
+  // ── Logical operators (||, &&) ──
+  // Split on these before comparisons so `a == 1 || b == 2` parses as
+  // `(a == 1) || (b == 2)`. `||` first: it binds loosest, so
+  // `a && b || c && d` parses as `(a && b) || (c && d)`.
+  const orIdx = findTopLevelOperator(trimmed, '||');
+  if (orIdx !== -1) {
+    return evaluatePbExpression(trimmed.slice(0, orIdx), ctx) ||
+           evaluatePbExpression(trimmed.slice(orIdx + 2), ctx);
+  }
+  const andIdx = findTopLevelOperator(trimmed, '&&');
+  if (andIdx !== -1) {
+    return evaluatePbExpression(trimmed.slice(0, andIdx), ctx) &&
+           evaluatePbExpression(trimmed.slice(andIdx + 2), ctx);
+  }
+
   // ── Comparison operators ──
   const compOps = ['==', '!=', '>=', '<=', '>', '<', ' contains ', ' startsWith ', ' endsWith '] as const;
   for (const op of compOps) {
-    const idx = trimmed.indexOf(op);
+    const idx = findTopLevelOperator(trimmed, op);
     if (idx !== -1) {
       const left = evaluatePbExpression(trimmed.slice(0, idx), ctx);
       const right = evaluatePbExpression(trimmed.slice(idx + op.length), ctx);
@@ -787,18 +823,6 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
         case 'endsWith': return leftStr.endsWith(rightStr);
       }
     }
-  }
-
-  // ── Logical operators (&&, ||) ──
-  const andIdx = trimmed.indexOf('&&');
-  if (andIdx !== -1) {
-    return evaluatePbExpression(trimmed.slice(0, andIdx), ctx) &&
-           evaluatePbExpression(trimmed.slice(andIdx + 2), ctx);
-  }
-  const orIdx = trimmed.indexOf('||');
-  if (orIdx !== -1) {
-    return evaluatePbExpression(trimmed.slice(0, orIdx), ctx) ||
-           evaluatePbExpression(trimmed.slice(orIdx + 2), ctx);
   }
 
   // ── Negation ──

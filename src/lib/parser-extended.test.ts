@@ -509,6 +509,35 @@ describe('evaluatePbExpression', () => {
   it('resolves {{variable}} references in expressions', () => {
     expect(evaluatePbExpression('{{myVar}}', ctx)).toBe('hello');
   });
+
+  const ctx404 = { ...ctx, response: { ...mockResponse, status: 404 } };
+
+  it('evaluates comparisons combined with && (range check)', () => {
+    expect(evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', ctx)).toBe(true);
+    expect(evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', ctx404)).toBe(false);
+  });
+
+  it('evaluates comparisons combined with ||', () => {
+    expect(evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', ctx)).toBe(true);
+    expect(evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', ctx404)).toBe(false);
+  });
+
+  it('gives && higher precedence than ||', () => {
+    // (404-check && true) || 200-check → false || true → true
+    expect(
+      evaluatePbExpression('pb.response.status == 404 && true || pb.response.status == 200', ctx)
+    ).toBe(true);
+    expect(
+      evaluatePbExpression('pb.response.status == 404 && true || pb.response.status == 200', ctx404)
+    ).toBe(true);
+  });
+
+  it('ignores operators inside string literals', () => {
+    expect(evaluatePbExpression('pb.response.body.$.token == "a==b"', ctx)).toBe(false);
+    expect(evaluatePbExpression('"a==b" == "a==b"', ctx)).toBe(true);
+    expect(evaluatePbExpression('pb.response.body.$.token contains "&&"', ctx)).toBe(false);
+    expect(evaluatePbExpression('"x&&y" contains "&&"', ctx)).toBe(true);
+  });
 });
 
 // ─── executePbDirectives ────────────────────────────────────────────────────
