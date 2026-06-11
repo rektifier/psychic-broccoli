@@ -51,6 +51,44 @@ fn is_blocked_ip(ip: &IpAddr) -> bool {
     }
 }
 
+const BLOCKED_ADDR_MSG: &str =
+    "Requests to this address are blocked (link-local, broadcast, or unspecified)";
+
+/// Reject a DNS resolution if it is empty or contains any blocked address.
+/// Blocking when *any* resolved IP is blocked prevents an attacker-controlled
+/// DNS record from smuggling a blocked address in among safe ones.
+fn check_resolved_addrs(addrs: &[SocketAddr]) -> Result<(), String> {
+    if addrs.is_empty() {
+        return Err("Host resolved to no addresses".to_string());
+    }
+    for sa in addrs {
+        if is_blocked_ip(&sa.ip()) {
+            return Err(BLOCKED_ADDR_MSG.to_string());
+        }
+    }
+    Ok(())
+}
+
+/// DNS resolver that enforces the IP blocklist on every resolved address.
+/// reqwest consults DNS for the initial request and for each redirect hop, so
+/// this blocks redirects to hostnames whose DNS records point into a blocked
+/// range (the redirect policy can only inspect IP-literal hosts) and closes
+/// the TOCTOU window between URL validation and connection.
+struct BlocklistDnsResolver;
+
+impl reqwest::dns::Resolve for BlocklistDnsResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
+                .await?
+                .collect();
+            check_resolved_addrs(&addrs)?;
+            Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
 /// Validate that a URL is safe to request: correct scheme and non-private host.
 /// Returns the validated (host, resolved IPs) pair so the caller can pin the
 /// DNS resolution and prevent TOCTOU attacks.
@@ -72,7 +110,7 @@ async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String
     // (link-local/cloud metadata, broadcast, unspecified, CGNAT).
     if let Ok(ip) = host.parse::<IpAddr>() {
         if is_blocked_ip(&ip) {
-            return Err("Requests to this address are blocked (link-local, broadcast, or unspecified)".to_string());
+            return Err(BLOCKED_ADDR_MSG.to_string());
         }
         return Ok((host, vec![SocketAddr::new(ip, port)]));
     }
@@ -83,21 +121,15 @@ async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String
         .map_err(|_| "Failed to resolve host".to_string())?
         .collect();
 
-    if resolved.is_empty() {
-        return Err("Host resolved to no addresses".to_string());
-    }
-
-    for sa in &resolved {
-        if is_blocked_ip(&sa.ip()) {
-            return Err("Requests to this address are blocked (link-local, broadcast, or unspecified)".to_string());
-        }
-    }
+    check_resolved_addrs(&resolved)?;
 
     Ok((host, resolved))
 }
 
 /// Custom redirect policy that re-validates each redirect target URL to
-/// prevent SSRF via open redirect chains.
+/// prevent SSRF via open redirect chains. The policy closure is synchronous,
+/// so it can only check IP-literal hosts here; hostname targets are checked
+/// at resolution time by `BlocklistDnsResolver`.
 fn ssrf_safe_redirect_policy() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() >= MAX_REDIRECTS {
@@ -124,10 +156,13 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
     let (host, resolved_addrs) = validate_url(&payload.url).await?;
 
     // Pin the DNS resolution we already validated to prevent TOCTOU attacks
-    // where a second lookup could return a different (private) IP.
+    // where a second lookup could return a different (private) IP. Hosts not
+    // pinned here (i.e. redirect targets) resolve through BlocklistDnsResolver,
+    // which enforces the same blocklist on every resolved address.
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .redirect(ssrf_safe_redirect_policy());
+        .redirect(ssrf_safe_redirect_policy())
+        .dns_resolver(BlocklistDnsResolver);
 
     for sa in &resolved_addrs {
         builder = builder.resolve(&host, *sa);
@@ -483,5 +518,42 @@ mod tests {
     async fn validate_url_rejects_non_http_scheme() {
         let res = validate_url("ftp://example.com/").await;
         assert!(res.is_err());
+    }
+
+    fn sa(s: &str) -> SocketAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn check_resolved_addrs_allows_loopback_and_public() {
+        assert!(check_resolved_addrs(&[sa("127.0.0.1:80")]).is_ok());
+        assert!(check_resolved_addrs(&[sa("1.1.1.1:443"), sa("192.168.1.10:443")]).is_ok());
+    }
+
+    #[test]
+    fn check_resolved_addrs_blocks_metadata() {
+        assert!(check_resolved_addrs(&[sa("169.254.169.254:80")]).is_err());
+        // A single blocked address among safe ones must fail the whole resolution
+        assert!(check_resolved_addrs(&[sa("1.1.1.1:80"), sa("169.254.169.254:80")]).is_err());
+        assert!(check_resolved_addrs(&[sa("[fe80::1]:80")]).is_err());
+        assert!(check_resolved_addrs(&[sa("100.64.0.1:80")]).is_err());
+    }
+
+    #[test]
+    fn check_resolved_addrs_rejects_empty() {
+        assert!(check_resolved_addrs(&[]).is_err());
+    }
+
+    #[tokio::test]
+    async fn blocklist_resolver_resolves_localhost() {
+        use reqwest::dns::Resolve;
+        let name: reqwest::dns::Name = "localhost".parse().unwrap();
+        let addrs: Vec<SocketAddr> = BlocklistDnsResolver
+            .resolve(name)
+            .await
+            .expect("localhost should resolve")
+            .collect();
+        assert!(!addrs.is_empty());
+        assert!(addrs.iter().all(|a| a.ip().is_loopback()));
     }
 }
