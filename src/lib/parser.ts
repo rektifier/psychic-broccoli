@@ -78,7 +78,8 @@ export interface ParseResult {
  *
  * Supports the full Visual Studio / VS Code REST Client syntax:
  *   - ### separators with optional names
- *   - # and // comments
+ *   - # and // comments (outside bodies; inside a body they are kept as
+ *     content unless they match a directive: # @name, # @pb.*, or ###)
  *   - # @name / // @name request variable naming
  *   - @variable = value declarations (can reference earlier variables)
  *   - {{variable}} substitution
@@ -186,8 +187,9 @@ export function parseHttpFile(content: string): ParseResult {
       continue;
     }
 
-    // ── Comment lines (# or //) — skip ──
-    if (COMMENT_RE.test(line)) {
+    // ── Comment lines (# or //) — skip, unless inside a body where they
+    //    are content (directives above are still handled first) ──
+    if (!inBody && COMMENT_RE.test(line)) {
       continue;
     }
 
