@@ -506,6 +506,59 @@ describe('evaluatePbExpression', () => {
     expect(evaluatePbExpression('!true', ctx)).toBe(false);
   });
 
+  it('evaluates comparison combined with && (range check)', () => {
+    // status 200 is within [200, 300)
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', ctx)
+    ).toBe(true);
+
+    const notOk = { ...ctx, response: { ...mockResponse, status: 404 } };
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', notOk)
+    ).toBe(false);
+
+    const noContent = { ...ctx, response: { ...mockResponse, status: 204 } };
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', noContent)
+    ).toBe(true);
+  });
+
+  it('evaluates comparison combined with || (created-or-ok check)', () => {
+    // status 200 satisfies the left branch
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', ctx)
+    ).toBe(true);
+
+    const created = { ...ctx, response: { ...mockResponse, status: 201 } };
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', created)
+    ).toBe(true);
+
+    const serverError = { ...ctx, response: { ...mockResponse, status: 500 } };
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', serverError)
+    ).toBe(false);
+  });
+
+  it('respects && binding tighter than || in mixed expressions', () => {
+    // (false && X) || (true) => true; a naive first-operator split would mis-handle this
+    expect(
+      evaluatePbExpression(
+        'pb.response.status == 404 && pb.response.status == 200 || pb.response.status == 200',
+        ctx
+      )
+    ).toBe(true);
+  });
+
+  it('ignores comparison operators inside string literals', () => {
+    const eq = {
+      ...ctx,
+      response: { ...mockResponse, body: '{"msg":"a==b"}' },
+    };
+    expect(evaluatePbExpression('pb.response.body.$.msg == "a==b"', eq)).toBe(true);
+    expect(evaluatePbExpression('pb.response.body.$.msg == "a!=b"', eq)).toBe(false);
+  });
+
   it('resolves {{variable}} references in expressions', () => {
     expect(evaluatePbExpression('{{myVar}}', ctx)).toBe('hello');
   });
