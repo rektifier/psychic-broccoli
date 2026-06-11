@@ -1,0 +1,63 @@
+@baseUrl = https://httpbin.org
+
+// Not every API speaks JSON. The request body is sent verbatim as text,
+// so any format works - you just set the matching Content-Type header.
+// httpbin /post echoes the body back so we can assert on what it received.
+
+### Form URL-encoded
+// Classic HTML form posts. Fields are key=value pairs joined by &.
+// httpbin parses these into a "form" object.
+# @name formUrlEncoded
+POST {{baseUrl}}/post
+Content-Type: application/x-www-form-urlencoded
+
+username=ada&role=admin&active=true
+
+# @pb.assert(pb.response.status == 200, "Form accepted")
+# @pb.assert(pb.response.body.$.form.username == "ada", "Username parsed")
+# @pb.assert(pb.response.body.$.form.role == "admin", "Role parsed")
+
+### GraphQL query
+// GraphQL is just a JSON POST with a "query" string (and optional
+// "variables"). Point this at your GraphQL endpoint in real use.
+# @name graphqlQuery
+POST {{baseUrl}}/post
+Content-Type: application/json
+
+{
+  "query": "query GetUser($id: ID!) { user(id: $id) { name email } }",
+  "variables": { "id": "1" }
+}
+
+# @pb.assert(pb.response.status == 200, "Query sent")
+# @pb.assert(pb.response.body.$.json.query contains "GetUser", "Query body received")
+# @pb.assert(pb.response.body.$.json.variables.id == "1", "Variables received")
+
+### Plain text
+// Some endpoints accept raw text. Set text/plain and write the body as-is.
+# @name plainText
+POST {{baseUrl}}/post
+Content-Type: text/plain
+
+The quick brown fox jumps over the lazy dog.
+
+# @pb.assert(pb.response.status == 200, "Text accepted")
+# @pb.assert(pb.response.body.$.data == "The quick brown fox jumps over the lazy dog.", "Body echoed verbatim")
+
+### XML
+// SOAP and legacy APIs often use XML. It is sent as plain text too.
+# @name xmlBody
+POST {{baseUrl}}/post
+Content-Type: application/xml
+
+<note>
+  <to>Ada</to>
+  <from>Grace</from>
+  <body>Ship it.</body>
+</note>
+
+# @pb.assert(pb.response.status == 200, "XML accepted")
+// Note: avoid < and > inside an assertion string - they are read as
+// comparison operators. Match on the tag name instead.
+# @pb.assert(pb.response.body.$.data contains "note", "XML body received")
+# @pb.assert(pb.response.body.$.data contains "Grace", "XML content preserved")

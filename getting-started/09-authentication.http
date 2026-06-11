@@ -1,0 +1,45 @@
+@baseUrl = https://httpbin.org
+
+// Authentication is just headers (or query params). There is no special
+// syntax - you set the header and Psychic Broccoli sends it. Keep real
+// secrets in http-client.env.json.user (gitignored), not in the .http file.
+
+### Bearer token
+// The most common scheme: Authorization: Bearer <token>.
+// httpbin /bearer echoes back the token it received.
+# @name bearerAuth
+GET {{baseUrl}}/bearer
+Authorization: Bearer my-secret-token
+
+# @pb.assert(pb.response.status == 200, "Bearer accepted")
+# @pb.assert(pb.response.body.$.authenticated == true, "Authenticated")
+# @pb.assert(pb.response.body.$.token == "my-secret-token", "Token echoed back")
+
+### Basic auth
+// Authorization: Basic <base64(user:password)>.
+// "user:passwd" base64-encoded is dXNlcjpwYXNzd2Q=.
+// httpbin /basic-auth/<user>/<passwd> validates the credentials.
+# @name basicAuth
+GET {{baseUrl}}/basic-auth/user/passwd
+Authorization: Basic dXNlcjpwYXNzd2Q=
+
+# @pb.assert(pb.response.status == 200, "Credentials accepted")
+# @pb.assert(pb.response.body.$.authenticated == true, "Authenticated")
+# @pb.assert(pb.response.body.$.user == "user", "Correct user")
+
+### API key in a header
+// Many APIs use a custom header instead of Authorization.
+// httpbin /headers echoes every header it received.
+# @name apiKeyHeader
+GET {{baseUrl}}/headers
+X-Api-Key: 9f8c2b1e-demo-key
+
+# @pb.assert(pb.response.status == 200, "Request succeeded")
+
+### API key in a query parameter
+// Some APIs expect the key in the URL. httpbin /get echoes query args.
+# @name apiKeyQuery
+GET {{baseUrl}}/get?api_key=9f8c2b1e-demo-key
+
+# @pb.assert(pb.response.status == 200, "Request succeeded")
+# @pb.assert(pb.response.body.$.args.api_key == "9f8c2b1e-demo-key", "Key received as query arg")
