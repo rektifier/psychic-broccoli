@@ -98,7 +98,7 @@ The [`getting-started/`](getting-started/) folder contains a hands-on tutorial t
 7. **Scripting** - `@pb.set`, `@pb.global`, and before/after hooks
 8. **Everything Together** - a full CRUD workflow combining all of the above
 
-The folder also includes an `http-client.env.json` with dev, staging, and production environments, and two test flows under `flows/` that run the tutorials as automated pipelines.
+The folder also includes an `http-client.env.json` with dev, staging, and production environments, and two test flows under `.flows/` that run the tutorials as automated pipelines.
 
 ---
 
@@ -266,16 +266,18 @@ Use the **Test Flows** section in the sidebar to create a new flow. Add steps by
 
 ### Flow File Format
 
-Flows are stored as `.pb-flow.json` files in a `flows/` subdirectory at the workspace root:
+Flows are stored as `.pb-flow.json` files in a `.flows/` subdirectory at the workspace root:
 
 ```
 workspace/
-├── flows/
+├── .flows/
 │   ├── login-and-fetch.pb-flow.json
 │   └── .results/          # Run history (auto-managed)
 ├── api.http
 └── http-client.env.json
 ```
+
+A legacy `flows/` directory from older versions is automatically renamed to `.flows/` when the workspace is opened.
 
 ### Variable Chaining Between Steps
 
@@ -311,7 +313,7 @@ A step fails when the HTTP status is ≥ 400 or any `@pb.assert` directive fails
 
 ### Run History
 
-Results are persisted under `flows/.results/` and accessible from the flow editor. History is auto-pruned to the 50 most recent runs per flow.
+Results are persisted under `.flows/.results/` and accessible from the flow editor. History is auto-pruned to the 20 most recent runs per flow.
 
 ### Broken Reference Detection
 

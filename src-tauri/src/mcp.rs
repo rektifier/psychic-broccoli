@@ -557,7 +557,7 @@ fn tool_schemas() -> serde_json::Value {
                 "properties": {
                     "flowFilePath": {
                         "type": "string",
-                        "description": "Workspace-relative path to the .pb-flow.json flow file (e.g. 'flows/login.pb-flow.json')."
+                        "description": "Workspace-relative path to the .pb-flow.json flow file (e.g. '.flows/login.pb-flow.json')."
                     },
                     "environment": {
                         "type": "string",
@@ -1010,7 +1010,7 @@ mod tests {
             "method": "tools/call",
             "params": {
                 "name": "execute_flow",
-                "arguments": { "flowFilePath": "flows/x.pb-flow.json", "environment": 5 }
+                "arguments": { "flowFilePath": ".flows/x.pb-flow.json", "environment": 5 }
             }
         });
         let resp = handle_tool_call(&msg, &state).await.unwrap();
