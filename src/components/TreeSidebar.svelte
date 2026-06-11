@@ -24,6 +24,10 @@
   export let flows: Record<string, FlowDefinition> = {};
   export let activeFlowPath: string | null = null;
 
+  // Favorites props
+  export let favorites: string[] = [];
+  export let rootPath: string | null = null;
+
   const dispatch = createEventDispatcher();
 
   let displayMode: 'name' | 'url' = 'name';
@@ -35,6 +39,13 @@
   let sortByUrl = false;
   let filterText = '';
   let filterInputEl: HTMLInputElement;
+  let showFavorites = false;
+  $: isFavorite = !!rootPath && favorites.includes(rootPath);
+
+  function favName(p: string): string {
+    const parts = p.split(/[\\/]/).filter(Boolean);
+    return parts[parts.length - 1] || p;
+  }
   function filterTree(nodes: TNode[], query: string): TNode[] {
     const q = query.toLowerCase();
     const result: TNode[] = [];
@@ -87,6 +98,8 @@
   }
 </script>
 
+<svelte:window on:keydown={(e) => { if (e.key === 'Escape' && showFavorites) showFavorites = false; }} />
+
 <aside class="tree-sidebar">
   <!-- Root folder button -->
   <div class="section root-section">
@@ -98,6 +111,33 @@
         <span class="root-name">{rootName}</span>
       </button>
       <button
+        class="btn-star"
+        class:active={isFavorite}
+        class:disabled={!hasWorkspace}
+        on:click={() => { if (hasWorkspace) dispatch('toggleFavorite'); }}
+        title={!hasWorkspace ? 'Open a folder first' : isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+      >
+        {#if isFavorite}
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1.5l1.85 3.75 4.15.6-3 2.93.71 4.13L8 11.46l-3.71 1.95.71-4.13-3-2.93 4.15-.6L8 1.5z"/>
+          </svg>
+        {:else}
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+            <path d="M8 1.5l1.85 3.75 4.15.6-3 2.93.71 4.13L8 11.46l-3.71 1.95.71-4.13-3-2.93 4.15-.6L8 1.5z" stroke-linejoin="round"/>
+          </svg>
+        {/if}
+      </button>
+      <button
+        class="btn-favorites"
+        on:click={() => { showFavorites = !showFavorites; }}
+        title="Favorites"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4h9M2 8h9M2 12h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <path d="M11.5 10l2 2.2 2-2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button
         class="btn-import"
         class:disabled={!hasWorkspace}
         on:click={() => { if (hasWorkspace) dispatch('importCollection'); }}
@@ -107,6 +147,46 @@
           <path d="M8 2v8M5 7l3 3 3-3M3 12v1a1 1 0 001 1h8a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+
+      {#if showFavorites}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="favorites-backdrop"
+          on:click={() => showFavorites = false}
+          on:keydown={(e) => { if (e.key === 'Escape') showFavorites = false; }}
+          role="button"
+          tabindex="-1"
+          aria-label="Close favorites"
+        ></div>
+        <div class="favorites-dropdown">
+          <div class="favorites-dropdown-header">Favorites</div>
+          {#if favorites.length === 0}
+            <div class="favorites-empty">No favorites yet</div>
+          {:else}
+            {#each favorites as path}
+              <div class="favorite-item" class:current={path === rootPath}>
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                  class="favorite-open"
+                  on:click={() => { dispatch('openFavorite', path); showFavorites = false; }}
+                  on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('openFavorite', path); showFavorites = false; } }}
+                  role="button"
+                  tabindex="0"
+                  title={path}
+                >
+                  <span class="favorite-name">{favName(path)}</span>
+                  <span class="favorite-path">{path}</span>
+                </div>
+                <button
+                  class="btn-remove-fav"
+                  on:click|stopPropagation={() => dispatch('removeFavorite', path)}
+                  title="Remove from favorites"
+                >&times;</button>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -393,6 +473,7 @@
     display: flex;
     gap: var(--space-1\.5);
     align-items: center;
+    position: relative;
   }
   .root-btn {
     display: flex;
@@ -443,6 +524,136 @@
   .btn-var-inspector.disabled:hover,
   .btn-display-mode.disabled:hover {
     border-color: var(--color-border); color: var(--slate-350); background: transparent;
+  }
+
+  /* Favorites */
+  .btn-star,
+  .btn-favorites {
+    width: 30px; height: 30px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: transparent;
+    color: var(--slate-350);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--duration-normal);
+    padding: 0;
+  }
+  .btn-star:hover,
+  .btn-favorites:hover {
+    border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+  .btn-star.active {
+    color: #e0a000;
+  }
+  .btn-star.active:hover {
+    border-color: #e0a000; color: #e0a000; background: color-mix(in srgb, #e0a000 8%, transparent);
+  }
+  .btn-star.disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .btn-star.disabled:hover {
+    border-color: var(--color-border); color: var(--slate-350); background: transparent;
+  }
+
+  .favorites-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: default;
+  }
+  .favorites-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: var(--space-1);
+    z-index: 50;
+    min-width: 240px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    padding: var(--space-1);
+  }
+  .favorites-dropdown-header {
+    padding: var(--space-1\.5) var(--space-2) var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .favorites-empty {
+    padding: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-faint);
+  }
+  .favorite-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    border-radius: var(--radius-sm);
+    transition: background var(--duration-fast);
+  }
+  .favorite-item:hover {
+    background: var(--color-bg-muted);
+  }
+  .favorite-item.current {
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    border-left: 2px solid var(--color-primary);
+  }
+  .favorite-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: var(--space-1\.5) var(--space-2);
+    cursor: pointer;
+    text-align: left;
+  }
+  .favorite-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text);
+  }
+  .favorite-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
+  }
+  .btn-remove-fav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px; height: 20px;
+    margin-right: var(--space-1);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    font-size: var(--text-lg);
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+  }
+  .btn-remove-fav:hover {
+    background: color-mix(in srgb, var(--color-error) 9%, transparent);
+    color: var(--color-error);
   }
 
   /* Environment */
