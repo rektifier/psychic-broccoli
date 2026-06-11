@@ -12,7 +12,7 @@
   import TabBar from './components/TabBar.svelte';
   import FlowEditor from './components/FlowEditor.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
-  import { loadTheme, setTheme, type ThemeId } from './lib/theme';
+  import { loadTheme, setTheme, loadFavorites, saveFavorites, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
     workspace, selectedLocation, currentResponse, isLoading,
@@ -28,6 +28,7 @@
     cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
     flows, flowRunHistory, flowRunState, flowTabs, activeFlowTabPath,
     openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
+    favorites,
   } from './lib/stores';
   import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
@@ -64,6 +65,7 @@
   let currentTheme: ThemeId = 'default';
   let showSettings = false;
   loadTheme().then(t => currentTheme = t);
+  loadFavorites().then(f => favorites.set(f));
 
   // ─── MCP status (titlebar pill) ───
   // Plain legacy `let` (not $state) so App.svelte stays in legacy mode and
@@ -689,6 +691,39 @@
       await openFolderByPath(rootPath as string);
     } catch (e: any) {
       addToast(`Failed to open folder: ${e.message || e}`, 'error');
+    }
+  }
+
+  // ─── Favorites ───
+
+  /** Toggle the currently open workspace folder in/out of the favorites list. */
+  function toggleFavorite() {
+    const rootPath = get(workspace).rootPath;
+    if (!rootPath) return;
+    favorites.update(list => {
+      const next = list.includes(rootPath)
+        ? list.filter(p => p !== rootPath)
+        : [...list, rootPath];
+      saveFavorites(next);
+      return next;
+    });
+  }
+
+  /** Remove a path from the favorites list. */
+  function removeFavorite(path: string) {
+    favorites.update(list => {
+      const next = list.filter(p => p !== path);
+      saveFavorites(next);
+      return next;
+    });
+  }
+
+  /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
+  async function openFavorite(path: string) {
+    try {
+      await openFolderByPath(path);
+    } catch (e: any) {
+      addToast(`Could not open favorite "${path}": ${e.message || e}`, 'error');
     }
   }
 
@@ -1658,6 +1693,8 @@
         selected={$selectedLocation}
         rootName={$workspace.rootName}
         hasWorkspace={!!$workspace.rootPath}
+        rootPath={$workspace.rootPath}
+        favorites={$favorites}
         editingFilePath={$editingFilePath}
         editingFolderPath={$editingFolderPath}
         environments={$availableEnvironments}
@@ -1666,6 +1703,9 @@
         activeFlowPath={$activeFlowTabPath}
         on:openFolder={openFolder}
         on:openGettingStarted={openGettingStarted}
+        on:toggleFavorite={toggleFavorite}
+        on:openFavorite={(e) => openFavorite(e.detail)}
+        on:removeFavorite={(e) => removeFavorite(e.detail)}
         on:importCollection={() => showImportCollectionModal = true}
         on:select={handleSelect}
         on:pinRequest={handlePinRequest}

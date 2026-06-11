@@ -20,6 +20,9 @@ export const workspace = writable<Workspace>({
 /** Currently selected request location (file path + request index). */
 export const selectedLocation = writable<RequestLocation | null>(null);
 
+/** Favorited workspace folder paths (absolute), in insertion order. Persisted in settings.json. */
+export const favorites = writable<string[]>([]);
+
 /** The active response (from the last executed request). */
 export const currentResponse = writable<HttpResponse | null>(null);
 

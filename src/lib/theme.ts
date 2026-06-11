@@ -37,6 +37,8 @@ const SETTINGS_FILE = 'settings.json';
 
 interface Settings {
   theme?: ThemeId;
+  /** Absolute paths of favorited workspace folders, in insertion order. */
+  favorites?: string[];
 }
 
 async function getSettingsPath(): Promise<string> {
@@ -87,4 +89,21 @@ export async function loadTheme(): Promise<ThemeId> {
   const themeId = settings.theme && THEMES.some(t => t.id === settings.theme) ? settings.theme : 'default';
   applyTheme(themeId);
   return themeId;
+}
+
+/* ---- Favorites ---- */
+
+/** Load the list of favorited workspace folder paths. */
+export async function loadFavorites(): Promise<string[]> {
+  const settings = await readSettings();
+  const favorites = settings.favorites;
+  if (!Array.isArray(favorites)) return [];
+  // Dedupe while preserving insertion order.
+  return [...new Set(favorites.filter((p): p is string => typeof p === 'string'))];
+}
+
+/** Persist the list of favorited workspace folder paths. */
+export async function saveFavorites(favorites: string[]): Promise<void> {
+  const settings = await readSettings();
+  await writeSettings({ ...settings, favorites });
 }
