@@ -562,6 +562,14 @@ describe('evaluatePbExpression', () => {
   it('resolves {{variable}} references in expressions', () => {
     expect(evaluatePbExpression('{{myVar}}', ctx)).toBe('hello');
   });
+
+  it('ignores logical operators and literal-to-literal comparisons inside quotes', () => {
+    // token is "abc": comparison/contains operators inside the quoted RHS must not split the expression
+    expect(evaluatePbExpression('pb.response.body.$.token == "a==b"', ctx)).toBe(false);
+    expect(evaluatePbExpression('"a==b" == "a==b"', ctx)).toBe(true);
+    expect(evaluatePbExpression('pb.response.body.$.token contains "&&"', ctx)).toBe(false);
+    expect(evaluatePbExpression('"x&&y" contains "&&"', ctx)).toBe(true);
+  });
 });
 
 // ─── executePbDirectives ────────────────────────────────────────────────────
