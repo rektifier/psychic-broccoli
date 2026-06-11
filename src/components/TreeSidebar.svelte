@@ -40,7 +40,17 @@
   let filterText = '';
   let filterInputEl: HTMLInputElement;
   let showFavorites = false;
+  let favBtnEl: HTMLButtonElement;
+  let favMenuPos = { top: 0, left: 0 };
   $: isFavorite = !!rootPath && favorites.includes(rootPath);
+
+  function toggleFavorites() {
+    showFavorites = !showFavorites;
+    if (showFavorites && favBtnEl) {
+      const r = favBtnEl.getBoundingClientRect();
+      favMenuPos = { top: r.bottom + 4, left: r.left };
+    }
+  }
 
   function favName(p: string): string {
     const parts = p.split(/[\\/]/).filter(Boolean);
@@ -129,7 +139,8 @@
       </button>
       <button
         class="btn-favorites"
-        on:click={() => { showFavorites = !showFavorites; }}
+        bind:this={favBtnEl}
+        on:click={toggleFavorites}
         title="Favorites"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -158,7 +169,7 @@
           tabindex="-1"
           aria-label="Close favorites"
         ></div>
-        <div class="favorites-dropdown">
+        <div class="favorites-dropdown" style="top: {favMenuPos.top}px; left: {favMenuPos.left}px;">
           <div class="favorites-dropdown-header">Favorites</div>
           {#if favorites.length === 0}
             <div class="favorites-empty">No favorites yet</div>
@@ -570,12 +581,10 @@
     cursor: default;
   }
   .favorites-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: var(--space-1);
+    position: fixed;
     z-index: 50;
     min-width: 240px;
+    max-width: min(420px, 90vw);
     max-height: 280px;
     overflow-y: auto;
     background: var(--color-bg-surface);
