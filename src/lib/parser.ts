@@ -751,13 +751,15 @@ interface PbEvalContext {
  *   pb.response.body.$.items.length > 0
  */
 /**
- * Find the first occurrence of `op` in `s` that is outside of any
- * single- or double-quoted string literal. Returns -1 if not found.
+ * Find the first index of `op` in `str` that lies outside of any single- or
+ * double-quoted string literal. Returns -1 if `op` only appears inside quotes
+ * (or not at all). Used so logical/comparison operators inside string literals
+ * (e.g. `body.$.msg == "a==b"`) are not mistaken for real operators.
  */
-function findTopLevelOperator(s: string, op: string): number {
-  let quote: '"' | "'" | null = null;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
+function indexOfOutsideQuotes(str: string, op: string): number {
+  let quote: string | null = null;
+  for (let i = 0; i <= str.length - op.length; i++) {
+    const ch = str[i];
     if (quote) {
       if (ch === quote) quote = null;
       continue;
@@ -766,7 +768,7 @@ function findTopLevelOperator(s: string, op: string): number {
       quote = ch;
       continue;
     }
-    if (s.startsWith(op, i)) return i;
+    if (str.startsWith(op, i)) return i;
   }
   return -1;
 }
@@ -788,15 +790,15 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
   });
 
   // ── Logical operators (||, &&) ──
-  // Split on these before comparisons so `a == 1 || b == 2` parses as
-  // `(a == 1) || (b == 2)`. `||` first: it binds loosest, so
-  // `a && b || c && d` parses as `(a && b) || (c && d)`.
-  const orIdx = findTopLevelOperator(trimmed, '||');
+  // Split logical operators before comparisons so that precedence is correct:
+  // `||` binds loosest (split first), then `&&`, then comparison operators.
+  // Operator scanning is quote-aware so operators inside string literals are ignored.
+  const orIdx = indexOfOutsideQuotes(trimmed, '||');
   if (orIdx !== -1) {
     return evaluatePbExpression(trimmed.slice(0, orIdx), ctx) ||
            evaluatePbExpression(trimmed.slice(orIdx + 2), ctx);
   }
-  const andIdx = findTopLevelOperator(trimmed, '&&');
+  const andIdx = indexOfOutsideQuotes(trimmed, '&&');
   if (andIdx !== -1) {
     return evaluatePbExpression(trimmed.slice(0, andIdx), ctx) &&
            evaluatePbExpression(trimmed.slice(andIdx + 2), ctx);
@@ -805,7 +807,7 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
   // ── Comparison operators ──
   const compOps = ['==', '!=', '>=', '<=', '>', '<', ' contains ', ' startsWith ', ' endsWith '] as const;
   for (const op of compOps) {
-    const idx = findTopLevelOperator(trimmed, op);
+    const idx = indexOfOutsideQuotes(trimmed, op);
     if (idx !== -1) {
       const left = evaluatePbExpression(trimmed.slice(0, idx), ctx);
       const right = evaluatePbExpression(trimmed.slice(idx + op.length), ctx);

@@ -506,33 +506,65 @@ describe('evaluatePbExpression', () => {
     expect(evaluatePbExpression('!true', ctx)).toBe(false);
   });
 
+  it('evaluates comparison combined with && (range check)', () => {
+    // status 200 is within [200, 300)
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', ctx)
+    ).toBe(true);
+
+    const notOk = { ...ctx, response: { ...mockResponse, status: 404 } };
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', notOk)
+    ).toBe(false);
+
+    const noContent = { ...ctx, response: { ...mockResponse, status: 204 } };
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', noContent)
+    ).toBe(true);
+  });
+
+  it('evaluates comparison combined with || (created-or-ok check)', () => {
+    // status 200 satisfies the left branch
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', ctx)
+    ).toBe(true);
+
+    const created = { ...ctx, response: { ...mockResponse, status: 201 } };
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', created)
+    ).toBe(true);
+
+    const serverError = { ...ctx, response: { ...mockResponse, status: 500 } };
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', serverError)
+    ).toBe(false);
+  });
+
+  it('respects && binding tighter than || in mixed expressions', () => {
+    // (false && X) || (true) => true; a naive first-operator split would mis-handle this
+    expect(
+      evaluatePbExpression(
+        'pb.response.status == 404 && pb.response.status == 200 || pb.response.status == 200',
+        ctx
+      )
+    ).toBe(true);
+  });
+
+  it('ignores comparison operators inside string literals', () => {
+    const eq = {
+      ...ctx,
+      response: { ...mockResponse, body: '{"msg":"a==b"}' },
+    };
+    expect(evaluatePbExpression('pb.response.body.$.msg == "a==b"', eq)).toBe(true);
+    expect(evaluatePbExpression('pb.response.body.$.msg == "a!=b"', eq)).toBe(false);
+  });
+
   it('resolves {{variable}} references in expressions', () => {
     expect(evaluatePbExpression('{{myVar}}', ctx)).toBe('hello');
   });
 
-  const ctx404 = { ...ctx, response: { ...mockResponse, status: 404 } };
-
-  it('evaluates comparisons combined with && (range check)', () => {
-    expect(evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', ctx)).toBe(true);
-    expect(evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', ctx404)).toBe(false);
-  });
-
-  it('evaluates comparisons combined with ||', () => {
-    expect(evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', ctx)).toBe(true);
-    expect(evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', ctx404)).toBe(false);
-  });
-
-  it('gives && higher precedence than ||', () => {
-    // (404-check && true) || 200-check → false || true → true
-    expect(
-      evaluatePbExpression('pb.response.status == 404 && true || pb.response.status == 200', ctx)
-    ).toBe(true);
-    expect(
-      evaluatePbExpression('pb.response.status == 404 && true || pb.response.status == 200', ctx404)
-    ).toBe(true);
-  });
-
-  it('ignores operators inside string literals', () => {
+  it('ignores logical operators and literal-to-literal comparisons inside quotes', () => {
+    // token is "abc": comparison/contains operators inside the quoted RHS must not split the expression
     expect(evaluatePbExpression('pb.response.body.$.token == "a==b"', ctx)).toBe(false);
     expect(evaluatePbExpression('"a==b" == "a==b"', ctx)).toBe(true);
     expect(evaluatePbExpression('pb.response.body.$.token contains "&&"', ctx)).toBe(false);
