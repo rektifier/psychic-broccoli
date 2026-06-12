@@ -678,6 +678,20 @@ describe('applyRequestMutations', () => {
     applyRequestMutations(baseReq, mutations);
     expect(baseReq.url).toBe('https://example.com');
   });
+
+  it('ignores body patches that target prototype-polluting keys', () => {
+    const mutations: RequestMutations = {
+      headers: {},
+      bodyPatches: [
+        { path: '__proto__.polluted', value: 'yes' },
+        { path: 'constructor.prototype.polluted2', value: 'yes' },
+      ],
+    };
+    applyRequestMutations(baseReq, mutations);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).polluted2).toBeUndefined();
+    expect((Object.prototype as Record<string, unknown>).polluted).toBeUndefined();
+  });
 });
 
 // ─── extractVariableRefs ────────────────────────────────────────────────────

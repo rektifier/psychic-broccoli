@@ -152,6 +152,63 @@ export async function writeFlowFile(absolutePath: string, flow: FlowDefinition):
   await writeTextFile(absolutePath, serializeFlow(flow));
 }
 
+// ─── Secret Redaction ────────────────────────────────────────────────────────
+
+const REDACTED = '***';
+
+/**
+ * Header names whose values are credentials and must never be persisted.
+ * Matches exact auth/cookie headers plus any name containing api-key / secret /
+ * token / password / auth, regardless of source (env var, .env, or Key Vault).
+ */
+const SENSITIVE_HEADER_RE =
+  /^(?:authorization|proxy-authorization|cookie|set-cookie|www-authenticate)$|api[-_]?key|secret|token|password|passwd|auth/i;
+
+function isSensitiveHeaderName(name: string): boolean {
+  return SENSITIVE_HEADER_RE.test(name);
+}
+
+/**
+ * Recursively build a redacted copy of a value:
+ *  - any string occurrence of a known secret value is replaced with `***`
+ *  - inside a `headers` map, values under a sensitive header name are replaced
+ * Returns new objects/arrays, leaving the input untouched (so the in-memory
+ * record the UI shows during the session keeps real values).
+ */
+function redactNode(node: unknown, secrets: string[], parentKey: string): unknown {
+  if (typeof node === 'string') {
+    let s = node;
+    for (const secret of secrets) s = s.split(secret).join(REDACTED);
+    return s;
+  }
+  if (Array.isArray(node)) {
+    return node.map((n) => redactNode(n, secrets, parentKey));
+  }
+  if (node && typeof node === 'object') {
+    const isHeaders = parentKey === 'headers';
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node)) {
+      out[k] = isHeaders && typeof v === 'string' && isSensitiveHeaderName(k)
+        ? REDACTED
+        : redactNode(v, secrets, k);
+    }
+    return out;
+  }
+  return node;
+}
+
+/**
+ * Produce a copy of a flow run record safe to write to disk: configured secret
+ * values (e.g. resolved Key Vault entries) are scrubbed everywhere they appear,
+ * and sensitive request/response headers are redacted by name. The original
+ * record is not mutated.
+ */
+export function redactFlowRunRecord(record: FlowRunRecord, secretValues: string[] = []): FlowRunRecord {
+  // Ignore trivially short values to avoid mangling unrelated text.
+  const secrets = secretValues.filter((v) => typeof v === 'string' && v.length >= 4);
+  return redactNode(record, secrets, '') as FlowRunRecord;
+}
+
 // ─── Results Persistence ─────────────────────────────────────────────────────
 
 /** Sanitize a flow name into a filesystem-safe directory name. */
@@ -164,8 +221,16 @@ function sanitizeFlowName(name: string): string {
     || 'unnamed';
 }
 
-/** Save a flow run record to disk under .pb-flow-results/<flow-name>/. */
-export async function saveFlowRunRecord(rootDir: string, record: FlowRunRecord): Promise<void> {
+/**
+ * Save a flow run record to disk under .flows/.results/<flow-name>/.
+ * `secretValues` are scrubbed from the persisted copy so no credentials are
+ * written to history; the caller passes resolved secrets (e.g. Key Vault values).
+ */
+export async function saveFlowRunRecord(
+  rootDir: string,
+  record: FlowRunRecord,
+  secretValues: string[] = [],
+): Promise<void> {
   const dirName = sanitizeFlowName(record.flowName);
   const resultsDir = await join(rootDir, RESULTS_DIR, dirName);
   try {
@@ -174,7 +239,8 @@ export async function saveFlowRunRecord(rootDir: string, record: FlowRunRecord):
 
   const timestamp = record.startedAt.replace(/[:.]/g, '-');
   const filePath = await join(resultsDir, `${timestamp}.json`);
-  await writeTextFile(filePath, JSON.stringify(record, null, 2));
+  const safeRecord = redactFlowRunRecord(record, secretValues);
+  await writeTextFile(filePath, JSON.stringify(safeRecord, null, 2));
 
   // Prune old records beyond the limit
   await pruneFlowHistory(resultsDir);

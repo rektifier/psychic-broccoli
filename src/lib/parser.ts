@@ -682,6 +682,7 @@ function getByPath(obj: any, path: string): any {
     // Handle array indexing: items[0]
     const arrayMatch = seg.match(/^(\w+)\[(\d+)\]$/);
     if (arrayMatch) {
+      if (isUnsafeKey(arrayMatch[1])) return undefined;
       current = current[arrayMatch[1]];
       if (Array.isArray(current)) {
         current = current[parseInt(arrayMatch[2], 10)];
@@ -689,6 +690,7 @@ function getByPath(obj: any, path: string): any {
         return undefined;
       }
     } else {
+      if (isUnsafeKey(seg)) return undefined;
       current = current[seg];
     }
   }
@@ -1077,6 +1079,9 @@ export function applyRequestMutations(
  */
 function setByPath(obj: any, path: string, value: unknown): void {
   const segments = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+  // Reject prototype-polluting segments: a malicious .http directive could
+  // target __proto__/constructor/prototype to write onto Object.prototype.
+  if (segments.some(isUnsafeKey)) return;
   let current = obj;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
@@ -1086,6 +1091,11 @@ function setByPath(obj: any, path: string, value: unknown): void {
     current = current[seg];
   }
   current[segments[segments.length - 1]] = value;
+}
+
+/** Keys that must never be traversed/written: would pollute Object.prototype. */
+function isUnsafeKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype';
 }
 
 // ─── Environment File Handling ──────────────────────────────────────────────
