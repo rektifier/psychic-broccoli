@@ -1552,9 +1552,12 @@
     // globals stay inside the FlowRunRecord and do not cross back into the
     // workspace stores the regular request editor / inspector reads from.
 
-    // Persist and update history
+    // Persist and update history. Resolved Key Vault values are scrubbed from
+    // the on-disk copy so no secrets land in run history; the in-memory record
+    // (lastFlowRunRecords / flowRunState) keeps real values for this session.
     try {
-      await saveFlowRunRecord(rootPath, record);
+      const secretValues = Object.values($keyVaultState.variables ?? {});
+      await saveFlowRunRecord(rootPath, record, secretValues);
       flowRunHistory.update(h => [record, ...h]);
     } catch { /* save failed silently */ }
 
