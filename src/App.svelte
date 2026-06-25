@@ -12,6 +12,7 @@
   import TabBar from './components/TabBar.svelte';
   import FlowEditor from './components/FlowEditor.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
+  import AddFavoriteModal from './components/AddFavoriteModal.svelte';
   import { loadTheme, setTheme, loadFavorites, saveFavorites, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
@@ -696,27 +697,61 @@
 
   // ─── Favorites ───
 
-  /** Toggle the currently open workspace folder in/out of the favorites list. */
+  let showAddFavoriteModal = false;
+  let pendingFavoritePath = '';
+  let pendingFavoriteName = '';
+
+  /**
+   * Toggle the currently open workspace folder in/out of the favorites list.
+   * Removing is immediate; adding opens a modal to name the favorite first.
+   */
   function toggleFavorite() {
-    const rootPath = get(workspace).rootPath;
+    const ws = get(workspace);
+    const rootPath = ws.rootPath;
     if (!rootPath) return;
+    if (get(favorites).some(f => f.path === rootPath)) {
+      removeFavorite(rootPath);
+    } else {
+      pendingFavoritePath = rootPath;
+      pendingFavoriteName = ws.rootName;
+      showAddFavoriteModal = true;
+    }
+  }
+
+  /** Create the pending favorite with the chosen name. */
+  function confirmAddFavorite(name: string) {
+    const path = pendingFavoritePath;
+    showAddFavoriteModal = false;
+    if (!path) return;
     favorites.update(list => {
-      const next = list.includes(rootPath)
-        ? list.filter(p => p !== rootPath)
-        : [...list, rootPath];
+      if (list.some(f => f.path === path)) return list;
+      const next = [...list, { path, name }];
       saveFavorites(next);
       return next;
     });
+    pendingFavoritePath = '';
+  }
+
+  function cancelAddFavorite() {
+    showAddFavoriteModal = false;
+    pendingFavoritePath = '';
   }
 
   /** Remove a path from the favorites list. */
   function removeFavorite(path: string) {
     favorites.update(list => {
-      const next = list.filter(p => p !== path);
+      const next = list.filter(f => f.path !== path);
       saveFavorites(next);
       return next;
     });
   }
+
+  /**
+   * Name shown for the open folder: the favorite's custom name when the open
+   * folder is favorited, otherwise the folder basename.
+   */
+  $: rootDisplayName =
+    $favorites.find(f => f.path === $workspace.rootPath)?.name ?? $workspace.rootName;
 
   /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
   async function openFavorite(path: string) {
@@ -1669,6 +1704,13 @@
   on:importUrl={handleImportUrl}
   on:cancel={() => showImportCollectionModal = false}
 />
+<AddFavoriteModal
+  visible={showAddFavoriteModal}
+  folderPath={pendingFavoritePath}
+  defaultName={pendingFavoriteName}
+  on:confirm={(e) => confirmAddFavorite(e.detail.name)}
+  on:cancel={cancelAddFavorite}
+/>
 
 <svelte:window
   on:dragover|preventDefault={() => {}}
@@ -1694,7 +1736,7 @@
       <TreeSidebar
         tree={$workspace.tree}
         selected={$selectedLocation}
-        rootName={$workspace.rootName}
+        rootName={rootDisplayName}
         hasWorkspace={!!$workspace.rootPath}
         rootPath={$workspace.rootPath}
         favorites={$favorites}
