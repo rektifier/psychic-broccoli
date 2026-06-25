@@ -88,6 +88,14 @@ export interface Workspace {
   tree: TreeNode[];
 }
 
+/** A favorited workspace folder with a user-chosen display name. */
+export interface Favorite {
+  /** Absolute path of the favorited workspace folder. Unique key. */
+  path: string;
+  /** User-chosen display name, shown instead of the folder basename. */
+  name: string;
+}
+
 // ─── Variables ──────────────────────────────────────────────────────────────
 
 export interface Variable {
