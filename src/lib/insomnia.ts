@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { HttpMethod, HttpHeader, HttpRequest, Variable, ConvertedFile, ImportResult, EnvironmentFile } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
 
