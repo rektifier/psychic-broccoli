@@ -5,6 +5,13 @@
 
 import { readTextFile, writeTextFile, mkdir } from '@tauri-apps/plugin-fs';
 import { appConfigDir, join } from '@tauri-apps/api/path';
+import type { Favorite } from './types';
+
+/** Derive a folder's display name from its absolute path (last path segment). */
+function pathBasename(p: string): string {
+  const parts = p.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || p;
+}
 
 /** HTTP method color map using CSS variable references. */
 export const METHOD_COLORS: Record<string, string> = {
@@ -37,8 +44,11 @@ const SETTINGS_FILE = 'settings.json';
 
 interface Settings {
   theme?: ThemeId;
-  /** Absolute paths of favorited workspace folders, in insertion order. */
-  favorites?: string[];
+  /**
+   * Favorited workspace folders, in insertion order.
+   * Stored as `{ path, name }` objects. Legacy bare strings are migrated on load.
+   */
+  favorites?: (Favorite | string)[];
 }
 
 async function getSettingsPath(): Promise<string> {
@@ -93,17 +103,30 @@ export async function loadTheme(): Promise<ThemeId> {
 
 /* ---- Favorites ---- */
 
-/** Load the list of favorited workspace folder paths. */
-export async function loadFavorites(): Promise<string[]> {
+/** Load the list of favorited workspace folders, migrating legacy bare-string entries. */
+export async function loadFavorites(): Promise<Favorite[]> {
   const settings = await readSettings();
   const favorites = settings.favorites;
   if (!Array.isArray(favorites)) return [];
-  // Dedupe while preserving insertion order.
-  return [...new Set(favorites.filter((p): p is string => typeof p === 'string'))];
+  const result: Favorite[] = [];
+  const seen = new Set<string>();
+  for (const entry of favorites) {
+    // Legacy format: a bare path string. Migrate to { path, name: basename }.
+    const fav: Favorite | null =
+      typeof entry === 'string'
+        ? { path: entry, name: pathBasename(entry) }
+        : entry && typeof entry.path === 'string'
+          ? { path: entry.path, name: typeof entry.name === 'string' && entry.name ? entry.name : pathBasename(entry.path) }
+          : null;
+    if (!fav || seen.has(fav.path)) continue;
+    seen.add(fav.path);
+    result.push(fav);
+  }
+  return result;
 }
 
-/** Persist the list of favorited workspace folder paths. */
-export async function saveFavorites(favorites: string[]): Promise<void> {
+/** Persist the list of favorited workspace folders. */
+export async function saveFavorites(favorites: Favorite[]): Promise<void> {
   const settings = await readSettings();
   await writeSettings({ ...settings, favorites });
 }
