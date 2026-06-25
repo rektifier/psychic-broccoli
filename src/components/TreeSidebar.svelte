@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { getVersion } from '@tauri-apps/api/app';
   import TreeNode from './TreeNode.svelte';
-  import type { TreeNode as TNode, RequestLocation, FlowDefinition } from '../lib/types';
+  import type { TreeNode as TNode, RequestLocation, FlowDefinition, Favorite } from '../lib/types';
   import { getAllFileNodes } from '../lib/parser';
 
   let appVersion = '';
@@ -25,7 +25,7 @@
   export let activeFlowPath: string | null = null;
 
   // Favorites props
-  export let favorites: string[] = [];
+  export let favorites: Favorite[] = [];
   export let rootPath: string | null = null;
 
   const dispatch = createEventDispatcher();
@@ -42,7 +42,7 @@
   let showFavorites = false;
   let favBtnEl: HTMLButtonElement;
   let favMenuPos = { top: 0, left: 0 };
-  $: isFavorite = !!rootPath && favorites.includes(rootPath);
+  $: isFavorite = !!rootPath && favorites.some(f => f.path === rootPath);
 
   function toggleFavorites() {
     showFavorites = !showFavorites;
@@ -52,10 +52,6 @@
     }
   }
 
-  function favName(p: string): string {
-    const parts = p.split(/[\\/]/).filter(Boolean);
-    return parts[parts.length - 1] || p;
-  }
   function filterTree(nodes: TNode[], query: string): TNode[] {
     const q = query.toLowerCase();
     const result: TNode[] = [];
@@ -174,23 +170,23 @@
           {#if favorites.length === 0}
             <div class="favorites-empty">No favorites yet</div>
           {:else}
-            {#each favorites as path}
-              <div class="favorite-item" class:current={path === rootPath}>
+            {#each favorites as fav (fav.path)}
+              <div class="favorite-item" class:current={fav.path === rootPath}>
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                   class="favorite-open"
-                  on:click={() => { dispatch('openFavorite', path); showFavorites = false; }}
-                  on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('openFavorite', path); showFavorites = false; } }}
+                  on:click={() => { dispatch('openFavorite', fav.path); showFavorites = false; }}
+                  on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('openFavorite', fav.path); showFavorites = false; } }}
                   role="button"
                   tabindex="0"
-                  title={path}
+                  title={fav.path}
                 >
-                  <span class="favorite-name">{favName(path)}</span>
-                  <span class="favorite-path">{path}</span>
+                  <span class="favorite-name">{fav.name}</span>
+                  <span class="favorite-path">{fav.path}</span>
                 </div>
                 <button
                   class="btn-remove-fav"
-                  on:click|stopPropagation={() => dispatch('removeFavorite', path)}
+                  on:click|stopPropagation={() => dispatch('removeFavorite', fav.path)}
                   title="Remove from favorites"
                 >&times;</button>
               </div>
