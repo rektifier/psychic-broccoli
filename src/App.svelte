@@ -134,9 +134,36 @@
     pendingImportVars = [];
   }
 
+  // ─── Layout persistence ───
+  // Pane/sidebar sizes are persisted to the webview's localStorage, which Tauri
+  // keeps across app restarts. Window size/position is handled separately by the
+  // tauri-plugin-window-state plugin (see src-tauri).
+
+  const LAYOUT_KEY_EDITOR_PCT = 'pb.layout.editorWidthPercent';
+  const LAYOUT_KEY_SIDEBAR_PX = 'pb.layout.sidebarWidth';
+
+  function loadLayoutNumber(key: string, fallback: number): number {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return fallback;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function saveLayoutNumber(key: string, value: number) {
+    try {
+      localStorage.setItem(key, String(value));
+    } catch {
+      // ignore (e.g. storage disabled) - persistence is best-effort
+    }
+  }
+
   // ─── Resizable Panes ───
 
-  let editorWidthPercent = 50;
+  let editorWidthPercent = loadLayoutNumber(LAYOUT_KEY_EDITOR_PCT, 50);
   let dragging = false;
   let mainPanelsEl: HTMLDivElement;
 
@@ -159,11 +186,12 @@
     dragging = false;
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
+    saveLayoutNumber(LAYOUT_KEY_EDITOR_PCT, editorWidthPercent);
   }
 
   // ─── Resizable Sidebar ───
 
-  let sidebarWidth = 260;
+  let sidebarWidth = loadLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, 260);
   let sidebarDragging = false;
   let layoutEl: HTMLDivElement;
 
@@ -185,6 +213,7 @@
     sidebarDragging = false;
     document.removeEventListener('mousemove', onSidebarDividerMove);
     document.removeEventListener('mouseup', onSidebarDividerUp);
+    saveLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, sidebarWidth);
   }
 
   // ─── Key Vault ───
