@@ -278,7 +278,10 @@ fn build_router(state: McpState) -> Router {
     Router::new()
         .route("/sse", get(sse_handler))
         .route("/message", post(message_handler))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         .with_state(state)
 }
 
@@ -665,7 +668,9 @@ async fn tool_execute_request(
     let request_index = arguments
         .get("requestIndex")
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| "execute_request requires a non-negative integer 'requestIndex'".to_string())?;
+        .ok_or_else(|| {
+            "execute_request requires a non-negative integer 'requestIndex'".to_string()
+        })?;
     // `environment` is optional; reject a non-string if present rather than silently ignoring it.
     let environment = match arguments.get("environment") {
         None | Some(serde_json::Value::Null) => None,
@@ -893,9 +898,7 @@ mod tests {
         let msg = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
         let resp = handle_rpc_message(&msg, SERVER_NAME, "v").unwrap();
         let tools = resp["result"]["tools"].as_array().unwrap();
-        assert!(tools
-            .iter()
-            .any(|t| t["name"] == json!("list_requests")));
+        assert!(tools.iter().any(|t| t["name"] == json!("list_requests")));
         let lr = tools
             .iter()
             .find(|t| t["name"] == json!("list_requests"))
@@ -1134,11 +1137,21 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         // Wrong token -> 401.
-        let resp = client.get(&sse_url).bearer_auth("wrong").send().await.unwrap();
+        let resp = client
+            .get(&sse_url)
+            .bearer_auth("wrong")
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         // Correct token -> 200 SSE stream, first event names the POST endpoint.
-        let resp = client.get(&sse_url).bearer_auth(token).send().await.unwrap();
+        let resp = client
+            .get(&sse_url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let mut body = resp.bytes_stream();
 
