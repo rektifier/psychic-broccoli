@@ -3,7 +3,7 @@
   import { getVersion } from '@tauri-apps/api/app';
   import TreeNode from './TreeNode.svelte';
   import type { TreeNode as TNode, RequestLocation, FlowDefinition, Favorite } from '../lib/types';
-  import { getAllFileNodes } from '../lib/parser';
+  import { getAllFileNodes, filterTreeByQuery } from '../lib/tree';
 
   let appVersion = '';
 
@@ -52,30 +52,6 @@
     }
   }
 
-  function filterTree(nodes: TNode[], query: string): TNode[] {
-    const q = query.toLowerCase();
-    const result: TNode[] = [];
-    for (const node of nodes) {
-      if (node.type === 'file') {
-        const fileMatch = node.name.toLowerCase().includes(q);
-        const reqMatch = node.requests.some(
-          (r) =>
-            r.name.toLowerCase().includes(q) ||
-            r.url.toLowerCase().includes(q) ||
-            r.method.toLowerCase().includes(q) ||
-            (r.varName && r.varName.toLowerCase().includes(q)),
-        );
-        if (fileMatch || reqMatch) result.push(node);
-      } else {
-        const filteredChildren = filterTree(node.children, query);
-        if (filteredChildren.length > 0) {
-          result.push({ ...node, children: filteredChildren, expanded: true });
-        }
-      }
-    }
-    return result;
-  }
-
   onMount(async () => {
     try {
       appVersion = await getVersion();
@@ -87,7 +63,7 @@
     .map((r) => r.varName)
     .filter((n): n is string => !!n);
 
-  $: displayTree = filterText.trim() ? filterTree(tree, filterText.trim()) : tree;
+  $: displayTree = filterText.trim() ? filterTreeByQuery(tree, filterText.trim()) : tree;
 
   $: if (showNewFlow && newFlowInputEl) newFlowInputEl.focus();
 

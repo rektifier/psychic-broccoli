@@ -1,5 +1,6 @@
-import type { HttpMethod, HttpHeader, HttpRequest, ConvertedFile, ImportResult } from './types';
+import type { HttpHeader, HttpRequest, ConvertedFile, ImportResult } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
+import { normalizeMethod, sanitizeFilename, newImportId } from './importShared';
 
 // ─── Postman Collection v2.1 Types ─────────────────────────────────────────
 
@@ -73,20 +74,6 @@ interface PostmanVariable {
   key: string;
   value: string;
 }
-
-// ─── Valid HTTP methods ────────────────────────────────────────────────────
-
-const VALID_METHODS = new Set<string>([
-  'GET',
-  'POST',
-  'PUT',
-  'PATCH',
-  'DELETE',
-  'HEAD',
-  'OPTIONS',
-  'TRACE',
-  'CONNECT',
-]);
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -186,7 +173,7 @@ function convertRequest(item: PostmanItem, collectionAuth?: PostmanAuth): HttpRe
   const body = buildBody(req.body);
 
   return {
-    id: `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newImportId(),
     name: item.name || `${method} ${url}`,
     varName: null,
     method,
@@ -195,11 +182,6 @@ function convertRequest(item: PostmanItem, collectionAuth?: PostmanAuth): HttpRe
     body,
     directives: [],
   };
-}
-
-function normalizeMethod(method: string): HttpMethod {
-  const upper = method.toUpperCase();
-  return VALID_METHODS.has(upper) ? (upper as HttpMethod) : 'GET';
 }
 
 function buildUrl(url: PostmanUrl | string | undefined): string {
@@ -357,8 +339,4 @@ function buildBody(body?: PostmanBody): string {
     default:
       return '';
   }
-}
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'unnamed';
 }

@@ -17,7 +17,8 @@
     Variable,
     NamedRequestResult,
   } from '../lib/types';
-  import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
+  import { substituteAll, parseScriptText } from '../lib/parser';
+  import { getAllFileNodes } from '../lib/tree';
   import { applyAliasSync, autoAliasFor } from '../lib/flowAlias';
   import { baseEnvVars, dotenvVariables } from '../lib/stores';
   import { METHOD_COLORS } from '../lib/theme';

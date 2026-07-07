@@ -82,10 +82,10 @@
     buildWorkspaceTree,
     createFileNode,
     createEmptyFileNode,
-    getAllFileNodes,
     resolveEnvironmentVariables,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
+  import { getAllFileNodes, findFile, findFolder, collectFilePaths } from './lib/tree';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
   import { importOpenApiSpec } from './lib/openapi';
@@ -93,7 +93,6 @@
     HttpRequest,
     RequestLocation,
     EnvironmentFile,
-    TreeNode,
     ImportResult,
     KeyVaultState,
   } from './lib/types';
@@ -1044,17 +1043,6 @@
 
   // ─── Save File ───
 
-  function findFileInTree(nodes: TreeNode[], path: string): any {
-    for (const n of nodes) {
-      if (n.type === 'file' && n.path === path) return n;
-      if (n.type === 'folder') {
-        const f = findFileInTree(n.children, path);
-        if (f) return f;
-      }
-    }
-    return null;
-  }
-
   async function saveActiveFile() {
     const file = $activeFile;
     if (!file || !file.dirty) return;
@@ -1237,14 +1225,7 @@
     let counter = 2;
 
     // Check for collisions in the tree
-    const existingNames = new Set<string>();
-    function collectNames(nodes: TreeNode[]) {
-      for (const n of nodes) {
-        if (n.type === 'file') existingNames.add(n.path);
-        if (n.type === 'folder') collectNames(n.children);
-      }
-    }
-    collectNames($workspace.tree);
+    const existingNames = new Set(collectFilePaths($workspace.tree));
 
     while (existingNames.has(filePath)) {
       fileName = `${stem}-${counter}.http`;
@@ -1276,19 +1257,11 @@
 
     // Collect sibling names in the target parent
     const siblings = new Set<string>();
-    function collectSiblings(nodes: TreeNode[], targetPath: string) {
-      for (const n of nodes) {
-        if (n.type === 'folder' && n.path === targetPath) {
-          for (const c of n.children) siblings.add(c.name);
-          return;
-        }
-        if (n.type === 'folder') collectSiblings(n.children, targetPath);
-      }
-    }
     if (parentDir === rootPath) {
       for (const n of $workspace.tree) siblings.add(n.name);
     } else {
-      collectSiblings($workspace.tree, parentDir);
+      const parent = findFolder($workspace.tree, parentDir);
+      for (const c of parent?.children ?? []) siblings.add(c.name);
     }
 
     const folderName = generateFolderName(siblings);
@@ -1332,7 +1305,7 @@
     const { oldPath, newName } = e.detail;
 
     // If file is dirty, save first
-    const file = findFileInTree($workspace.tree, oldPath);
+    const file = findFile($workspace.tree, oldPath);
     if (file && file.dirty) {
       try {
         const content = serializeHttpFile(file.requests, file.variables);
@@ -1382,14 +1355,7 @@
     let copyPath = await join(dir, copyName);
     let counter = 2;
 
-    const existingNames = new Set<string>();
-    function collectNames(nodes: TreeNode[]) {
-      for (const n of nodes) {
-        if (n.type === 'file') existingNames.add(n.path);
-        if (n.type === 'folder') collectNames(n.children);
-      }
-    }
-    collectNames($workspace.tree);
+    const existingNames = new Set(collectFilePaths($workspace.tree));
 
     while (existingNames.has(copyPath)) {
       copyStem = `${sourceStem} (copy ${counter})`;
@@ -1469,7 +1435,7 @@
     e: CustomEvent<{ filePath: string; requestIndex: number; varName: string }>,
   ) {
     const { filePath, requestIndex, varName } = e.detail;
-    const file = findFileInTree($workspace.tree, filePath);
+    const file = findFile($workspace.tree, filePath);
     if (!file) return;
     const req = file.requests[requestIndex];
     if (!req) return;

@@ -1453,18 +1453,6 @@ export function buildWorkspaceTree(
 }
 
 /**
- * Collect all FileNodes from a tree (flat list).
- */
-export function getAllFileNodes(nodes: TreeNode[]): FileNode[] {
-  const result: FileNode[] = [];
-  for (const node of nodes) {
-    if (node.type === 'file') result.push(node);
-    if (node.type === 'folder') result.push(...getAllFileNodes(node.children));
-  }
-  return result;
-}
-
-/**
  * Create a new empty .http file node for adding to the tree.
  */
 export function createEmptyFileNode(absolutePath: string, fileName: string): FileNode {

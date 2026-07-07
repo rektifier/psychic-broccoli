@@ -1,4 +1,4 @@
-import { getAllFileNodes } from './parser';
+import { getAllFileNodes } from './tree';
 import type { SubstitutionContext } from './parser';
 import { executeHttpRequest } from './requestExec';
 import type {

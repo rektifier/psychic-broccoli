@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { TreeNode, FileNode, FlowStep } from '../lib/types';
-  import { getAllFileNodes } from '../lib/parser';
+  import { getAllFileNodes } from '../lib/tree';
   import { METHOD_COLORS } from '../lib/theme';
 
   export let tree: TreeNode[] = [];
