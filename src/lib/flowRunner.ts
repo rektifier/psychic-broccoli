@@ -1,12 +1,6 @@
-import { invoke } from '@tauri-apps/api/core';
-import {
-  substituteAll,
-  executePbDirectives,
-  getAllFileNodes,
-  parseScriptText,
-  applyRequestMutations,
-} from './parser';
+import { getAllFileNodes } from './parser';
 import type { SubstitutionContext } from './parser';
+import { executeHttpRequest } from './requestExec';
 import type {
   FlowDefinition,
   FlowStep,
@@ -14,11 +8,9 @@ import type {
   FlowRunRecord,
   FlowRunStatus,
   HttpRequest,
-  HttpResponse,
   TreeNode,
   FileNode,
   NamedRequestResult,
-  PbAssertionResult,
 } from './types';
 
 // ─── Callbacks ───────────────────────────────────────────────────────────────
@@ -184,120 +176,25 @@ async function executeStep(
   const startTime = performance.now();
 
   try {
-    let url = substituteAll(request.url, ctx);
-    let body = substituteAll(request.body, ctx);
-    let headers: Record<string, string> = {};
-    for (const h of request.headers) {
-      if (h.enabled) {
-        headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
-      }
-    }
-
-    // Execute beforeSend scripts
-    const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
-    if (beforeSendDirectives.length > 0) {
-      const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
-      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-
-      const dummyResponse: HttpResponse = {
-        status: 0,
-        statusText: '',
-        headers: {},
-        body: '',
-        time: 0,
-        size: 0,
-      };
-      const bsResult = executePbDirectives(
-        beforeSendDirectives,
-        dummyResponse,
-        { url, method: request.method, headers, body },
-        mergedVars,
-        localNamedResults,
-      );
-
-      const mutated = applyRequestMutations(
-        { url, method: request.method, headers, body },
-        bsResult.requestMutations,
-      );
-      url = mutated.url;
-      headers = mutated.headers;
-      body = mutated.body;
-
-      if (Object.keys(bsResult.setVars).length > 0) {
-        Object.assign(localEnvOverrides, bsResult.setVars);
-      }
-      if (Object.keys(bsResult.globalVars).length > 0) {
-        Object.assign(localGlobals, bsResult.globalVars);
-        Object.assign(localEnvOverrides, bsResult.globalVars);
-      }
-    }
-
-    const sentRequest = { method: request.method, url, headers, body };
-
-    const res: {
-      status: number;
-      status_text: string;
-      headers: Record<string, string>;
-      body: string;
-    } = await invoke('http_request', {
-      payload: {
-        method: request.method,
-        url,
-        headers,
-        body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
+    // The flow step's alias (if any) wins over the underlying request's
+    // `# @name`, so flows can name responses independently of .http files.
+    const result = await executeHttpRequest(request, ctx, {
+      alias: effectiveAlias,
+      onBeforeInvoke(_sent, beforeSend) {
+        Object.assign(localEnvOverrides, beforeSend.setVars);
+        Object.assign(localGlobals, beforeSend.globalVars);
+        Object.assign(localEnvOverrides, beforeSend.globalVars);
       },
     });
 
-    const elapsed = performance.now() - startTime;
-
-    const response: HttpResponse = {
-      status: res.status,
-      statusText: res.status_text,
-      headers: res.headers,
-      body: res.body,
-      time: Math.round(elapsed),
-      size: new TextEncoder().encode(res.body).length,
-    };
-
-    // Store named result for chaining. The flow step's alias (if any) wins over the
-    // underlying request's `# @name`, so flows can name responses independently of .http files.
-    if (effectiveAlias) {
-      localNamedResults[effectiveAlias] = { request: sentRequest, response };
+    if (result.namedResult) {
+      localNamedResults[result.namedResult.name] = result.namedResult.result;
     }
+    Object.assign(localEnvOverrides, result.afterReceive.setVars);
+    Object.assign(localGlobals, result.afterReceive.globalVars);
+    Object.assign(localEnvOverrides, result.afterReceive.globalVars);
 
-    // Execute pb directives + afterReceive scripts
-    const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
-    const allDirectives = [
-      ...(request.directives || []).filter((d) => d.enabled !== false),
-      ...afterReceiveDirectives,
-    ];
-
-    let assertionResults: PbAssertionResult[] = [];
-    if (allDirectives.length > 0) {
-      const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
-      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-
-      const pbResult = executePbDirectives(
-        allDirectives,
-        response,
-        sentRequest,
-        mergedVars,
-        localNamedResults,
-      );
-
-      assertionResults = pbResult.assertionResults;
-
-      // Apply set vars
-      if (Object.keys(pbResult.setVars).length > 0) {
-        Object.assign(localEnvOverrides, pbResult.setVars);
-      }
-
-      // Apply global vars
-      if (Object.keys(pbResult.globalVars).length > 0) {
-        Object.assign(localGlobals, pbResult.globalVars);
-        Object.assign(localEnvOverrides, pbResult.globalVars);
-      }
-    }
+    const { response, sentRequest, assertionResults } = result;
 
     // Determine pass/fail
     const allAssertionsPassed =
@@ -311,7 +208,7 @@ async function executeStep(
       response,
       sentRequest,
       assertionResults,
-      durationMs: Math.round(elapsed),
+      durationMs: Math.round(performance.now() - startTime),
       error: null,
     };
   } catch (e: any) {

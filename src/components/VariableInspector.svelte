@@ -102,7 +102,7 @@
   );
   $: overrideEntries = Object.entries(pbOverrides).filter(([k]) => !(k in pbGlobals));
   $: globalEntries = Object.entries(pbGlobals);
-  $: namedEntries = Object.entries(namedResults).filter(([k]) => !k.startsWith('__pb_'));
+  $: namedEntries = Object.entries(namedResults);
 
   $: runtimeCount = overrideEntries.length + globalEntries.length + namedEntries.length;
   $: hasRuntime = runtimeCount > 0;
