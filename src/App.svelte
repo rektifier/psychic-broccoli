@@ -86,6 +86,7 @@
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { getAllFileNodes, findFile, findFolder, collectFilePaths } from './lib/tree';
+  import { errorMessage } from './lib/errors';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
   import { importOpenApiSpec } from './lib/openapi';
@@ -191,8 +192,8 @@
         `Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`,
         'info',
       );
-    } catch (e: any) {
-      addToast(`Failed to update environment file: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to update environment file: ${errorMessage(e)}`, 'error');
     }
 
     pendingImportVars = [];
@@ -730,8 +731,8 @@
       const rootPath = await open({ directory: true, title: 'Select workspace folder' });
       if (!rootPath) return;
       await openFolderByPath(rootPath as string);
-    } catch (e: any) {
-      addToast(`Failed to open folder: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to open folder: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -797,8 +798,8 @@
   async function openFavorite(path: string) {
     try {
       await openFolderByPath(path);
-    } catch (e: any) {
-      addToast(`Could not open favorite "${path}": ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Could not open favorite "${path}": ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -806,8 +807,8 @@
     try {
       const path = await invoke<string>('extract_getting_started');
       await openFolderByPath(path);
-    } catch (e: any) {
-      addToast(`Failed to open getting-started folder: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to open getting-started folder: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -982,8 +983,8 @@
         `Imported ${envNames.length} environment${envNames.length !== 1 ? 's' : ''}: ${envNames.join(', ')}`,
         'info',
       );
-    } catch (e: any) {
-      addToast(`Failed to write environment file: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to write environment file: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -1015,8 +1016,8 @@
         'info',
       );
       await showEnvModalIfNeeded(result);
-    } catch (e: any) {
-      addToast(`Import failed: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Import failed: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -1036,8 +1037,8 @@
         'info',
       );
       await showEnvModalIfNeeded(result);
-    } catch (e: any) {
-      addToast(`Import failed: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Import failed: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -1051,8 +1052,8 @@
       const content = serializeHttpFile(file.requests, file.variables);
       await writeTextFile(file.path, content);
       markFileSaved(file.path);
-    } catch (e: any) {
-      addToast(`Failed to save file: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to save file: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -1064,8 +1065,8 @@
     try {
       const envPath = await join(rootPath, 'http-client.env.json');
       await writeTextFile(envPath, JSON.stringify(data, null, 2));
-    } catch (e: any) {
-      addToast(`Failed to save environment file: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to save environment file: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -1110,12 +1111,12 @@
       }
       pbAssertionResults.set(result.assertionResults);
       commitPbVars(result.afterReceive);
-    } catch (e: any) {
+    } catch (e) {
       currentResponse.set({
         status: 0,
         statusText: 'Error',
         headers: {},
-        body: (typeof e === 'string' ? e : e.message) || 'Request failed.',
+        body: errorMessage(e) || 'Request failed.',
         time: Math.round(performance.now() - startTime),
         size: 0,
       });
@@ -1191,7 +1192,7 @@
       const { remove } = await import('@tauri-apps/plugin-fs');
       await remove(filePath);
     } catch (err) {
-      addToast(`Failed to delete file: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to delete file: ${errorMessage(err)}`, 'error');
       return;
     }
 
@@ -1205,7 +1206,7 @@
       const { remove } = await import('@tauri-apps/plugin-fs');
       await remove(folderPath, { recursive: true });
     } catch (err) {
-      addToast(`Failed to delete folder: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to delete folder: ${errorMessage(err)}`, 'error');
       return;
     }
 
@@ -1239,7 +1240,7 @@
     try {
       await writeTextFile(filePath, content);
     } catch (err) {
-      addToast(`Failed to create file: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to create file: ${errorMessage(err)}`, 'error');
       return;
     }
 
@@ -1271,7 +1272,7 @@
       const { mkdir } = await import('@tauri-apps/plugin-fs');
       await mkdir(folderPath, { recursive: true });
     } catch (err) {
-      addToast(`Failed to create folder: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to create folder: ${errorMessage(err)}`, 'error');
       return;
     }
 
@@ -1293,7 +1294,7 @@
     try {
       await rename(oldPath, newPath);
     } catch (err) {
-      addToast(`Failed to rename folder: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to rename folder: ${errorMessage(err)}`, 'error');
       return;
     }
 
@@ -1312,10 +1313,7 @@
         await writeTextFile(oldPath, content);
         markFileSaved(oldPath);
       } catch (err) {
-        addToast(
-          `Failed to save file before rename: ${err instanceof Error ? err.message : err}`,
-          'error',
-        );
+        addToast(`Failed to save file before rename: ${errorMessage(err)}`, 'error');
         return;
       }
     }
@@ -1326,7 +1324,7 @@
     try {
       await rename(oldPath, newPath);
     } catch (err) {
-      addToast(`Failed to rename file: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to rename file: ${errorMessage(err)}`, 'error');
       return;
     }
 
@@ -1341,7 +1339,7 @@
     try {
       content = await readTextFile(sourcePath);
     } catch (err) {
-      addToast(`Failed to read file: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to read file: ${errorMessage(err)}`, 'error');
       return;
     }
 
@@ -1367,7 +1365,7 @@
     try {
       await writeTextFile(copyPath, content);
     } catch (err) {
-      addToast(`Failed to duplicate file: ${err instanceof Error ? err.message : err}`, 'error');
+      addToast(`Failed to duplicate file: ${errorMessage(err)}`, 'error');
       return;
     }
 

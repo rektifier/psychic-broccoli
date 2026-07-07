@@ -1,4 +1,5 @@
 import { getAllFileNodes } from './tree';
+import { errorMessage } from './errors';
 import type { SubstitutionContext } from './parser';
 import { executeHttpRequest } from './requestExec';
 import type {
@@ -211,7 +212,7 @@ async function executeStep(
       durationMs: Math.round(performance.now() - startTime),
       error: null,
     };
-  } catch (e: any) {
+  } catch (e) {
     return {
       stepId,
       status: 'failed',
@@ -219,7 +220,7 @@ async function executeStep(
       sentRequest: null,
       assertionResults: [],
       durationMs: Math.round(performance.now() - startTime),
-      error: typeof e === 'string' ? e : e.message || 'Request failed',
+      error: errorMessage(e) || 'Request failed',
     };
   }
 }
