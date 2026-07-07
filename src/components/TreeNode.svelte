@@ -239,24 +239,9 @@
     namingValue = '';
   }
 
-  function handleContextMenu(
-    e: MouseEvent,
-    filePath: string,
-    index: number,
-    currentName: string | null,
-  ) {
-    e.preventDefault();
-    startNaming(index, currentName);
-  }
-
   // Keep file expanded when it contains the selection
   $: if (node.type === 'file' && selected?.filePath === node.path) {
     fileExpanded = true;
-  }
-
-  function forward(event: CustomEvent) {
-    // Re-dispatch events from children up to parent
-    dispatch(event.type, event.detail);
   }
 
   /** Compute sibling file names for child nodes in a folder */
@@ -608,7 +593,7 @@
             on:click={() => dispatch('select', { filePath: node.path, requestIndex: i })}
             on:dblclick={() =>
               dispatch('pinRequest', { filePath: node.path, requestIndex: i, label: req.name })}
-            on:contextmenu|preventDefault={(e) => startNaming(i, req.varName)}
+            on:contextmenu|preventDefault={() => startNaming(i, req.varName)}
             on:keydown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();

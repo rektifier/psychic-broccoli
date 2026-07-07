@@ -35,6 +35,21 @@ export default ts.config(
       // Existing `any` usage is tracked as review item 17 (phase 3); tighten to
       // error once that lands.
       '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'prefer-const': ['error', { destructuring: 'all' }],
+      // Mustaches with string escapes (\n in placeholders) cannot be written
+      // as plain attributes.
+      'svelte/no-useless-mustaches': ['error', { ignoreStringEscape: true }],
+    },
+  },
+  {
+    files: ['**/*.svelte'],
+    rules: {
+      // Core prefer-const false-positives on $props()/$derived destructuring;
+      // the svelte variant is runes-aware.
+      'prefer-const': 'off',
+      'svelte/prefer-const': ['error', { destructuring: 'all' }],
       // These flag legacy-mode patterns whose fixes change runtime behavior
       // (keyed each blocks, reactive collections, reactive function identity).
       // Revisit during the Svelte 5 runes migration (review item 6), then

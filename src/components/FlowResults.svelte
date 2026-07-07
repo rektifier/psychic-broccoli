@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { FlowRunRecord, FlowStepResult } from '../lib/types';
+  import type { FlowRunRecord } from '../lib/types';
 
   const dispatch = createEventDispatcher<{ clearHistory: void }>();
 
@@ -102,7 +102,6 @@
       {#if stepsOpen}
         <div class="results-steps">
           {#each displayRecord.stepResults as sr, i}
-            {@const step = sr}
             <div class="result-step">
               <button class="result-step-header" on:click={() => toggleStep(sr.stepId)}>
                 <span class="result-status-icon" style="color: {statusColor(sr.status)}">

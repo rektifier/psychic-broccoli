@@ -277,7 +277,6 @@
                       )
                     : group.headerFields
                   : []}
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <button
                   class="group-header group-header-button"
                   class:open={isOpen}
@@ -354,7 +353,7 @@
                   <span class="group-label">From earlier steps in this flow</span>
                 </div>
                 <div class="empty-hint">
-                  No preceding steps have a response alias. Add <code>{'#'} @name alias</code> to a request
+                  No preceding steps have a response alias. Add <code># @name alias</code> to a request
                   above this step.
                 </div>
               {/if}

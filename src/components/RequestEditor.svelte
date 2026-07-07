@@ -63,7 +63,6 @@
   export let bottomTab: 'body' | 'assertions' | 'before-send' | 'after-receive' = 'body';
 
   let headersOpen = true;
-  let assertionsOpen = true;
   let showPicker = false;
   let pickerTarget:
     | 'url'

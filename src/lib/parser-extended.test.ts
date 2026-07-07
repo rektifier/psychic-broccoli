@@ -1,8 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { EnvironmentFile } from './types';
 import {
   parseHttpFile,
-  serializeHttpFile,
   substituteAll,
   substituteVariables,
   evaluatePbExpression,
@@ -15,7 +14,6 @@ import {
   resolveEnvironmentVariablesWithSource,
   extractVariableRefs,
   createEmptyRequest,
-  createFileNode,
   buildWorkspaceTree,
   getAllFileNodes,
   createEmptyFileNode,

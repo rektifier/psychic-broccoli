@@ -36,7 +36,7 @@
     isDragOver = true;
   }
 
-  function handleDragLeave(e: DragEvent) {
+  function handleDragLeave() {
     dragDepth--;
     if (dragDepth <= 0) {
       dragDepth = 0;

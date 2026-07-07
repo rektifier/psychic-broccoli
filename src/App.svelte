@@ -167,7 +167,7 @@
 
     try {
       // Load or create the env file
-      let currentEnv: EnvironmentFile = ensureSharedEnvironment($envFile ?? {});
+      const currentEnv: EnvironmentFile = ensureSharedEnvironment($envFile ?? {});
 
       // Ensure the target environment exists
       if (!currentEnv[envName]) {
@@ -1076,7 +1076,7 @@
     const rootPath = $workspace.rootPath;
     if (!rootPath) return;
     try {
-      let current: EnvironmentFile = ensureSharedEnvironment(
+      const current: EnvironmentFile = ensureSharedEnvironment(
         $envFile ? structuredClone($envFile) : {},
       );
 
@@ -1324,7 +1324,7 @@
         if (Object.keys(pbResult.setVars).length > 0) {
           namedResults.update((nr) => {
             const updated = { ...nr };
-            for (const [key, value] of Object.entries(pbResult.setVars)) {
+            for (const key of Object.keys(pbResult.setVars)) {
               // Store as a pseudo named result so substituteAll can pick it up.
               // We also inject into env vars for simpler resolution.
               updated[`__pb_${key}`] = {
@@ -1456,7 +1456,7 @@
     const folderPath = e.detail || rootPath;
 
     // Generate unique filename
-    let stem = 'new-request';
+    const stem = 'new-request';
     let fileName = stem + '.http';
     let filePath = await join(folderPath, fileName);
     let counter = 2;

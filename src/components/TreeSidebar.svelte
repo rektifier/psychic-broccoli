@@ -204,7 +204,6 @@
       </button>
 
       {#if showFavorites}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="favorites-backdrop"
           on:click={() => (showFavorites = false)}
@@ -222,7 +221,6 @@
           {:else}
             {#each favorites as fav (fav.path)}
               <div class="favorite-item" class:current={fav.path === rootPath}>
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                   class="favorite-open"
                   on:click={() => {

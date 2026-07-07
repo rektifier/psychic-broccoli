@@ -1,9 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type {
-  HttpFile,
   HttpRequest,
   HttpResponse,
-  Variable,
   EnvironmentFile,
   NamedRequestResult,
   PbAssertionResult,

@@ -1,5 +1,5 @@
 import { readTextFile, writeTextFile, readDir, mkdir, remove, rename } from '@tauri-apps/plugin-fs';
-import { join, basename } from '@tauri-apps/api/path';
+import { join } from '@tauri-apps/api/path';
 import type { FlowDefinition, FlowRunRecord, FlowStep, FlowStepOverrides } from './types';
 import { applyAliasSync } from './flowAlias';
 

@@ -5,7 +5,6 @@ import type {
   Variable,
   EnvironmentFile,
   EnvironmentVariables,
-  ProviderVariable,
   NamedRequestResult,
   PbDirective,
   PbAssertionResult,
@@ -744,7 +743,7 @@ function parsePbDirective(action: string, argsRaw: string): PbDirective | null {
     const m = args.match(/^(["'])(.+?)\1\s*,\s*(.+)$/);
     if (m) return { type: action, key: m[2], expr: m[3].trim() };
     // Unquoted key: pb.set(pb.request.body.$.country, "NO")
-    const u = args.match(/^([\w.$\-]+)\s*,\s*(.+)$/);
+    const u = args.match(/^([\w.$-]+)\s*,\s*(.+)$/);
     if (u) {
       let key = u[1];
       // Normalize: strip leading "pb." so pb.request.* becomes request.*
@@ -1125,7 +1124,7 @@ export function applyRequestMutations(
   // JSON body patches (applied after full replacement if both exist)
   if (mutations.bodyPatches.length > 0) {
     try {
-      let parsed = body ? JSON.parse(body) : {};
+      const parsed = body ? JSON.parse(body) : {};
       for (const patch of mutations.bodyPatches) {
         setByPath(parsed, patch.path, patch.value);
       }

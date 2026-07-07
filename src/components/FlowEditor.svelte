@@ -487,27 +487,6 @@
       .join('\n');
   }
 
-  function textToDirectives(text: string): PbDirective[] {
-    if (!text.trim()) return [];
-    // First try parseScriptText for pb.set/pb.global/# @pb.* syntax
-    const parsed = parseScriptText(text);
-    if (parsed.length > 0) return parsed;
-    // Fall back to simple assert format: expr | label
-    return text
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((line) => {
-        const pipeIndex = line.indexOf(' | ');
-        if (pipeIndex >= 0)
-          return {
-            type: 'assert' as const,
-            expr: line.slice(0, pipeIndex),
-            label: line.slice(pipeIndex + 3),
-          };
-        return { type: 'assert' as const, expr: line, label: '' };
-      });
-  }
-
   function onDirectivesTextInput(stepIndex: number, text: string, baseDirectives: PbDirective[]) {
     // Parse each line independently so mixed content works
     const directives: PbDirective[] = [];
@@ -763,7 +742,6 @@
             file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
               ? file.requests[step.requestIndex]
               : null}
-          {@const rawUrl = req ? req.url : getUrl(step.label)}
           {@const requestName = req?.name ?? ''}
           {@const resolvedUrl = resolvedStepUrls[i] ?? ''}
           {@const baseHeaders = req?.headers ?? []}
@@ -905,7 +883,7 @@
                   <div class="override-row">
                     <span
                       class="override-label"
-                      title="Flow-local alias for this step's response. Referenced as {'{'}{'{'}alias.response.body.$....{'}'}{'}'} in later steps. Auto-named Step{i +
+                      title="Flow-local alias for this step's response. Referenced as {'{'}{'{'}alias.response.body.$....}} in later steps. Auto-named Step{i +
                         1} unless you customize it."
                       >Alias{#if step.aliasLocked}<span class="modified-dot" title="Custom"
                         ></span>{/if}</span
