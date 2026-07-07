@@ -164,9 +164,7 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
         .redirect(ssrf_safe_redirect_policy())
         .dns_resolver(BlocklistDnsResolver);
 
-    for sa in &resolved_addrs {
-        builder = builder.resolve(&host, *sa);
-    }
+    builder = builder.resolve_to_addrs(&host, &resolved_addrs);
 
     let client = builder.build()
         .map_err(|_| "Failed to initialize HTTP client".to_string())?;
