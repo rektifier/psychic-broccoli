@@ -35,7 +35,7 @@
   import {
     serializeHttpFile, substituteAll, parseEnvironmentFile, ensureSharedEnvironment,
     buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
-    executePbDirectives, parseScriptText, applyRequestMutations, resolveEnvironmentVariables,
+    resolveEnvironmentVariables,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
@@ -47,6 +47,8 @@
   import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR, migrateFlowsDirectory } from './lib/flowIO';
   import { generateFolderName } from './lib/folderCreate';
   import { runFlow } from './lib/flowRunner';
+  import { executeHttpRequest } from './lib/requestExec';
+  import type { PbVarEffects } from './lib/requestExec';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
@@ -337,81 +339,17 @@
       dotenvVariables: get(dotenvVariables),
     };
 
-    const startTime = performance.now();
-    let url = substituteAll(request.url, ctx);
-    let body = substituteAll(request.body, ctx);
-    let headers: Record<string, string> = {};
-    for (const h of request.headers) {
-      if (h.enabled) headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
-    }
-
-    // beforeSend scripts — runtime vars stay local and never reach the stores.
-    const localEnvOverrides: Record<string, string> = {};
-    const localGlobals: Record<string, string> = {};
-    const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
-    if (beforeSendDirectives.length > 0) {
-      const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
-      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-      const dummyResponse: HttpResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
-      const bsResult = executePbDirectives(
-        beforeSendDirectives, dummyResponse,
-        { url, method: request.method, headers, body },
-        mergedVars, ctx.namedResults,
-      );
-      const mutated = applyRequestMutations(
-        { url, method: request.method, headers, body },
-        bsResult.requestMutations,
-      );
-      url = mutated.url;
-      headers = mutated.headers;
-      body = mutated.body;
-      Object.assign(localEnvOverrides, bsResult.setVars);
-      Object.assign(localGlobals, bsResult.globalVars);
-      Object.assign(localEnvOverrides, bsResult.globalVars);
-    }
-
-    const sentRequest = { method: request.method, url, headers, body };
-    const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
-      await invoke('http_request', {
-        payload: {
-          method: request.method,
-          url,
-          headers,
-          body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
-        },
-      });
-
-    const elapsed = performance.now() - startTime;
-    const response: HttpResponse = {
-      status: res.status,
-      statusText: res.status_text,
-      headers: res.headers,
-      body: res.body,
-      time: Math.round(elapsed),
-      size: new TextEncoder().encode(res.body).length,
-    };
-
-    // pb directives + afterReceive scripts — assertion results only; no store writes.
-    const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
-    const allDirectives = [
-      ...(request.directives || []).filter((d) => d.enabled !== false),
-      ...afterReceiveDirectives,
-    ];
-    let assertionResults: PbAssertionResult[] = [];
-    if (allDirectives.length > 0) {
-      const mergedVars: Record<string, string> = { ...ctx.environmentVariables, ...localEnvOverrides, ...localGlobals };
-      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-      const pbResult = executePbDirectives(allDirectives, response, sentRequest, mergedVars, ctx.namedResults);
-      assertionResults = pbResult.assertionResults;
-    }
+    // All pb effects (set/global vars, named result) stay in the returned
+    // locals and are discarded - a silent run never reaches the stores.
+    const result = await executeHttpRequest(request, ctx, { alias: request.varName });
 
     return {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-      body: response.body,
-      time: response.time,
-      assertions: assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
+      status: result.response.status,
+      statusText: result.response.statusText,
+      headers: result.response.headers,
+      body: result.response.body,
+      time: result.response.time,
+      assertions: result.assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
     };
   }
 
@@ -1007,6 +945,20 @@
 
   // ─── Send Request ───
 
+  /** Commit pb.set (file-scoped) and pb.global effects from a manual send to the stores. */
+  function commitPbVars(effects: PbVarEffects) {
+    if (Object.keys(effects.setVars).length > 0 && $selectedLocation) {
+      const filePath = $selectedLocation.filePath;
+      pbFileOverrides.update(ev => ({
+        ...ev,
+        [filePath]: { ...(ev[filePath] ?? {}), ...effects.setVars },
+      }));
+    }
+    if (Object.keys(effects.globalVars).length > 0) {
+      pbGlobals.update(g => ({ ...g, ...effects.globalVars }));
+    }
+  }
+
   async function sendRequest(request: HttpRequest) {
     isLoading.set(true);
     currentResponse.set(null);
@@ -1017,127 +969,21 @@
     const startTime = performance.now();
 
     try {
-      let url = substituteAll(request.url, ctx);
-      let body = substituteAll(request.body, ctx);
-      let headers: Record<string, string> = {};
-      for (const h of request.headers) {
-        if (h.enabled) {
-          headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
-        }
+      const result = await executeHttpRequest(request, ctx, {
+        alias: request.varName,
+        onBeforeInvoke(sent, beforeSend) {
+          currentSentRequest.set(sent);
+          commitPbVars(beforeSend);
+        },
+      });
+
+      currentResponse.set(result.response);
+      if (result.namedResult) {
+        const { name, result: named } = result.namedResult;
+        namedResults.update(nr => ({ ...nr, [name]: named }));
       }
-
-      // ── Execute beforeSend scripts ──
-      const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
-      if (beforeSendDirectives.length > 0) {
-        const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
-        for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
-
-        const dummyResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
-        const bsResult = executePbDirectives(
-          beforeSendDirectives, dummyResponse,
-          { url, method: request.method, headers, body },
-          mergedVars, $namedResults,
-        );
-
-        // Apply request mutations
-        const mutated = applyRequestMutations(
-          { url, method: request.method, headers, body },
-          bsResult.requestMutations,
-        );
-        url = mutated.url;
-        headers = mutated.headers;
-        body = mutated.body;
-
-        // Apply set vars from beforeSend (file-scoped)
-        if (Object.keys(bsResult.setVars).length > 0) {
-          const filePath = $selectedLocation!.filePath;
-          pbFileOverrides.update(ev => ({
-            ...ev,
-            [filePath]: { ...(ev[filePath] ?? {}), ...bsResult.setVars },
-          }));
-        }
-        if (Object.keys(bsResult.globalVars).length > 0) {
-          pbGlobals.update(g => ({ ...g, ...bsResult.globalVars }));
-        }
-      }
-
-      currentSentRequest.set({ method: request.method, url, headers, body });
-
-      const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
-        await invoke('http_request', {
-          payload: {
-            method: request.method,
-            url,
-            headers,
-            body: ['GET','HEAD','OPTIONS'].includes(request.method) ? null : body || null,
-          },
-        });
-
-      const elapsed = performance.now() - startTime;
-
-      const response: HttpResponse = {
-        status: res.status,
-        statusText: res.status_text,
-        headers: res.headers,
-        body: res.body,
-        time: Math.round(elapsed),
-        size: new TextEncoder().encode(res.body).length,
-      };
-      currentResponse.set(response);
-
-      if (request.varName) {
-        namedResults.update(nr => ({
-          ...nr,
-          [request.varName!]: {
-            request: { url, method: request.method, headers, body },
-            response,
-          },
-        }));
-      }
-
-      // ── Execute pb directives + afterReceive scripts ──
-      const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
-      const allDirectives = [...(request.directives || []), ...afterReceiveDirectives];
-      if (allDirectives.length > 0) {
-        const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
-        for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
-
-        const pbResult = executePbDirectives(
-          allDirectives, response,
-          { url, method: request.method, headers, body },
-          mergedVars,
-          $namedResults,
-        );
-
-        pbAssertionResults.set(pbResult.assertionResults);
-
-        // Apply set vars as named results so {{key}} resolves in later requests
-        if (Object.keys(pbResult.setVars).length > 0) {
-          namedResults.update(nr => {
-            const updated = { ...nr };
-            for (const [key, value] of Object.entries(pbResult.setVars)) {
-              // Store as a pseudo named result so substituteAll can pick it up.
-              // We also inject into env vars for simpler resolution.
-              updated[`__pb_${key}`] = {
-                request: { url, method: request.method, headers, body },
-                response,
-              };
-            }
-            return updated;
-          });
-          // Inject set vars into file-scoped overrides so {{key}} works in this file
-          const filePath = $selectedLocation!.filePath;
-          pbFileOverrides.update(ev => ({
-            ...ev,
-            [filePath]: { ...(ev[filePath] ?? {}), ...pbResult.setVars },
-          }));
-        }
-
-        // Apply global vars (workspace-scoped)
-        if (Object.keys(pbResult.globalVars).length > 0) {
-          pbGlobals.update(g => ({ ...g, ...pbResult.globalVars }));
-        }
-      }
+      pbAssertionResults.set(result.assertionResults);
+      commitPbVars(result.afterReceive);
     } catch (e: any) {
       currentResponse.set({
         status: 0, statusText: 'Error', headers: {},
