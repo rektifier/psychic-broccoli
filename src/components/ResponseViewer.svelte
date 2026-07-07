@@ -5,7 +5,12 @@
 
   export let response: HttpResponse | null = null;
   export let loading: boolean = false;
-  export let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
+  export let sentRequest: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: string;
+  } | null = null;
   export let assertionResults: PbAssertionResult[] = [];
   export let activeTab: ResponseTab = 'body';
 
@@ -16,8 +21,8 @@
     dispatch('tabChange', tab);
   }
 
-  $: passedCount = assertionResults.filter(t => t.passed).length;
-  $: failedCount = assertionResults.filter(t => !t.passed).length;
+  $: passedCount = assertionResults.filter((t) => t.passed).length;
+  $: failedCount = assertionResults.filter((t) => !t.passed).length;
 
   function getStatusClass(status: number): string {
     if (status >= 200 && status < 300) return 'status-success';
@@ -50,7 +55,12 @@
     }
   }
 
-  function formatRawRequest(req: { method: string; url: string; headers: Record<string, string>; body: string }): string {
+  function formatRawRequest(req: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: string;
+  }): string {
     let raw = `${req.method} ${req.url} HTTP/1.1\n`;
     for (const [key, value] of Object.entries(req.headers)) {
       raw += `${key}: ${value}\n`;
@@ -95,14 +105,19 @@
       <div class="meta-chips">
         <span class="chip">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
-            <path d="M6 3v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2" />
+            <path
+              d="M6 3v3.5l2.5 1.5"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
           </svg>
           {response.time} ms
         </span>
         <span class="chip">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 10V4l4-2 4 2v6l-4 2-4-2z" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M2 10V4l4-2 4 2v6l-4 2-4-2z" stroke="currentColor" stroke-width="1.2" />
           </svg>
           {formatSize(response.size)}
         </span>
@@ -111,21 +126,13 @@
 
     <!-- Response Tabs -->
     <div class="tabs">
-      <button
-        class="tab"
-        class:active={activeTab === 'body'}
-        on:click={() => setTab('body')}
-      >
+      <button class="tab" class:active={activeTab === 'body'} on:click={() => setTab('body')}>
         Body
         {#if isJson(response.body)}
           <span class="tab-badge">JSON</span>
         {/if}
       </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'headers'}
-        on:click={() => setTab('headers')}
-      >
+      <button class="tab" class:active={activeTab === 'headers'} on:click={() => setTab('headers')}>
         Headers
         <span class="tab-count">{Object.keys(response.headers).length}</span>
       </button>
@@ -145,7 +152,11 @@
           on:click={() => setTab('assertions')}
         >
           Assertions
-          <span class="tab-count assertion-count" class:all-pass={failedCount === 0} class:has-fail={failedCount > 0}>
+          <span
+            class="tab-count assertion-count"
+            class:all-pass={failedCount === 0}
+            class:has-fail={failedCount > 0}
+          >
             {passedCount}/{assertionResults.length}
           </span>
         </button>
@@ -155,7 +166,9 @@
     <!-- Content -->
     <div class="content">
       {#if activeTab === 'body'}
-        <pre class="body-output" class:json={isJson(response.body)}>{formatBody(response.body)}</pre>
+        <pre class="body-output" class:json={isJson(response.body)}>{formatBody(
+            response.body,
+          )}</pre>
       {:else if activeTab === 'headers'}
         <div class="headers-table">
           {#each Object.entries(response.headers) as [key, value]}
@@ -238,8 +251,14 @@
     animation-delay: 0.3s;
   }
   @keyframes pulse-out {
-    0% { transform: scale(0.5); opacity: 1; }
-    100% { transform: scale(1.4); opacity: 0; }
+    0% {
+      transform: scale(0.5);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1.4);
+      opacity: 0;
+    }
   }
   .loading-icon {
     font-size: var(--text-2xl);
@@ -247,8 +266,12 @@
     animation: pulse-glow 1s ease-in-out infinite alternate;
   }
   @keyframes pulse-glow {
-    0% { opacity: 0.5; }
-    100% { opacity: 1; }
+    0% {
+      opacity: 0.5;
+    }
+    100% {
+      opacity: 1;
+    }
   }
 
   /* Status Bar */
@@ -332,7 +355,9 @@
     transition: all var(--duration-normal);
     margin-bottom: -1px;
   }
-  .tab:hover { color: var(--color-text-secondary); }
+  .tab:hover {
+    color: var(--color-text-secondary);
+  }
   .tab.active {
     color: var(--color-text-heading);
     border-bottom-color: var(--color-primary);
@@ -414,8 +439,14 @@
   }
 
   /* Assertion Results */
-  .assertion-count.all-pass { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
-  .assertion-count.has-fail { background: color-mix(in srgb, var(--color-error) 12%, transparent); color: var(--color-error); }
+  .assertion-count.all-pass {
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    color: var(--color-success);
+  }
+  .assertion-count.has-fail {
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
+  }
 
   .assertion-results {
     display: flex;
@@ -439,8 +470,17 @@
     width: 18px;
     text-align: center;
   }
-  .assertion-entry.pass .assertion-icon { color: var(--color-success); }
-  .assertion-entry.fail .assertion-icon { color: var(--color-error); }
-  .assertion-entry.pass .assertion-label { color: var(--slate-600); }
-  .assertion-entry.fail .assertion-label { color: var(--color-error); font-weight: var(--weight-medium); }
+  .assertion-entry.pass .assertion-icon {
+    color: var(--color-success);
+  }
+  .assertion-entry.fail .assertion-icon {
+    color: var(--color-error);
+  }
+  .assertion-entry.pass .assertion-label {
+    color: var(--slate-600);
+  }
+  .assertion-entry.fail .assertion-label {
+    color: var(--color-error);
+    font-weight: var(--weight-medium);
+  }
 </style>

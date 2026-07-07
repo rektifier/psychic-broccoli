@@ -21,8 +21,10 @@
 
   function isActive(tab: Tab): boolean {
     if (!activeLocation || activeFlowPath) return false;
-    return tab.location.filePath === activeLocation.filePath
-      && tab.location.requestIndex === activeLocation.requestIndex;
+    return (
+      tab.location.filePath === activeLocation.filePath &&
+      tab.location.requestIndex === activeLocation.requestIndex
+    );
   }
 </script>
 
@@ -33,20 +35,36 @@
         class="tab flow-tab"
         class:active={activeFlowPath === ft.flowPath}
         on:click={() => dispatch('activateFlowTab', ft.flowPath)}
-        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('activateFlowTab', ft.flowPath); } }}
+        on:keydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            dispatch('activateFlowTab', ft.flowPath);
+          }
+        }}
         role="tab"
         tabindex="0"
       >
         <svg class="flow-tab-icon" width="10" height="10" viewBox="0 0 16 16" fill="none">
-          <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.15"/>
-          <path d="M6 4.5h4M11.5 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path
+            d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="currentColor"
+            fill-opacity="0.15"
+          />
+          <path
+            d="M6 4.5h4M11.5 6v4"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
         </svg>
         <span class="tab-label">{ft.label}</span>
         <button
           class="tab-close"
           on:click|stopPropagation={() => dispatch('closeFlowTab', ft.flowPath)}
-          title="Close tab"
-        >&times;</button>
+          title="Close tab">&times;</button
+        >
       </div>
     {/each}
     {#each tabs as tab}
@@ -54,7 +72,12 @@
         class="tab"
         class:active={isActive(tab) && !isPreview}
         on:click={() => dispatch('activate', tab.location)}
-        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('activate', tab.location); } }}
+        on:keydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            dispatch('activate', tab.location);
+          }
+        }}
         role="tab"
         tabindex="0"
       >
@@ -62,8 +85,8 @@
         <button
           class="tab-close"
           on:click|stopPropagation={() => dispatch('close', tab.location)}
-          title="Close tab"
-        >&times;</button>
+          title="Close tab">&times;</button
+        >
       </div>
     {/each}
     {#if isPreview && previewLabel}

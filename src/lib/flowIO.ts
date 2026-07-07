@@ -43,9 +43,10 @@ function parseFlowStep(raw: any): FlowStep {
   //   - varName matches auto shape `Step{N}`: treat as auto (re-normalized)
   //   - non-null custom varName: preserve as locked
   //   - null varName: auto
-  const aliasLocked = typeof raw.aliasLocked === 'boolean'
-    ? raw.aliasLocked
-    : (raw.varName != null && !/^Step\d+$/.test(raw.varName));
+  const aliasLocked =
+    typeof raw.aliasLocked === 'boolean'
+      ? raw.aliasLocked
+      : raw.varName != null && !/^Step\d+$/.test(raw.varName);
   return {
     id: raw.id ?? crypto.randomUUID(),
     filePath: raw.filePath ?? '',
@@ -123,7 +124,7 @@ export async function scanForFlowFiles(dir: string, rootDir: string): Promise<Di
   const flowsDir = await join(rootDir, FLOWS_DIR);
   let entries: { name: string; isDirectory: boolean }[];
   try {
-    entries = await readDir(flowsDir) as any[];
+    entries = (await readDir(flowsDir)) as any[];
   } catch {
     return []; // .flows/ directory doesn't exist yet
   }
@@ -188,9 +189,10 @@ function redactNode(node: unknown, secrets: string[], parentKey: string): unknow
     const isHeaders = parentKey === 'headers';
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(node)) {
-      out[k] = isHeaders && typeof v === 'string' && isSensitiveHeaderName(k)
-        ? REDACTED
-        : redactNode(v, secrets, k);
+      out[k] =
+        isHeaders && typeof v === 'string' && isSensitiveHeaderName(k)
+          ? REDACTED
+          : redactNode(v, secrets, k);
     }
     return out;
   }
@@ -203,7 +205,10 @@ function redactNode(node: unknown, secrets: string[], parentKey: string): unknow
  * and sensitive request/response headers are redacted by name. The original
  * record is not mutated.
  */
-export function redactFlowRunRecord(record: FlowRunRecord, secretValues: string[] = []): FlowRunRecord {
+export function redactFlowRunRecord(
+  record: FlowRunRecord,
+  secretValues: string[] = [],
+): FlowRunRecord {
   // Ignore trivially short values to avoid mangling unrelated text.
   const secrets = secretValues.filter((v) => typeof v === 'string' && v.length >= 4);
   return redactNode(record, secrets, '') as FlowRunRecord;
@@ -213,12 +218,13 @@ export function redactFlowRunRecord(record: FlowRunRecord, secretValues: string[
 
 /** Sanitize a flow name into a filesystem-safe directory name. */
 function sanitizeFlowName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    || 'unnamed';
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'unnamed'
+  );
 }
 
 /**
@@ -235,7 +241,9 @@ export async function saveFlowRunRecord(
   const resultsDir = await join(rootDir, RESULTS_DIR, dirName);
   try {
     await mkdir(resultsDir, { recursive: true });
-  } catch { /* already exists */ }
+  } catch {
+    /* already exists */
+  }
 
   const timestamp = record.startedAt.replace(/[:.]/g, '-');
   const filePath = await join(resultsDir, `${timestamp}.json`);
@@ -249,7 +257,7 @@ export async function saveFlowRunRecord(
 /** Delete the oldest run records if the count exceeds MAX_HISTORY_PER_FLOW. */
 async function pruneFlowHistory(resultsDir: string): Promise<void> {
   try {
-    const files = await readDir(resultsDir) as any[];
+    const files = (await readDir(resultsDir)) as any[];
     const jsonFiles = files
       .filter((f: any) => !f.isDirectory && f.name.endsWith('.json'))
       .sort((a: any, b: any) => b.name.localeCompare(a.name));
@@ -261,9 +269,13 @@ async function pruneFlowHistory(resultsDir: string): Promise<void> {
       try {
         const filePath = await join(resultsDir, file.name);
         await remove(filePath);
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     }
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 /** Delete all persisted run records for a given flow name. */
@@ -272,7 +284,9 @@ export async function clearFlowRunHistory(rootDir: string, flowName: string): Pr
   const resultsDir = await join(rootDir, RESULTS_DIR, dirName);
   try {
     await remove(resultsDir, { recursive: true });
-  } catch { /* directory may not exist */ }
+  } catch {
+    /* directory may not exist */
+  }
 }
 
 /** Load all flow run history from .pb-flow-results/. Returns records sorted newest first. */
@@ -282,7 +296,7 @@ export async function loadFlowHistory(rootDir: string): Promise<FlowRunRecord[]>
 
   let flowDirs: { name: string; isDirectory: boolean }[];
   try {
-    flowDirs = await readDir(resultsRoot) as any[];
+    flowDirs = (await readDir(resultsRoot)) as any[];
   } catch {
     return []; // No results directory yet
   }
@@ -293,14 +307,14 @@ export async function loadFlowHistory(rootDir: string): Promise<FlowRunRecord[]>
     const flowDirPath = await join(resultsRoot, flowDir.name);
     let files: { name: string; isDirectory: boolean }[];
     try {
-      files = await readDir(flowDirPath) as any[];
+      files = (await readDir(flowDirPath)) as any[];
     } catch {
       continue;
     }
 
     // Sort by name descending (newest first) and limit
     const jsonFiles = files
-      .filter(f => !f.isDirectory && f.name.endsWith('.json'))
+      .filter((f) => !f.isDirectory && f.name.endsWith('.json'))
       .sort((a, b) => b.name.localeCompare(a.name))
       .slice(0, MAX_HISTORY_PER_FLOW);
 

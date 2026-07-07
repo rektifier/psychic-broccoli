@@ -21,7 +21,10 @@
 
       <div class="section">
         <div class="section-title">Requests</div>
-        <p>Open a folder containing <code>.http</code> or <code>.rest</code> files. Each file can hold multiple requests separated by <code>###</code>.</p>
+        <p>
+          Open a folder containing <code>.http</code> or <code>.rest</code> files. Each file can
+          hold multiple requests separated by <code>###</code>.
+        </p>
         <pre class="code-block">### Get users
 GET https://api.example.com/users
 Authorization: Bearer my-token
@@ -37,7 +40,10 @@ Content-Type: application/json
 
       <div class="section">
         <div class="section-title">Variables</div>
-        <p>Define file-level variables with <code>@name = value</code>. Reference any variable with <code>&#123;&#123;name&#125;&#125;</code>.</p>
+        <p>
+          Define file-level variables with <code>@name = value</code>. Reference any variable with
+          <code>&#123;&#123;name&#125;&#125;</code>.
+        </p>
         <pre class="code-block">@hostname = localhost
 @port = 3000
 
@@ -46,19 +52,31 @@ GET https://&#123;&#123;hostname&#125;&#125;:&#123;&#123;port&#125;&#125;/api/us
 
       <div class="section">
         <div class="section-title">Environments</div>
-        <p>Place <code>http-client.env.json</code> in your workspace root. Use <code>$shared</code> for defaults shared across all environments.</p>
+        <p>
+          Place <code>http-client.env.json</code> in your workspace root. Use <code>$shared</code> for
+          defaults shared across all environments.
+        </p>
         <pre class="code-block">&#123;
   "$shared": &#123; "BaseUrl": "https://localhost:5000" &#125;,
   "dev": &#123; "Token": "dev-token-123" &#125;,
   "staging": &#123; "Token": "staging-token-789" &#125;
 &#125;</pre>
-        <p>Add a <code>http-client.env.json.user</code> file for personal overrides (gitignored).</p>
+        <p>
+          Add a <code>http-client.env.json.user</code> file for personal overrides (gitignored).
+        </p>
       </div>
 
       <div class="section">
         <div class="section-title">Azure Key Vault</div>
-        <p>Pull secrets from Azure Key Vault directly into your environment variables. Sign in first with <code>az login</code> or <code>azd auth login</code>.</p>
-        <p>Configure a vault per environment (or in <code>$shared</code>) by adding a <code>$keyvault</code> block to your env file, or use the Key Vault section in the environment editor.</p>
+        <p>
+          Pull secrets from Azure Key Vault directly into your environment variables. Sign in first
+          with <code>az login</code> or <code>azd auth login</code>.
+        </p>
+        <p>
+          Configure a vault per environment (or in <code>$shared</code>) by adding a
+          <code>$keyvault</code> block to your env file, or use the Key Vault section in the environment
+          editor.
+        </p>
         <pre class="code-block">&#123;
   "$shared": &#123;
     "BaseUrl": "https://localhost:5000",
@@ -74,7 +92,11 @@ GET https://&#123;&#123;hostname&#125;&#125;:&#123;&#123;port&#125;&#125;/api/us
   "ApiKey": "sk-abc123",
   "DbPassword": "hunter2"
 &#125;</pre>
-        <p>Each key becomes a variable (e.g. <code>&#123;&#123;ApiKey&#125;&#125;</code>). If a key exists both locally and in Key Vault, the KV value wins by default - you can toggle per variable in the environment editor.</p>
+        <p>
+          Each key becomes a variable (e.g. <code>&#123;&#123;ApiKey&#125;&#125;</code>). If a key
+          exists both locally and in Key Vault, the KV value wins by default - you can toggle per
+          variable in the environment editor.
+        </p>
       </div>
 
       <div class="section">
@@ -87,7 +109,9 @@ GET https://&#123;&#123;hostname&#125;&#125;:&#123;&#123;port&#125;&#125;/api/us
 
       <div class="section">
         <div class="section-title">Request chaining</div>
-        <p>Name a request with <code>// @name</code>, then reference its response in later requests.</p>
+        <p>
+          Name a request with <code>// @name</code>, then reference its response in later requests.
+        </p>
         <pre class="code-block">// @name login
 POST https://api.example.com/auth
 Content-Type: application/json
@@ -102,7 +126,10 @@ Authorization: Bearer &#123;&#123;login.response.body.$.token&#125;&#125;</pre>
 
       <div class="section">
         <div class="section-title">The pb. prefix</div>
-        <p>All scripting in Psychic Broccoli uses the <code>pb.</code> prefix. It gives you access to the current request and response, and lets you set variables, mutate requests, and write assertions.</p>
+        <p>
+          All scripting in Psychic Broccoli uses the <code>pb.</code> prefix. It gives you access to the
+          current request and response, and lets you set variables, mutate requests, and write assertions.
+        </p>
         <pre class="code-block"><strong>Read data</strong>
 pb.response.status             HTTP status code
 pb.response.statusText         Status text ("OK")
@@ -131,7 +158,10 @@ pb.set("request.body.$.path", expr)      Patch a JSON field</pre>
 
       <div class="section">
         <div class="section-title">Before Send</div>
-        <p>Scripts in the <strong>Before Send</strong> tab run after variables are resolved but before the request is sent. Use them to dynamically mutate the outgoing request.</p>
+        <p>
+          Scripts in the <strong>Before Send</strong> tab run after variables are resolved but before
+          the request is sent. Use them to dynamically mutate the outgoing request.
+        </p>
         <pre class="code-block"><strong>Add or override headers</strong>
 pb.set("request.header.X-Request-Id", &#123;&#123;$timestamp&#125;&#125;)
 pb.set("request.header.Authorization", "Bearer " + &#123;&#123;token&#125;&#125;)
@@ -152,7 +182,10 @@ pb.set("computedKey", "prefix-" + &#123;&#123;$randomInt 1 999&#125;&#125;)</pre
 
       <div class="section">
         <div class="section-title">After Receive</div>
-        <p>Scripts in the <strong>After Receive</strong> tab run once the response arrives. Use them to extract values, store tokens, or validate responses.</p>
+        <p>
+          Scripts in the <strong>After Receive</strong> tab run once the response arrives. Use them to
+          extract values, store tokens, or validate responses.
+        </p>
         <pre class="code-block"><strong>Extract and store values</strong>
 pb.set("token", pb.response.body.$.access_token)
 pb.set("userId", pb.response.body.$.data.user.id)
@@ -170,7 +203,10 @@ pb.global("baseUrl", pb.response.body.$.config.apiUrl)</pre>
 
       <div class="section">
         <div class="section-title">Assertions</div>
-        <p>Add assertions in the <strong>Assertions</strong> tab. One assertion per line, with expression and label separated by <code> | </code>.</p>
+        <p>
+          Add assertions in the <strong>Assertions</strong> tab. One assertion per line, with
+          expression and label separated by <code> | </code>.
+        </p>
         <pre class="code-block">expression | Label text
 expression without a label</pre>
       </div>
@@ -228,13 +264,19 @@ Authorization: Bearer &#123;&#123;token&#125;&#125;
 # @pb.set("userId", pb.response.body.$.id)
 # @pb.global("lastUser", pb.response.body.$.name)
 # @pb.assert(pb.response.status == 200, "OK")</pre>
-        <p><code>set</code> stores a variable scoped to the current file. <code>global</code> makes it available across all files in the workspace. Both are runtime-only and reset when you close the app. The GUI tabs and file directives are equivalent.</p>
+        <p>
+          <code>set</code> stores a variable scoped to the current file. <code>global</code> makes it
+          available across all files in the workspace. Both are runtime-only and reset when you close
+          the app. The GUI tabs and file directives are equivalent.
+        </p>
       </div>
 
       <div class="section">
         <div class="section-title">Shortcuts</div>
         <div class="shortcut-row"><kbd>Ctrl+Enter</kbd> <span>Send request</span></div>
-        <div class="shortcut-row"><kbd>Right-click</kbd> <span>Set response alias on a request</span></div>
+        <div class="shortcut-row">
+          <kbd>Right-click</kbd> <span>Set response alias on a request</span>
+        </div>
       </div>
     </div>
   </div>

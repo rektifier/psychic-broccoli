@@ -30,7 +30,9 @@
   let copyLabel = $state('Copy MCP config');
 
   onMount(async () => {
-    try { appVersion = await getVersion(); } catch {}
+    try {
+      appVersion = await getVersion();
+    } catch {}
     await loadMcp();
   });
 
@@ -91,7 +93,9 @@
     try {
       await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
       copyLabel = 'Copied!';
-      setTimeout(() => { copyLabel = 'Copy MCP config'; }, 1500);
+      setTimeout(() => {
+        copyLabel = 'Copy MCP config';
+      }, 1500);
     } catch {
       mcpError = 'Could not copy to clipboard';
     }
@@ -106,7 +110,9 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="overlay"
-    onclick={(e) => { if (e.target === e.currentTarget) onclose?.(); }}
+    onclick={(e) => {
+      if (e.target === e.currentTarget) onclose?.();
+    }}
     onkeydown={() => {}}
   >
     <div class="modal">
@@ -132,8 +138,8 @@
         <div class="section">
           <span class="section-label">MCP Server</span>
           <p class="section-desc">
-            Expose this workspace to MCP clients such as Claude Code over a
-            local-only endpoint (127.0.0.1).
+            Expose this workspace to MCP clients such as Claude Code over a local-only endpoint
+            (127.0.0.1).
           </p>
 
           <label class="mcp-row toggle-row" for="mcp-enabled">
@@ -184,7 +190,10 @@
 <style>
   .overlay {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: var(--z-modal);
     background: var(--overlay-bg);
     display: flex;
@@ -222,7 +231,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background var(--duration-normal), color var(--duration-normal);
+    transition:
+      background var(--duration-normal),
+      color var(--duration-normal);
   }
   .btn-close:hover {
     background: var(--color-bg-muted);

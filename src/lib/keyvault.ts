@@ -60,7 +60,7 @@ export async function fetchKeyVaultSecrets(
     if (msg.includes('unknown command')) {
       throw new Error(
         'Key Vault integration is not available in this build. ' +
-        'Rebuild with the "keyvault" Cargo feature enabled.',
+          'Rebuild with the "keyvault" Cargo feature enabled.',
       );
     }
     throw err;
@@ -72,14 +72,14 @@ export async function fetchKeyVaultSecrets(
   } catch {
     throw new Error(
       `Key Vault secret '${config.secretName}' contains invalid JSON. ` +
-      'Expected a flat object like {"key": "value"}.',
+        'Expected a flat object like {"key": "value"}.',
     );
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(
       `Key Vault secret '${config.secretName}' must be a JSON object. ` +
-      'Expected a flat object like {"key": "value"}.',
+        'Expected a flat object like {"key": "value"}.',
     );
   }
 
@@ -90,7 +90,7 @@ export async function fetchKeyVaultSecrets(
     if (typeof value !== 'string') {
       throw new Error(
         `Key Vault secret '${config.secretName}' contains a non-string value ` +
-        `for key '${key}'. Only flat string key-value pairs are supported.`,
+          `for key '${key}'. Only flat string key-value pairs are supported.`,
       );
     }
     result_map[key] = value;

@@ -30,9 +30,15 @@
     text-align: left;
     transition: background var(--duration-fast);
   }
-  .picker-row:hover { background: var(--color-bg-subtle); }
-  .picker-row.inserted { background: color-mix(in srgb, var(--color-success) 12%, transparent); }
-  .picker-row.row-nested { padding-left: var(--space-6); }
+  .picker-row:hover {
+    background: var(--color-bg-subtle);
+  }
+  .picker-row.inserted {
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  }
+  .picker-row.row-nested {
+    padding-left: var(--space-6);
+  }
 
   .row-key {
     font-family: var(--font-mono);
@@ -65,7 +71,9 @@
     opacity: 0;
     transition: opacity var(--duration-fast);
   }
-  .picker-row:hover .row-action { opacity: 1; }
+  .picker-row:hover .row-action {
+    opacity: 1;
+  }
   .picker-row.inserted .row-action {
     opacity: 1;
     color: var(--color-success);

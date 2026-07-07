@@ -43,7 +43,11 @@ export function detectImportFormat(content: string): ImportFormat | null {
 
   // Insomnia v5 YAML: type field referencing insomnia (covers collection, spec, mock, environment, mcpClient)
   // Insomnia v4 YAML: _type or __export_format markers
-  if (/^type:\s+\S*insomnia/m.test(trimmed) || /^_type:\s/m.test(trimmed) || /^__export_format:\s/m.test(trimmed)) {
+  if (
+    /^type:\s+\S*insomnia/m.test(trimmed) ||
+    /^_type:\s/m.test(trimmed) ||
+    /^__export_format:\s/m.test(trimmed)
+  ) {
     return 'insomnia';
   }
 

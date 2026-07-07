@@ -109,7 +109,8 @@
     detectedFormat = format;
 
     if (!format) {
-      detectionError = 'Could not determine format. Ensure this is a Postman Collection, Insomnia Export, or OpenAPI spec.';
+      detectionError =
+        'Could not determine format. Ensure this is a Postman Collection, Insomnia Export, or OpenAPI spec.';
     }
   }
 
@@ -118,9 +119,7 @@
   async function browseFile() {
     const filePath = await open({
       title: 'Import Collection',
-      filters: [
-        { name: 'API Collections', extensions: ['json', 'yaml', 'yml'] },
-      ],
+      filters: [{ name: 'API Collections', extensions: ['json', 'yaml', 'yml'] }],
     });
     if (!filePath) return;
 
@@ -162,15 +161,19 @@
     urlError = '';
 
     try {
-      const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
-        await invoke('http_request', {
-          payload: {
-            method: 'GET',
-            url: trimmedUrl,
-            headers: { 'Accept': 'application/json, application/yaml, text/yaml, */*' },
-            body: null,
-          },
-        });
+      const res: {
+        status: number;
+        status_text: string;
+        headers: Record<string, string>;
+        body: string;
+      } = await invoke('http_request', {
+        payload: {
+          method: 'GET',
+          url: trimmedUrl,
+          headers: { Accept: 'application/json, application/yaml, text/yaml, */*' },
+          body: null,
+        },
+      });
 
       if (res.status >= 400) {
         urlError = `Server returned ${res.status} ${res.status_text}`;
@@ -194,9 +197,7 @@
   }
 </script>
 
-<svelte:window
-  on:keydown={visible ? handleKeydown : undefined}
-/>
+<svelte:window on:keydown={visible ? handleKeydown : undefined} />
 
 {#if visible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -220,8 +221,20 @@
               on:drop={handleDrop}
             >
               <svg class="drop-icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
-                <path d="M16 4v16M10 14l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M6 22v3a2 2 0 002 2h16a2 2 0 002-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path
+                  d="M16 4v16M10 14l6 6 6-6"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M6 22v3a2 2 0 002 2h16a2 2 0 002-2v-3"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
               <span class="drop-text">Drop a collection file here</span>
               <span class="drop-or">or</span>
@@ -233,8 +246,12 @@
           {:else}
             <div class="file-indicator">
               <svg class="file-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M4 1h5l4 4v9a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3"/>
-                <path d="M9 1v4h4" stroke="currentColor" stroke-width="1.3"/>
+                <path
+                  d="M4 1h5l4 4v9a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                />
+                <path d="M9 1v4h4" stroke="currentColor" stroke-width="1.3" />
               </svg>
               <div class="file-details">
                 <span class="file-name">{selectedFile.name}</span>
@@ -245,7 +262,12 @@
               {/if}
               <button class="btn-clear" on:click={clearFile} title="Remove file">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path
+                    d="M3 3l6 6M9 3l-6 6"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
                 </svg>
               </button>
             </div>
@@ -259,7 +281,13 @@
             <p class="error-message">{error}</p>
           {/if}
 
-          <button class="mode-switch" on:click={() => { mode = 'url'; clearFile(); }}>
+          <button
+            class="mode-switch"
+            on:click={() => {
+              mode = 'url';
+              clearFile();
+            }}
+          >
             Import from URL instead
           </button>
         {:else}
@@ -272,14 +300,22 @@
             bind:value={url}
             placeholder="https://petstore.swagger.io/v2/swagger.json"
             disabled={urlLoading}
-            on:keydown={(e) => { if (e.key === 'Enter') fetchSpec(); }}
+            on:keydown={(e) => {
+              if (e.key === 'Enter') fetchSpec();
+            }}
           />
 
           {#if urlError}
             <p class="error-message">{urlError}</p>
           {/if}
 
-          <button class="mode-switch" on:click={() => { mode = 'file'; urlError = ''; }}>
+          <button
+            class="mode-switch"
+            on:click={() => {
+              mode = 'file';
+              urlError = '';
+            }}
+          >
             Import from file instead
           </button>
         {/if}
@@ -288,7 +324,11 @@
       <div class="modal-footer">
         <button class="btn-cancel" on:click={cancel} disabled={urlLoading}>Cancel</button>
         {#if mode === 'file'}
-          <button class="btn-confirm" on:click={doImport} disabled={!selectedFile || !detectedFormat}>
+          <button
+            class="btn-confirm"
+            on:click={doImport}
+            disabled={!selectedFile || !detectedFormat}
+          >
             Import
           </button>
         {:else}
@@ -414,15 +454,23 @@
     white-space: nowrap;
   }
   .btn-clear {
-    width: 22px; height: 22px;
-    border: none; border-radius: var(--radius-sm);
-    background: transparent; color: var(--color-text-placeholder);
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-placeholder);
     cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
     transition: all var(--duration-normal);
   }
-  .btn-clear:hover { background: var(--color-bg-muted); color: var(--slate-450); }
+  .btn-clear:hover {
+    background: var(--color-bg-muted);
+    color: var(--slate-450);
+  }
 
   /* Mode switch */
   .mode-switch {
@@ -462,14 +510,18 @@
     font-size: var(--text-base);
     outline: none;
   }
-  .url-input:focus { border-color: var(--color-primary); }
-  .url-input:disabled { opacity: 0.6; }
+  .url-input:focus {
+    border-color: var(--color-primary);
+  }
+  .url-input:disabled {
+    opacity: 0.6;
+  }
 
   /* Error */
   .error-message {
     margin-top: var(--space-2);
     font-size: var(--text-sm);
-    color: #D32F2F;
+    color: #d32f2f;
     line-height: var(--leading-normal);
   }
 
@@ -485,8 +537,14 @@
     cursor: pointer;
     transition: all var(--duration-normal);
   }
-  .btn-cancel:hover { border-color: var(--color-text-faint); color: var(--color-text); }
-  .btn-cancel:disabled { opacity: 0.5; cursor: default; }
+  .btn-cancel:hover {
+    border-color: var(--color-text-faint);
+    color: var(--color-text);
+  }
+  .btn-cancel:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
   .btn-confirm {
     padding: var(--space-1\.5) var(--space-3\.5);
     border: none;
@@ -499,6 +557,11 @@
     cursor: pointer;
     transition: background var(--duration-normal);
   }
-  .btn-confirm:hover { background: var(--color-primary-active); }
-  .btn-confirm:disabled { opacity: 0.5; cursor: default; }
+  .btn-confirm:hover {
+    background: var(--color-primary-active);
+  }
+  .btn-confirm:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 </style>

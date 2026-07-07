@@ -3,7 +3,20 @@
   import FlowStepPicker from './FlowStepPicker.svelte';
   import FlowResults from './FlowResults.svelte';
   import VariablePicker from './VariablePicker.svelte';
-  import type { FlowDefinition, FlowStep, FlowStepResult, FlowRunRecord, FlowRunStatus, FileNode, TreeNode as TNode, HttpHeader, FlowStepOverrides, PbDirective, Variable, NamedRequestResult } from '../lib/types';
+  import type {
+    FlowDefinition,
+    FlowStep,
+    FlowStepResult,
+    FlowRunRecord,
+    FlowRunStatus,
+    FileNode,
+    TreeNode as TNode,
+    HttpHeader,
+    FlowStepOverrides,
+    PbDirective,
+    Variable,
+    NamedRequestResult,
+  } from '../lib/types';
   import { getAllFileNodes, substituteAll, parseScriptText } from '../lib/parser';
   import { applyAliasSync, autoAliasFor } from '../lib/flowAlias';
   import { baseEnvVars, dotenvVariables } from '../lib/stores';
@@ -16,14 +29,22 @@
   export let runState: { status: FlowRunStatus; stepResults: FlowStepResult[] } | null = null;
   export let lastRunRecord: FlowRunRecord | null = null;
   export let runHistory: FlowRunRecord[] = [];
-  export let uiState: { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> } | null = null;
+  export let uiState: {
+    expandedStepId: string | null;
+    collapsedKeys: Record<string, boolean>;
+    activeOverrideTabs: Record<string, string>;
+  } | null = null;
 
   const dispatch = createEventDispatcher<{
     save: { flowPath: string; flow: FlowDefinition };
     run: void;
     abort: void;
     clearHistory: void;
-    uiStateChange: { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> };
+    uiStateChange: {
+      expandedStepId: string | null;
+      collapsedKeys: Record<string, boolean>;
+      activeOverrideTabs: Record<string, string>;
+    };
   }>();
 
   $: isRunning = runState?.status === 'running';
@@ -32,7 +53,7 @@
   /** Find the FileNode matching a step's filePath. */
   function findFileForStep(step: FlowStep): FileNode | undefined {
     const normalized = step.filePath.replaceAll('\\', '/');
-    return allFiles.find(f => {
+    return allFiles.find((f) => {
       const rel = f.path.substring(rootPath.length + 1).replaceAll('\\', '/');
       return rel === normalized;
     });
@@ -43,7 +64,7 @@
     const file = findFileForStep(step);
     if (!file) return true;
     if (step.requestIndex >= 0 && step.requestIndex < file.requests.length) return false;
-    if (step.varName && file.requests.some(r => r.varName === step.varName)) return false;
+    if (step.varName && file.requests.some((r) => r.varName === step.varName)) return false;
     return true;
   }
 
@@ -58,7 +79,7 @@
     const map: Record<string, NamedRequestResult> = {};
     for (const result of source) {
       if (!result.response || !result.sentRequest) continue;
-      const step = flow.steps.find(s => s.id === result.stepId);
+      const step = flow.steps.find((s) => s.id === result.stepId);
       const alias = step?.varName;
       if (!alias) continue;
       map[alias] = { request: result.sentRequest, response: result.response };
@@ -82,9 +103,10 @@
     const scope = flowScopeVars;
     return flow.steps.map((step) => {
       const file = findFileForStep(step);
-      const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
-        ? file.requests[step.requestIndex]
-        : null;
+      const req =
+        file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
+          ? file.requests[step.requestIndex]
+          : null;
       // Prefer the step's override URL (what the user is actively editing) over the base.
       const rawUrl = step.overrides?.url ?? (req ? req.url : getUrl(step.label));
       if (!rawUrl || !rawUrl.includes('{{')) return '';
@@ -92,7 +114,8 @@
       // URLs that reference them (e.g. {{sessionId}}) resolve in the preview.
       const nonEmptyEnv: Record<string, string> = {};
       for (const [k, v] of Object.entries(env)) if (v) nonEmptyEnv[k] = v;
-      for (const [k, v] of Object.entries(scope)) if (v != null && v !== '') nonEmptyEnv[k] = String(v);
+      for (const [k, v] of Object.entries(scope))
+        if (v != null && v !== '') nonEmptyEnv[k] = String(v);
       const resolved = substituteAll(rawUrl, {
         fileVariables: [],
         environmentVariables: nonEmptyEnv,
@@ -104,7 +127,7 @@
   })();
 
   function getStepStatus(stepId: string): FlowStepResult | undefined {
-    return runState?.stepResults.find(r => r.stepId === stepId);
+    return runState?.stepResults.find((r) => r.stepId === stepId);
   }
 
   let editingName = false;
@@ -132,7 +155,7 @@
     const list = card.closest('.steps-list');
     if (list) {
       const cards = list.querySelectorAll('.step-card');
-      cachedRects = Array.from(cards).map(c => {
+      cachedRects = Array.from(cards).map((c) => {
         const r = c.getBoundingClientRect();
         return { top: r.top, height: r.height };
       });
@@ -204,8 +227,7 @@
   }
 
   function onListDragLeave(e: DragEvent) {
-    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node))
-      insertSlot = -1;
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) insertSlot = -1;
   }
 
   function moveStep(from: number, to: number) {
@@ -238,7 +260,6 @@
     }
   }
 
-
   function startEditName() {
     editingName = true;
     setTimeout(() => nameInputEl?.focus(), 0);
@@ -252,7 +273,9 @@
 
   function handleNameKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') commitName();
-    if (e.key === 'Escape') { editingName = false; }
+    if (e.key === 'Escape') {
+      editingName = false;
+    }
   }
 
   function save() {
@@ -338,15 +361,15 @@
   function computeFileSuffixes(requests: { url: string }[]): string[] {
     if (requests.length === 0) return [];
     if (requests.length === 1) return [requests[0].url];
-    const split = requests.map(r => r.url.split('/'));
-    const minLen = Math.min(...split.map(s => s.length));
+    const split = requests.map((r) => r.url.split('/'));
+    const minLen = Math.min(...split.map((s) => s.length));
     let common = 0;
     for (let i = 0; i < minLen; i++) {
-      if (split.every(s => s[i] === split[0][i])) common = i + 1;
+      if (split.every((s) => s[i] === split[0][i])) common = i + 1;
       else break;
     }
-    if (common === 0) return requests.map(r => r.url);
-    return split.map(s => '/' + s.slice(common).join('/'));
+    if (common === 0) return requests.map((r) => r.url);
+    return split.map((s) => '/' + s.slice(common).join('/'));
   }
 
   // ─── Override editing ───────────────────────────────────────────────────────
@@ -401,7 +424,14 @@
   function hasOverrides(step: FlowStep): boolean {
     if (!step.overrides) return false;
     const o = step.overrides;
-    return o.url !== undefined || o.headers !== undefined || o.body !== undefined || o.directives !== undefined || o.beforeSend !== undefined || o.afterReceive !== undefined;
+    return (
+      o.url !== undefined ||
+      o.headers !== undefined ||
+      o.body !== undefined ||
+      o.directives !== undefined ||
+      o.beforeSend !== undefined ||
+      o.afterReceive !== undefined
+    );
   }
 
   function updateStepOverride(index: number, field: keyof FlowStepOverrides, value: any) {
@@ -422,29 +452,39 @@
   }
 
   function addOverrideHeader(index: number, baseHeaders: HttpHeader[]) {
-    const current = flow.steps[index].overrides?.headers ?? baseHeaders.map(h => ({ ...h }));
+    const current = flow.steps[index].overrides?.headers ?? baseHeaders.map((h) => ({ ...h }));
     updateStepOverride(index, 'headers', [...current, { key: '', value: '', enabled: true }]);
   }
 
   function removeOverrideHeader(stepIndex: number, headerIndex: number, baseHeaders: HttpHeader[]) {
-    const current = flow.steps[stepIndex].overrides?.headers ?? baseHeaders.map(h => ({ ...h }));
+    const current = flow.steps[stepIndex].overrides?.headers ?? baseHeaders.map((h) => ({ ...h }));
     const updated = current.filter((_, i) => i !== headerIndex);
     updateStepOverride(stepIndex, 'headers', updated.length > 0 ? updated : undefined);
   }
 
-  function updateOverrideHeader(stepIndex: number, headerIndex: number, field: keyof HttpHeader, value: any, baseHeaders: HttpHeader[]) {
-    const current = (flow.steps[stepIndex].overrides?.headers ?? baseHeaders.map(h => ({ ...h }))).map(h => ({ ...h }));
+  function updateOverrideHeader(
+    stepIndex: number,
+    headerIndex: number,
+    field: keyof HttpHeader,
+    value: any,
+    baseHeaders: HttpHeader[],
+  ) {
+    const current = (
+      flow.steps[stepIndex].overrides?.headers ?? baseHeaders.map((h) => ({ ...h }))
+    ).map((h) => ({ ...h }));
     current[headerIndex] = { ...current[headerIndex], [field]: value };
     updateStepOverride(stepIndex, 'headers', current);
   }
 
   function directivesToText(directives: PbDirective[]): string {
-    return directives.map(d => {
-      if (d.type === 'assert') return d.label ? `${d.expr} | ${d.label}` : d.expr;
-      if (d.type === 'set') return `pb.set("${d.key}", ${d.expr})`;
-      if (d.type === 'global') return `pb.global("${d.key}", ${d.expr})`;
-      return '';
-    }).join('\n');
+    return directives
+      .map((d) => {
+        if (d.type === 'assert') return d.label ? `${d.expr} | ${d.label}` : d.expr;
+        if (d.type === 'set') return `pb.set("${d.key}", ${d.expr})`;
+        if (d.type === 'global') return `pb.global("${d.key}", ${d.expr})`;
+        return '';
+      })
+      .join('\n');
   }
 
   function textToDirectives(text: string): PbDirective[] {
@@ -453,11 +493,19 @@
     const parsed = parseScriptText(text);
     if (parsed.length > 0) return parsed;
     // Fall back to simple assert format: expr | label
-    return text.split('\n').filter(l => l.trim()).map(line => {
-      const pipeIndex = line.indexOf(' | ');
-      if (pipeIndex >= 0) return { type: 'assert' as const, expr: line.slice(0, pipeIndex), label: line.slice(pipeIndex + 3) };
-      return { type: 'assert' as const, expr: line, label: '' };
-    });
+    return text
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((line) => {
+        const pipeIndex = line.indexOf(' | ');
+        if (pipeIndex >= 0)
+          return {
+            type: 'assert' as const,
+            expr: line.slice(0, pipeIndex),
+            label: line.slice(pipeIndex + 3),
+          };
+        return { type: 'assert' as const, expr: line, label: '' };
+      });
   }
 
   function onDirectivesTextInput(stepIndex: number, text: string, baseDirectives: PbDirective[]) {
@@ -472,7 +520,12 @@
       } else {
         // Simple assert format: expr | label
         const pipeIndex = trimmed.indexOf(' | ');
-        if (pipeIndex >= 0) directives.push({ type: 'assert' as const, expr: trimmed.slice(0, pipeIndex), label: trimmed.slice(pipeIndex + 3) });
+        if (pipeIndex >= 0)
+          directives.push({
+            type: 'assert' as const,
+            expr: trimmed.slice(0, pipeIndex),
+            label: trimmed.slice(pipeIndex + 3),
+          });
         else directives.push({ type: 'assert' as const, expr: trimmed, label: '' });
       }
     }
@@ -537,9 +590,10 @@
     if (!t) return;
     const step = flow.steps[t.stepIndex];
     const file = findFileForStep(step);
-    const req = file && step.requestIndex >= 0 && step.requestIndex < file.requests.length
-      ? file.requests[step.requestIndex]
-      : null;
+    const req =
+      file && step.requestIndex >= 0 && step.requestIndex < file.requests.length
+        ? file.requests[step.requestIndex]
+        : null;
     const baseHeaders = req?.headers ?? [];
     const baseDirectives = req?.directives ?? [];
     if (t.kind === 'url') {
@@ -550,22 +604,37 @@
     } else if (t.kind === 'body') {
       const current = step.overrides?.body ?? req?.body ?? '';
       const next = insertAtCursor(current, value);
-      updateStepOverride(t.stepIndex, 'body', next === (req?.body ?? '') ? undefined : next || undefined);
+      updateStepOverride(
+        t.stepIndex,
+        'body',
+        next === (req?.body ?? '') ? undefined : next || undefined,
+      );
     } else if (t.kind === 'beforeSend') {
       const current = step.overrides?.beforeSend ?? req?.beforeSend ?? '';
       const next = insertAtCursor(current, value);
-      updateStepOverride(t.stepIndex, 'beforeSend', next === (req?.beforeSend ?? '') ? undefined : next || undefined);
+      updateStepOverride(
+        t.stepIndex,
+        'beforeSend',
+        next === (req?.beforeSend ?? '') ? undefined : next || undefined,
+      );
     } else if (t.kind === 'afterReceive') {
       const current = step.overrides?.afterReceive ?? req?.afterReceive ?? '';
       const next = insertAtCursor(current, value);
-      updateStepOverride(t.stepIndex, 'afterReceive', next === (req?.afterReceive ?? '') ? undefined : next || undefined);
+      updateStepOverride(
+        t.stepIndex,
+        'afterReceive',
+        next === (req?.afterReceive ?? '') ? undefined : next || undefined,
+      );
     } else if (t.kind === 'assertions') {
       const currentText = directivesToText(step.overrides?.directives ?? baseDirectives);
       const nextText = insertAtCursor(currentText, value);
       onDirectivesTextInput(t.stepIndex, nextText, baseDirectives);
     } else if (t.kind === 'headerValue') {
-      const headers = (step.overrides?.headers ?? baseHeaders).map(h => ({ ...h }));
-      headers[t.headerIndex] = { ...headers[t.headerIndex], value: insertAtCursor(headers[t.headerIndex].value, value) };
+      const headers = (step.overrides?.headers ?? baseHeaders).map((h) => ({ ...h }));
+      headers[t.headerIndex] = {
+        ...headers[t.headerIndex],
+        value: insertAtCursor(headers[t.headerIndex].value, value),
+      };
       updateStepOverride(t.stepIndex, 'headers', headers);
     }
     pickerCursor = -1;
@@ -585,8 +654,19 @@
   <div class="flow-header">
     <div class="flow-title-row">
       <svg class="flow-icon" width="18" height="18" viewBox="0 0 16 16" fill="none">
-        <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.1"/>
-        <path d="M6 4.5h4M11.5 6v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        <path
+          d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z"
+          stroke="currentColor"
+          stroke-width="1.2"
+          fill="currentColor"
+          fill-opacity="0.1"
+        />
+        <path
+          d="M6 4.5h4M11.5 6v4"
+          stroke="currentColor"
+          stroke-width="1.2"
+          stroke-linecap="round"
+        />
       </svg>
       {#if editingName}
         <input
@@ -608,8 +688,7 @@
       bind:value={flow.description}
       on:blur={save}
       placeholder="Add a description..."
-      rows="2"
-    ></textarea>
+      rows="2"></textarea>
   </div>
 
   <!-- Steps -->
@@ -617,12 +696,17 @@
     <div class="steps-header">
       <span class="steps-title">Steps</span>
       <span class="steps-count">{flow.steps.length}</span>
-      <button class="btn-add-step" on:click={() => showPicker = true}>+ Add step</button>
+      <button class="btn-add-step" on:click={() => (showPicker = true)}>+ Add step</button>
       {#if flow.steps.length > 0}
         {#if isRunning}
           <button class="btn-run-flow stopping" on:click={() => dispatch('abort')}>Stop</button>
         {:else}
-          <button class="btn-run-flow" on:click={() => dispatch('run')} disabled={hasAnyBroken} title={hasAnyBroken ? 'Fix broken step references before running' : ''}>Run flow</button>
+          <button
+            class="btn-run-flow"
+            on:click={() => dispatch('run')}
+            disabled={hasAnyBroken}
+            title={hasAnyBroken ? 'Fix broken step references before running' : ''}>Run flow</button
+          >
         {/if}
       {/if}
     </div>
@@ -630,10 +714,24 @@
     {#if hasAnyBroken}
       <div class="broken-warning">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-          <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="currentColor" stroke-width="1.3" fill="currentColor" fill-opacity="0.06"/>
-          <path d="M8 6v3M8 11v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path
+            d="M8 1.5l6.5 12H1.5L8 1.5z"
+            stroke="currentColor"
+            stroke-width="1.3"
+            fill="currentColor"
+            fill-opacity="0.06"
+          />
+          <path
+            d="M8 6v3M8 11v.5"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
         </svg>
-        <span>{brokenCount} step{brokenCount === 1 ? '' : 's'} reference requests that no longer exist. Remove or re-add them.</span>
+        <span
+          >{brokenCount} step{brokenCount === 1 ? '' : 's'} reference requests that no longer exist. Remove
+          or re-add them.</span
+        >
       </div>
     {/if}
 
@@ -657,8 +755,14 @@
           {@const broken = isStepBroken(step)}
           {@const file = findFileForStep(step)}
           {@const suffixes = file ? computeFileSuffixes(file.requests) : null}
-          {@const displayUrl = (suffixes && step.requestIndex >= 0 && step.requestIndex < suffixes.length) ? suffixes[step.requestIndex] : getUrl(step.label)}
-          {@const req = file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0) ? file.requests[step.requestIndex] : null}
+          {@const displayUrl =
+            suffixes && step.requestIndex >= 0 && step.requestIndex < suffixes.length
+              ? suffixes[step.requestIndex]
+              : getUrl(step.label)}
+          {@const req =
+            file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
+              ? file.requests[step.requestIndex]
+              : null}
           {@const rawUrl = req ? req.url : getUrl(step.label)}
           {@const requestName = req?.name ?? ''}
           {@const resolvedUrl = resolvedStepUrls[i] ?? ''}
@@ -686,16 +790,16 @@
                 tabindex="0"
                 aria-label="Reorder step {i + 1}, use arrow keys"
                 on:keydown={(e) => onStepKeydown(e, i)}
-                on:mousedown={() => handleGrabbed = true}
-                on:mouseup={() => handleGrabbed = false}
+                on:mousedown={() => (handleGrabbed = true)}
+                on:mouseup={() => (handleGrabbed = false)}
               >
                 <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
-                  <circle cx="3" cy="2.5" r="1.2" fill="currentColor"/>
-                  <circle cx="7" cy="2.5" r="1.2" fill="currentColor"/>
-                  <circle cx="3" cy="7" r="1.2" fill="currentColor"/>
-                  <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
-                  <circle cx="3" cy="11.5" r="1.2" fill="currentColor"/>
-                  <circle cx="7" cy="11.5" r="1.2" fill="currentColor"/>
+                  <circle cx="3" cy="2.5" r="1.2" fill="currentColor" />
+                  <circle cx="7" cy="2.5" r="1.2" fill="currentColor" />
+                  <circle cx="3" cy="7" r="1.2" fill="currentColor" />
+                  <circle cx="7" cy="7" r="1.2" fill="currentColor" />
+                  <circle cx="3" cy="11.5" r="1.2" fill="currentColor" />
+                  <circle cx="7" cy="11.5" r="1.2" fill="currentColor" />
                 </svg>
               </span>
               <button
@@ -703,16 +807,29 @@
                 class:active={hasOverrides(step)}
                 class:expanded={expandedStepId === step.id}
                 on:click|stopPropagation={() => toggleOverridePanel(step.id)}
-                title={hasOverrides(step) ? 'Edit overrides (has customizations)' : 'Customize request for this step'}
+                title={hasOverrides(step)
+                  ? 'Edit overrides (has customizations)'
+                  : 'Customize request for this step'}
               >
                 <svg class="toggle-arrow" width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path
+                    d="M3 1.5l4 3.5-4 3.5"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
                 </svg>
               </button>
               <span class="step-number">{i + 1}</span>
               <div class="step-content">
                 <div class="step-top-row">
-                  <span class="step-file" title={step.filePath}>{step.filePath.replace(/\.[^.]+$/, '').split('/').pop()}</span>
+                  <span class="step-file" title={step.filePath}
+                    >{step.filePath
+                      .replace(/\.[^.]+$/, '')
+                      .split('/')
+                      .pop()}</span
+                  >
                   {#if broken}
                     <span class="step-broken-badge">missing</span>
                   {/if}
@@ -722,7 +839,11 @@
                 {/if}
                 <div class="step-url-row">
                   {#if getMethod(step.label)}
-                    <span class="step-method" style="color: {METHOD_COLORS[getMethod(step.label)] || 'var(--color-text-muted)'}">{getMethod(step.label)}</span>
+                    <span
+                      class="step-method"
+                      style="color: {METHOD_COLORS[getMethod(step.label)] ||
+                        'var(--color-text-muted)'}">{getMethod(step.label)}</span
+                    >
                   {/if}
                   <span class="step-label" title={getUrl(step.label)}>{displayUrl}</span>
                 </div>
@@ -738,7 +859,9 @@
                   class="btn-continue-toggle"
                   class:active={step.continueOnFailure}
                   on:click={() => toggleContinueOnFailure(i)}
-                  title={step.continueOnFailure ? 'Continues on failure (click to stop on failure)' : 'Stops on failure (click to continue on failure)'}
+                  title={step.continueOnFailure
+                    ? 'Continues on failure (click to stop on failure)'
+                    : 'Stops on failure (click to continue on failure)'}
                 >
                   {step.continueOnFailure ? 'skip' : 'stop'}
                 </button>
@@ -754,33 +877,54 @@
                       <span class="step-status-icon skipped">-</span>
                     {/if}
                     {#if sr.response}
-                      <span class="step-http-status" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
+                      <span
+                        class="step-http-status"
+                        class:ok={sr.response.status < 400}
+                        class:err={sr.response.status >= 400}>{sr.response.status}</span
+                      >
                     {/if}
                     {#if sr.durationMs > 0}
                       <span class="step-duration">{sr.durationMs}ms</span>
                     {/if}
                   </span>
                 {/if}
-                <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step">&times;</button>
+                <button class="btn-remove-step" on:click={() => removeStep(i)} title="Remove step"
+                  >&times;</button
+                >
               </div>
             </div>
 
             {#if expandedStepId === step.id}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div class="override-panel" on:mousedown|stopPropagation on:dragstart|preventDefault|stopPropagation>
+              <div
+                class="override-panel"
+                on:mousedown|stopPropagation
+                on:dragstart|preventDefault|stopPropagation
+              >
                 <div class="override-section">
                   <div class="override-row">
-                    <span class="override-label" title="Flow-local alias for this step's response. Referenced as {'{'}{'{'}alias.response.body.$....{'}'}{'}'} in later steps. Auto-named Step{i + 1} unless you customize it.">Alias{#if step.aliasLocked}<span class="modified-dot" title="Custom"></span>{/if}</span>
+                    <span
+                      class="override-label"
+                      title="Flow-local alias for this step's response. Referenced as {'{'}{'{'}alias.response.body.$....{'}'}{'}'} in later steps. Auto-named Step{i +
+                        1} unless you customize it."
+                      >Alias{#if step.aliasLocked}<span class="modified-dot" title="Custom"
+                        ></span>{/if}</span
+                    >
                     <input
                       class="override-input"
                       class:showing-base={!step.aliasLocked}
                       type="text"
-                      value={aliasDraft[step.id] ?? (step.varName ?? '')}
+                      value={aliasDraft[step.id] ?? step.varName ?? ''}
                       placeholder={autoAliasFor(i)}
                       on:input={(e) => onAliasInput(step.id, e.currentTarget.value)}
                       on:change={() => commitAliasDraft(i)}
                       on:blur={() => commitAliasDraft(i)}
-                      on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitAliasDraft(i); } }}
+                      on:keydown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitAliasDraft(i);
+                        }
+                      }}
                       spellcheck="false"
                     />
                     {#if step.aliasLocked}
@@ -788,18 +932,25 @@
                         type="button"
                         class="btn-alias-reset"
                         on:click={() => resetStepAlias(i)}
-                        title="Reset to auto alias (Step{i + 1}) and rewrite references across all steps"
-                      >Reset</button>
+                        title="Reset to auto alias (Step{i +
+                          1}) and rewrite references across all steps">Reset</button
+                      >
                     {/if}
                   </div>
                 </div>
 
                 <div class="override-section">
                   <div class="override-row">
-                    <span class="override-label">URL{#if step.overrides?.url !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
+                    <span class="override-label"
+                      >URL{#if step.overrides?.url !== undefined}<span
+                          class="modified-dot"
+                          title="Modified"
+                        ></span>{/if}</span
+                    >
                     <input
                       class="override-input"
-                      class:showing-base={step.overrides?.url === undefined && !!(req?.url ?? getUrl(step.label))}
+                      class:showing-base={step.overrides?.url === undefined &&
+                        !!(req?.url ?? getUrl(step.label))}
                       type="text"
                       value={step.overrides?.url ?? req?.url ?? getUrl(step.label)}
                       placeholder="No URL"
@@ -810,29 +961,63 @@
                       }}
                       spellcheck="false"
                     />
-                    <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'url', stepIndex: i }, file)} title="Insert variable">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    <button
+                      class="btn-insert-var"
+                      aria-label="Insert variable"
+                      on:mousedown|preventDefault
+                      on:click={() => openVarPicker({ kind: 'url', stepIndex: i }, file)}
+                      title="Insert variable"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                        ><path
+                          d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4"
+                          stroke="currentColor"
+                          stroke-width="1.2"
+                          stroke-linecap="round"
+                        /></svg
+                      >
                     </button>
                   </div>
                 </div>
 
                 <div class="override-section">
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div class="override-section-header collapsible" on:click={() => toggleSection(step.id, 'headers')} on:keydown={(e) => { if (e.key === 'Enter') toggleSection(step.id, 'headers'); }}>
-                    <span class="override-collapse-icon" class:open={!collapsedKeys[`${step.id}:headers`]}>&#9656;</span>
-                    <span class="override-label">Headers{#if step.overrides?.headers !== undefined}<span class="modified-dot" title="Modified"></span>{/if}</span>
-                    <span class="override-count">{(step.overrides?.headers ?? baseHeaders).length}</span>
+                  <div
+                    class="override-section-header collapsible"
+                    on:click={() => toggleSection(step.id, 'headers')}
+                    on:keydown={(e) => {
+                      if (e.key === 'Enter') toggleSection(step.id, 'headers');
+                    }}
+                  >
+                    <span
+                      class="override-collapse-icon"
+                      class:open={!collapsedKeys[`${step.id}:headers`]}>&#9656;</span
+                    >
+                    <span class="override-label"
+                      >Headers{#if step.overrides?.headers !== undefined}<span
+                          class="modified-dot"
+                          title="Modified"
+                        ></span>{/if}</span
+                    >
+                    <span class="override-count"
+                      >{(step.overrides?.headers ?? baseHeaders).length}</span
+                    >
                     {#if !collapsedKeys[`${step.id}:headers`]}
-                      <button class="override-add-btn" on:click|stopPropagation={() => addOverrideHeader(i, baseHeaders)}>+ Add</button>
+                      <button
+                        class="override-add-btn"
+                        on:click|stopPropagation={() => addOverrideHeader(i, baseHeaders)}
+                        >+ Add</button
+                      >
                     {/if}
                   </div>
                   {#if !collapsedKeys[`${step.id}:headers`]}
-                    {#each (step.overrides?.headers ?? baseHeaders) as h, hi}
+                    {#each step.overrides?.headers ?? baseHeaders as h, hi}
                       <div class="override-header-row">
                         <input
                           type="checkbox"
                           checked={h.enabled}
-                          on:change={() => updateOverrideHeader(i, hi, 'enabled', !h.enabled, baseHeaders)}
+                          on:change={() =>
+                            updateOverrideHeader(i, hi, 'enabled', !h.enabled, baseHeaders)}
                           class="override-header-check"
                         />
                         <input
@@ -840,7 +1025,8 @@
                           type="text"
                           value={h.key}
                           placeholder="Header name"
-                          on:input={(e) => updateOverrideHeader(i, hi, 'key', e.currentTarget.value, baseHeaders)}
+                          on:input={(e) =>
+                            updateOverrideHeader(i, hi, 'key', e.currentTarget.value, baseHeaders)}
                           spellcheck="false"
                         />
                         <input
@@ -848,13 +1034,40 @@
                           type="text"
                           value={h.value}
                           placeholder="Value"
-                          on:input={(e) => updateOverrideHeader(i, hi, 'value', e.currentTarget.value, baseHeaders)}
+                          on:input={(e) =>
+                            updateOverrideHeader(
+                              i,
+                              hi,
+                              'value',
+                              e.currentTarget.value,
+                              baseHeaders,
+                            )}
                           spellcheck="false"
                         />
-                        <button class="btn-insert-var" aria-label="Insert variable" on:mousedown|preventDefault on:click={() => openVarPicker({ kind: 'headerValue', stepIndex: i, headerIndex: hi }, file)} title="Insert variable">
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        <button
+                          class="btn-insert-var"
+                          aria-label="Insert variable"
+                          on:mousedown|preventDefault
+                          on:click={() =>
+                            openVarPicker(
+                              { kind: 'headerValue', stepIndex: i, headerIndex: hi },
+                              file,
+                            )}
+                          title="Insert variable"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                            ><path
+                              d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4"
+                              stroke="currentColor"
+                              stroke-width="1.2"
+                              stroke-linecap="round"
+                            /></svg
+                          >
                         </button>
-                        <button class="override-header-remove" on:click={() => removeOverrideHeader(i, hi, baseHeaders)}>&times;</button>
+                        <button
+                          class="override-header-remove"
+                          on:click={() => removeOverrideHeader(i, hi, baseHeaders)}>&times;</button
+                        >
                       </div>
                     {/each}
                   {/if}
@@ -862,24 +1075,54 @@
 
                 <div class="override-tab-panel">
                   <div class="override-tabs">
-                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'body'} on:click={() => setActiveTab(step.id, 'body')}>
+                    <button
+                      class="override-tab"
+                      class:active={activeTabLookup(step.id) === 'body'}
+                      on:click={() => setActiveTab(step.id, 'body')}
+                    >
                       Body
-                      {#if step.overrides?.body !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                      {#if step.overrides?.body !== undefined}<span
+                          class="modified-dot"
+                          title="Modified"
+                        ></span>{/if}
                     </button>
-                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'assertions'} on:click={() => setActiveTab(step.id, 'assertions')}>
+                    <button
+                      class="override-tab"
+                      class:active={activeTabLookup(step.id) === 'assertions'}
+                      on:click={() => setActiveTab(step.id, 'assertions')}
+                    >
                       Assertions
                       {#if (step.overrides?.directives ?? baseDirectives).length > 0}
-                        <span class="override-tab-count">{(step.overrides?.directives ?? baseDirectives).length}</span>
+                        <span class="override-tab-count"
+                          >{(step.overrides?.directives ?? baseDirectives).length}</span
+                        >
                       {/if}
-                      {#if step.overrides?.directives !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                      {#if step.overrides?.directives !== undefined}<span
+                          class="modified-dot"
+                          title="Modified"
+                        ></span>{/if}
                     </button>
-                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'beforeSend'} on:click={() => setActiveTab(step.id, 'beforeSend')}>
+                    <button
+                      class="override-tab"
+                      class:active={activeTabLookup(step.id) === 'beforeSend'}
+                      on:click={() => setActiveTab(step.id, 'beforeSend')}
+                    >
                       Before Send
-                      {#if step.overrides?.beforeSend !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                      {#if step.overrides?.beforeSend !== undefined}<span
+                          class="modified-dot"
+                          title="Modified"
+                        ></span>{/if}
                     </button>
-                    <button class="override-tab" class:active={activeTabLookup(step.id) === 'afterReceive'} on:click={() => setActiveTab(step.id, 'afterReceive')}>
+                    <button
+                      class="override-tab"
+                      class:active={activeTabLookup(step.id) === 'afterReceive'}
+                      on:click={() => setActiveTab(step.id, 'afterReceive')}
+                    >
                       After Receive
-                      {#if step.overrides?.afterReceive !== undefined}<span class="modified-dot" title="Modified"></span>{/if}
+                      {#if step.overrides?.afterReceive !== undefined}<span
+                          class="modified-dot"
+                          title="Modified"
+                        ></span>{/if}
                     </button>
                     <div class="override-tab-spacer"></div>
                     <button
@@ -887,15 +1130,26 @@
                       on:mousedown|preventDefault
                       on:click={() => {
                         const tab = activeTabLookup(step.id);
-                        const kind = tab === 'body' ? 'body'
-                          : tab === 'assertions' ? 'assertions'
-                          : tab === 'beforeSend' ? 'beforeSend'
-                          : 'afterReceive';
+                        const kind =
+                          tab === 'body'
+                            ? 'body'
+                            : tab === 'assertions'
+                              ? 'assertions'
+                              : tab === 'beforeSend'
+                                ? 'beforeSend'
+                                : 'afterReceive';
                         openVarPicker({ kind, stepIndex: i }, file);
                       }}
                       title="Insert variable"
                     >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                        ><path
+                          d="M2 4c0-1.1.9-2 2-2M2 8c0 1.1.9 2 2 2M10 4c0-1.1-.9-2-2-2M10 8c0 1.1-.9 2-2 2M6 3v6M4 6h4"
+                          stroke="currentColor"
+                          stroke-width="1.2"
+                          stroke-linecap="round"
+                        /></svg
+                      >
                     </button>
                   </div>
                   <div class="override-tab-content">
@@ -907,54 +1161,68 @@
                         placeholder="No body"
                         on:input={(e) => {
                           const val = e.currentTarget.value;
-                          updateStepOverride(i, 'body', val === (req?.body ?? '') ? undefined : val || undefined);
+                          updateStepOverride(
+                            i,
+                            'body',
+                            val === (req?.body ?? '') ? undefined : val || undefined,
+                          );
                         }}
                         spellcheck="false"
-                        rows="8"
-                      ></textarea>
+                        rows="8"></textarea>
                     {:else if activeTabLookup(step.id) === 'assertions'}
                       <textarea
                         class="override-body"
-                        class:showing-base={step.overrides?.directives === undefined && baseDirectives.length > 0}
+                        class:showing-base={step.overrides?.directives === undefined &&
+                          baseDirectives.length > 0}
                         value={directivesToText(step.overrides?.directives ?? baseDirectives)}
-                        placeholder={"One assertion per line:\npb.response.status == 200 | Should return 200\npb.response.body.$.name != null | Name should exist"}
-                        on:input={(e) => onDirectivesTextInput(i, e.currentTarget.value, baseDirectives)}
+                        placeholder={'One assertion per line:\npb.response.status == 200 | Should return 200\npb.response.body.$.name != null | Name should exist'}
+                        on:input={(e) =>
+                          onDirectivesTextInput(i, e.currentTarget.value, baseDirectives)}
                         spellcheck="false"
-                        rows="8"
-                      ></textarea>
+                        rows="8"></textarea>
                     {:else if activeTabLookup(step.id) === 'beforeSend'}
                       <textarea
                         class="override-body"
-                        class:showing-base={step.overrides?.beforeSend === undefined && !!req?.beforeSend}
+                        class:showing-base={step.overrides?.beforeSend === undefined &&
+                          !!req?.beforeSend}
                         value={step.overrides?.beforeSend ?? req?.beforeSend ?? ''}
                         placeholder="No before-send script"
                         on:input={(e) => {
                           const val = e.currentTarget.value;
-                          updateStepOverride(i, 'beforeSend', val === (req?.beforeSend ?? '') ? undefined : val || undefined);
+                          updateStepOverride(
+                            i,
+                            'beforeSend',
+                            val === (req?.beforeSend ?? '') ? undefined : val || undefined,
+                          );
                         }}
                         spellcheck="false"
-                        rows="8"
-                      ></textarea>
+                        rows="8"></textarea>
                     {:else if activeTabLookup(step.id) === 'afterReceive'}
                       <textarea
                         class="override-body"
-                        class:showing-base={step.overrides?.afterReceive === undefined && !!req?.afterReceive}
+                        class:showing-base={step.overrides?.afterReceive === undefined &&
+                          !!req?.afterReceive}
                         value={step.overrides?.afterReceive ?? req?.afterReceive ?? ''}
                         placeholder="No after-receive script"
                         on:input={(e) => {
                           const val = e.currentTarget.value;
-                          updateStepOverride(i, 'afterReceive', val === (req?.afterReceive ?? '') ? undefined : val || undefined);
+                          updateStepOverride(
+                            i,
+                            'afterReceive',
+                            val === (req?.afterReceive ?? '') ? undefined : val || undefined,
+                          );
                         }}
                         spellcheck="false"
-                        rows="8"
-                      ></textarea>
+                        rows="8"></textarea>
                     {/if}
                   </div>
                 </div>
 
                 {#if hasOverrides(step)}
                   <div class="override-footer">
-                    <button class="override-reset-btn" on:click={() => resetOverrides(i)}>Reset all overrides</button>
+                    <button class="override-reset-btn" on:click={() => resetOverrides(i)}
+                      >Reset all overrides</button
+                    >
                   </div>
                 {/if}
               </div>
@@ -986,8 +1254,11 @@
   <FlowStepPicker
     {tree}
     {rootPath}
-    on:pick={(e) => { addStep(e); showPicker = false; }}
-    on:close={() => showPicker = false}
+    on:pick={(e) => {
+      addStep(e);
+      showPicker = false;
+    }}
+    on:close={() => (showPicker = false)}
   />
 {/if}
 
@@ -1000,7 +1271,10 @@
   flowName={flow.name}
   flowSetVars={flowScopeVars}
   on:insert={handleVarPickerInsert}
-  on:close={() => { showVarPicker = false; pickerTarget = null; }}
+  on:close={() => {
+    showVarPicker = false;
+    pickerTarget = null;
+  }}
 />
 
 <style>
@@ -1143,7 +1417,9 @@
     background: var(--color-bg-surface);
     border: 1px solid var(--color-bg-muted);
     border-radius: var(--radius-lg);
-    transition: border-color var(--duration-normal), box-shadow var(--duration-normal);
+    transition:
+      border-color var(--duration-normal),
+      box-shadow var(--duration-normal);
   }
   .step-card:hover {
     border-color: var(--color-border);
@@ -1309,7 +1585,8 @@
     color: var(--color-primary);
   }
   .btn-remove-step {
-    width: 22px; height: 22px;
+    width: 22px;
+    height: 22px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -1359,10 +1636,18 @@
   }
 
   /* Step status */
-  .step-card.step-passed { border-color: color-mix(in srgb, var(--color-success) 25%, transparent); }
-  .step-card.step-failed { border-color: color-mix(in srgb, var(--color-error) 25%, transparent); }
-  .step-card.step-running { border-color: color-mix(in srgb, var(--color-primary) 38%, transparent); }
-  .step-card.step-skipped { opacity: 0.5; }
+  .step-card.step-passed {
+    border-color: color-mix(in srgb, var(--color-success) 25%, transparent);
+  }
+  .step-card.step-failed {
+    border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
+  }
+  .step-card.step-running {
+    border-color: color-mix(in srgb, var(--color-primary) 38%, transparent);
+  }
+  .step-card.step-skipped {
+    opacity: 0.5;
+  }
 
   .step-status-info {
     display: flex;
@@ -1381,18 +1666,36 @@
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .step-status-icon.passed { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 8%, transparent); }
-  .step-status-icon.failed { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 8%, transparent); }
-  .step-status-icon.running { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
-  .step-status-icon.skipped { color: var(--color-text-faint); background: var(--color-bg-sidebar); }
+  .step-status-icon.passed {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  }
+  .step-status-icon.failed {
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 8%, transparent);
+  }
+  .step-status-icon.running {
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+  .step-status-icon.skipped {
+    color: var(--color-text-faint);
+    background: var(--color-bg-sidebar);
+  }
   .step-http-status {
     font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
     padding: 1px var(--space-1);
     border-radius: var(--radius-xs);
   }
-  .step-http-status.ok { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
-  .step-http-status.err { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 6%, transparent); }
+  .step-http-status.ok {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 6%, transparent);
+  }
+  .step-http-status.err {
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 6%, transparent);
+  }
   .step-duration {
     font-size: var(--text-xs);
     color: var(--color-text-faint);
@@ -1448,7 +1751,8 @@
 
   /* Override toggle button */
   .btn-override-toggle {
-    width: 24px; height: 24px;
+    width: 24px;
+    height: 24px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -1568,7 +1872,9 @@
     transition: all var(--duration-normal);
     white-space: nowrap;
   }
-  .override-tab:hover { color: var(--color-text-secondary); }
+  .override-tab:hover {
+    color: var(--color-text-secondary);
+  }
   .override-tab.active {
     color: var(--color-text-heading);
     border-bottom-color: var(--color-primary);
@@ -1669,7 +1975,8 @@
     color: var(--color-text-placeholder);
   }
   .override-header-remove {
-    width: 20px; height: 20px;
+    width: 20px;
+    height: 20px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -1720,7 +2027,9 @@
     color: var(--color-accent-flow);
     background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent);
   }
-  .override-tab-spacer { flex: 1; }
+  .override-tab-spacer {
+    flex: 1;
+  }
   .override-body {
     padding: var(--space-1\.5) var(--space-2);
     border: 1px solid var(--color-divider);

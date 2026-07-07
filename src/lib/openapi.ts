@@ -1,5 +1,12 @@
 import * as yaml from 'js-yaml';
-import type { HttpMethod, HttpHeader, HttpRequest, ConvertedFile, ImportResult, Variable } from './types';
+import type {
+  HttpMethod,
+  HttpHeader,
+  HttpRequest,
+  ConvertedFile,
+  ImportResult,
+  Variable,
+} from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
 
 // ─── OpenAPI Types (subset needed for import) ────────────────────────────────
@@ -9,9 +16,9 @@ interface OpenApiSpec {
   swagger?: string;
   info?: { title?: string; version?: string };
   servers?: OpenApiServer[];
-  host?: string;           // Swagger 2.0
-  basePath?: string;       // Swagger 2.0
-  schemes?: string[];      // Swagger 2.0
+  host?: string; // Swagger 2.0
+  basePath?: string; // Swagger 2.0
+  schemes?: string[]; // Swagger 2.0
   paths?: Record<string, PathItem>;
   security?: SecurityRequirement[];
   securityDefinitions?: Record<string, SecurityScheme>; // Swagger 2.0
@@ -43,7 +50,7 @@ interface Operation {
   requestBody?: RequestBody;
   security?: SecurityRequirement[];
   deprecated?: boolean;
-  consumes?: string[];      // Swagger 2.0
+  consumes?: string[]; // Swagger 2.0
 }
 
 interface Parameter {
@@ -51,7 +58,7 @@ interface Parameter {
   in: 'path' | 'query' | 'header' | 'cookie' | 'body'; // 'body' is Swagger 2.0
   required?: boolean;
   schema?: SchemaObject;
-  type?: string;          // Swagger 2.0
+  type?: string; // Swagger 2.0
   default?: unknown;
   example?: unknown;
 }
@@ -89,8 +96,15 @@ interface SecurityScheme {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const VALID_METHODS = new Set<string>([
-  'GET', 'POST', 'PUT', 'PATCH', 'DELETE',
-  'HEAD', 'OPTIONS', 'TRACE', 'CONNECT',
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+  'TRACE',
+  'CONNECT',
 ]);
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'] as const;
@@ -149,8 +163,12 @@ export function importOpenApiSpec(content: string): ImportResult {
 
       // Build the request
       const request = buildRequest(
-        method, path, operation, allParams,
-        securitySchemes, operation.security ?? globalSecurity,
+        method,
+        path,
+        operation,
+        allParams,
+        securitySchemes,
+        operation.security ?? globalSecurity,
       );
       group.requests.push(request);
 
@@ -228,15 +246,17 @@ function buildRequest(
   security: SecurityRequirement[],
 ): HttpRequest {
   const upperMethod = method.toUpperCase();
-  const normalizedMethod: HttpMethod = VALID_METHODS.has(upperMethod) ? upperMethod as HttpMethod : 'GET';
+  const normalizedMethod: HttpMethod = VALID_METHODS.has(upperMethod)
+    ? (upperMethod as HttpMethod)
+    : 'GET';
 
   // Build URL: {{baseUrl}} + path with {param} -> {{param}}
   let url = `{{baseUrl}}${path.replace(/\{(\w+)\}/g, '{{$1}}')}`;
 
   // Append required query parameters
-  const requiredQuery = params.filter(p => p.in === 'query' && p.required);
+  const requiredQuery = params.filter((p) => p.in === 'query' && p.required);
   if (requiredQuery.length > 0) {
-    const qs = requiredQuery.map(p => `${p.name}=${resolveParamDefault(p)}`).join('&');
+    const qs = requiredQuery.map((p) => `${p.name}=${resolveParamDefault(p)}`).join('&');
     url += `?${qs}`;
   }
 
@@ -262,7 +282,7 @@ function buildRequest(
 
   // Request body - check Swagger 2.0 body parameter first
   let body = '';
-  const bodyParam = params.find(p => p.in === 'body');
+  const bodyParam = params.find((p) => p.in === 'body');
   if (bodyParam?.schema) {
     const ct = operation.consumes?.[0] ?? 'application/json';
     headers.push({ key: 'Content-Type', value: ct, enabled: true });
@@ -392,7 +412,7 @@ function resolveSchemaType(schema: SchemaObject): string {
   if (typeof schema.type === 'string') return schema.type;
   // OpenAPI 3.1: type can be an array like ["string", "null"]
   if (Array.isArray(schema.type)) {
-    return schema.type.find(t => t !== 'null') ?? 'string';
+    return schema.type.find((t) => t !== 'null') ?? 'string';
   }
   // Infer from properties/items
   if (schema.properties) return 'object';
@@ -404,20 +424,32 @@ function schemaStringValue(schema: SchemaObject): string {
   if (schema.enum && schema.enum.length > 0) return String(schema.enum[0]);
 
   switch (schema.format) {
-    case 'email': return 'user@example.com';
-    case 'date-time': return '2024-01-01T00:00:00Z';
-    case 'date': return '2024-01-01';
-    case 'time': return '00:00:00Z';
+    case 'email':
+      return 'user@example.com';
+    case 'date-time':
+      return '2024-01-01T00:00:00Z';
+    case 'date':
+      return '2024-01-01';
+    case 'time':
+      return '00:00:00Z';
     case 'uri':
-    case 'url': return 'https://example.com';
-    case 'uuid': return '550e8400-e29b-41d4-a716-446655440000';
-    case 'ipv4': return '192.168.1.1';
-    case 'ipv6': return '::1';
-    case 'hostname': return 'example.com';
-    case 'password': return 'password';
+    case 'url':
+      return 'https://example.com';
+    case 'uuid':
+      return '550e8400-e29b-41d4-a716-446655440000';
+    case 'ipv4':
+      return '192.168.1.1';
+    case 'ipv6':
+      return '::1';
+    case 'hostname':
+      return 'example.com';
+    case 'password':
+      return 'password';
     case 'binary':
-    case 'byte': return '';
-    default: return 'string';
+    case 'byte':
+      return '';
+    default:
+      return 'string';
   }
 }
 
@@ -428,9 +460,12 @@ function schemaStubValue(schema: SchemaObject): string {
   const type = resolveSchemaType(schema);
   switch (type) {
     case 'integer':
-    case 'number': return '0';
-    case 'boolean': return 'true';
-    default: return 'string';
+    case 'number':
+      return '0';
+    case 'boolean':
+      return 'true';
+    default:
+      return 'string';
   }
 }
 
@@ -456,7 +491,11 @@ function resolveAuth(
         return { key: 'Authorization', value: 'Bearer {{bearerToken}}', enabled: true };
       }
       if (scheme.scheme === 'basic') {
-        return { key: 'Authorization', value: 'Basic {{$base64 {{username}}:{{password}}}}', enabled: true };
+        return {
+          key: 'Authorization',
+          value: 'Basic {{$base64 {{username}}:{{password}}}}',
+          enabled: true,
+        };
       }
       return null;
 
@@ -528,12 +567,15 @@ function resolveParamDefault(param: Parameter): string {
 
   // Type-based defaults
   const type = param.schema?.type ?? param.type ?? 'string';
-  const resolvedType = Array.isArray(type) ? (type.find(t => t !== 'null') ?? 'string') : type;
+  const resolvedType = Array.isArray(type) ? (type.find((t) => t !== 'null') ?? 'string') : type;
   switch (resolvedType) {
     case 'integer':
-    case 'number': return '0';
-    case 'boolean': return 'true';
-    default: return '';
+    case 'number':
+      return '0';
+    case 'boolean':
+      return 'true';
+    default:
+      return '';
   }
 }
 
@@ -574,7 +616,10 @@ function resolveRef(ref: string, root: any, seen: Set<string>): any {
   if (seen.has(ref)) return {}; // circular - return empty to avoid infinite loops
   seen.add(ref);
 
-  const parts = ref.slice(2).split('/').map(p => p.replace(/~1/g, '/').replace(/~0/g, '~'));
+  const parts = ref
+    .slice(2)
+    .split('/')
+    .map((p) => p.replace(/~1/g, '/').replace(/~0/g, '~'));
   let current = root;
   for (const part of parts) {
     if (current == null || typeof current !== 'object') return {};

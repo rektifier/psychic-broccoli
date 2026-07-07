@@ -53,8 +53,7 @@
       <div class="modal-body">
         <p class="description">
           Found <strong>{variables.length}</strong> variable{variables.length !== 1 ? 's' : ''}
-          referenced across the imported requests.
-          Choose where to add them.
+          referenced across the imported requests. Choose where to add them.
         </p>
 
         <div class="var-list">
@@ -87,7 +86,9 @@
               class="env-name-input"
               bind:value={newEnvName}
               placeholder="Environment name..."
-              on:keydown={(e) => { if (e.key === 'Enter') confirm(); }}
+              on:keydown={(e) => {
+                if (e.key === 'Enter') confirm();
+              }}
             />
           {/if}
         </div>
@@ -126,15 +127,15 @@
     font-size: var(--text-sm);
     font-family: 'Consolas', 'Courier New', monospace;
     background: var(--color-bg-sidebar);
-    border: 1px solid #E0E0E4;
+    border: 1px solid #e0e0e4;
     border-radius: var(--radius-sm);
     padding: 2px 7px;
     color: var(--color-warning);
   }
   .var-tag.has-value {
-    background: #E8F5E9;
-    border-color: #C8E6C9;
-    color: #2E7D32;
+    background: #e8f5e9;
+    border-color: #c8e6c9;
+    color: #2e7d32;
   }
 
   .target-section {
@@ -158,7 +159,7 @@
     padding: 5px 0;
     cursor: pointer;
   }
-  .radio-row input[type="radio"] {
+  .radio-row input[type='radio'] {
     accent-color: var(--color-primary);
   }
   .radio-label {
@@ -192,7 +193,9 @@
     outline: none;
     margin-top: var(--space-1\.5);
   }
-  .env-name-input:focus { border-color: var(--color-primary); }
+  .env-name-input:focus {
+    border-color: var(--color-primary);
+  }
 
   .btn-skip {
     padding: var(--space-1\.5) var(--space-3\.5);
@@ -205,7 +208,10 @@
     cursor: pointer;
     transition: all var(--duration-normal);
   }
-  .btn-skip:hover { border-color: var(--color-text-faint); color: var(--color-text); }
+  .btn-skip:hover {
+    border-color: var(--color-text-faint);
+    color: var(--color-text);
+  }
   .btn-confirm {
     padding: var(--space-1\.5) var(--space-3\.5);
     border: none;
@@ -218,5 +224,7 @@
     cursor: pointer;
     transition: background var(--duration-normal);
   }
-  .btn-confirm:hover { background: var(--color-primary-active); }
+  .btn-confirm:hover {
+    background: var(--color-primary-active);
+  }
 </style>

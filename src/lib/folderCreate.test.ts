@@ -16,7 +16,9 @@ describe('generateFolderName', () => {
   });
 
   it('increments counter past all existing collisions', () => {
-    expect(generateFolderName(new Set(['new-folder', 'new-folder-2', 'new-folder-3']))).toBe('new-folder-4');
+    expect(generateFolderName(new Set(['new-folder', 'new-folder-2', 'new-folder-3']))).toBe(
+      'new-folder-4',
+    );
   });
 });
 
@@ -35,7 +37,13 @@ describe('addFolderToTree', () => {
     addFolderToTree(null, makeFolder('/ws/apis', 'apis'));
     const tree = get(workspace).tree;
     expect(tree).toHaveLength(1);
-    expect(tree[0]).toMatchObject({ type: 'folder', name: 'apis', path: '/ws/apis', expanded: true, children: [] });
+    expect(tree[0]).toMatchObject({
+      type: 'folder',
+      name: 'apis',
+      path: '/ws/apis',
+      expanded: true,
+      children: [],
+    });
   });
 
   it('adds a subfolder inside an existing folder', () => {
@@ -81,13 +89,26 @@ describe('renameFolderInTree', () => {
     workspace.set({
       rootPath: '/ws',
       rootName: 'ws',
-      tree: [{
-        type: 'folder', name: 'apis', path: '/ws/apis', expanded: true,
-        children: [
-          { type: 'file', name: 'auth.http', path: '/ws/apis/auth.http', requests: [], variables: [], dirty: false, savedContent: '' },
-          { type: 'folder', name: 'v2', path: '/ws/apis/v2', children: [], expanded: false },
-        ],
-      }],
+      tree: [
+        {
+          type: 'folder',
+          name: 'apis',
+          path: '/ws/apis',
+          expanded: true,
+          children: [
+            {
+              type: 'file',
+              name: 'auth.http',
+              path: '/ws/apis/auth.http',
+              requests: [],
+              variables: [],
+              dirty: false,
+              savedContent: '',
+            },
+            { type: 'folder', name: 'v2', path: '/ws/apis/v2', children: [], expanded: false },
+          ],
+        },
+      ],
     });
     renameFolderInTree('/ws/apis', '/ws/services', 'services');
     const folder = get(workspace).tree[0] as FolderNode;

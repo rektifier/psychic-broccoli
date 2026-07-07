@@ -16,35 +16,103 @@
   import { loadTheme, setTheme, loadFavorites, saveFavorites, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
-    workspace, selectedLocation, currentResponse, isLoading,
-    activeFile, activeRequest, activeFileVariables,
-    envFile, userEnvFile, activeEnvironment, availableEnvironments,
-    resolvedEnvVars, baseEnvVarsWithSource, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
-    pbAssertionResults, pbGlobals,
-    keyVaultState, varSourcePrefs,
-    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree, removeFolderFromTree,
-    addFileToTree, addFolderToTree, renameFolderInTree, renameFileInTree, editingFilePath, editingFolderPath,
-    toggleFolder, markFileSaved, addToast,
-    tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
-    cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
-    flows, flowRunHistory, flowRunState, flowTabs, activeFlowTabPath,
-    openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
+    workspace,
+    selectedLocation,
+    currentResponse,
+    isLoading,
+    activeFile,
+    activeRequest,
+    activeFileVariables,
+    envFile,
+    userEnvFile,
+    activeEnvironment,
+    availableEnvironments,
+    resolvedEnvVars,
+    baseEnvVarsWithSource,
+    pbFileOverrides,
+    activeFileOverrides,
+    namedResults,
+    dotenvVariables,
+    pbAssertionResults,
+    pbGlobals,
+    keyVaultState,
+    varSourcePrefs,
+    updateRequestInTree,
+    addRequestToFile,
+    deleteRequestFromFile,
+    removeFileFromTree,
+    removeFolderFromTree,
+    addFileToTree,
+    addFolderToTree,
+    renameFolderInTree,
+    renameFileInTree,
+    editingFilePath,
+    editingFolderPath,
+    toggleFolder,
+    markFileSaved,
+    addToast,
+    tabs,
+    isPreview,
+    pinTab,
+    activateTab,
+    closeTab,
+    previewRequest,
+    cacheCurrentTabResponse,
+    currentSentRequest,
+    setTabBottomTab,
+    setTabResponseTab,
+    flows,
+    flowRunHistory,
+    flowRunState,
+    flowTabs,
+    activeFlowTabPath,
+    openFlowTab,
+    closeFlowTab,
+    activateFlowTab,
+    activeFlowPath,
+    activeFlow,
     favorites,
   } from './lib/stores';
   import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
-    serializeHttpFile, substituteAll, parseEnvironmentFile, ensureSharedEnvironment,
-    buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
-    executePbDirectives, parseScriptText, applyRequestMutations, resolveEnvironmentVariables,
+    serializeHttpFile,
+    substituteAll,
+    parseEnvironmentFile,
+    ensureSharedEnvironment,
+    buildWorkspaceTree,
+    createFileNode,
+    createEmptyFileNode,
+    getAllFileNodes,
+    executePbDirectives,
+    parseScriptText,
+    applyRequestMutations,
+    resolveEnvironmentVariables,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
   import { importOpenApiSpec } from './lib/openapi';
-  import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult, KeyVaultState } from './lib/types';
+  import type {
+    HttpRequest,
+    HttpResponse,
+    RequestLocation,
+    EnvironmentFile,
+    TreeNode,
+    ImportResult,
+    PbAssertionResult,
+    KeyVaultState,
+  } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import type { DiscoveredFile, DiscoveredFolder } from './lib/parser';
-  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR, migrateFlowsDirectory } from './lib/flowIO';
+  import {
+    scanForFlowFiles,
+    loadFlowHistory,
+    saveFlowRunRecord,
+    clearFlowRunHistory,
+    parseFlowFile,
+    FLOWS_DIR,
+    migrateFlowsDirectory,
+  } from './lib/flowIO';
   import { generateFolderName } from './lib/folderCreate';
   import { runFlow } from './lib/flowRunner';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
@@ -65,8 +133,8 @@
   // ─── Theme / Settings ───
   let currentTheme: ThemeId = 'default';
   let showSettings = false;
-  loadTheme().then(t => currentTheme = t);
-  loadFavorites().then(f => favorites.set(f));
+  loadTheme().then((t) => (currentTheme = t));
+  loadFavorites().then((f) => favorites.set(f));
 
   // ─── MCP status (titlebar pill) ───
   // Plain legacy `let` (not $state) so App.svelte stays in legacy mode and
@@ -76,7 +144,9 @@
 
   async function refreshMcpStatus() {
     try {
-      const settings = await invoke<{ enabled: boolean; port: number; token: string }>('mcp_get_settings');
+      const settings = await invoke<{ enabled: boolean; port: number; token: string }>(
+        'mcp_get_settings',
+      );
       mcpPort = settings.port;
       mcpRunning = await invoke<boolean>('mcp_is_running');
     } catch {}
@@ -121,7 +191,10 @@
         activeEnvironment.set(envName);
       }
 
-      addToast(`Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`, 'info');
+      addToast(
+        `Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`,
+        'info',
+      );
     } catch (e: any) {
       addToast(`Failed to update environment file: ${e.message || e}`, 'error');
     }
@@ -259,7 +332,12 @@
     try {
       const vars = await fetchKeyVaultSecrets(config);
       if (kvFetchSeq === seq) {
-        const state: KeyVaultState = { status: 'loaded', variables: vars, error: null, cacheKey: newCacheKey };
+        const state: KeyVaultState = {
+          status: 'loaded',
+          variables: vars,
+          error: null,
+          cacheKey: newCacheKey,
+        };
         kvCache[newCacheKey] = state;
         kvCache = kvCache;
         keyVaultState.set(state);
@@ -267,7 +345,12 @@
     } catch (err: unknown) {
       if (kvFetchSeq === seq) {
         const msg = err instanceof Error ? err.message : String(err);
-        const state: KeyVaultState = { status: 'error', variables: {}, error: msg, cacheKey: newCacheKey };
+        const state: KeyVaultState = {
+          status: 'error',
+          variables: {},
+          error: msg,
+          cacheKey: newCacheKey,
+        };
         keyVaultState.set(state);
         addToast(`Key Vault error: ${msg}`, 'error');
       }
@@ -290,7 +373,10 @@
     params: unknown;
   }
 
-  function respondBridge(id: string, payload: { ok: true; data: unknown } | { ok: false; error: string }) {
+  function respondBridge(
+    id: string,
+    payload: { ok: true; data: unknown } | { ok: false; error: string },
+  ) {
     emit('mcp:response', { id, ...payload }).catch(() => {});
   }
 
@@ -381,11 +467,20 @@
     if (beforeSendDirectives.length > 0) {
       const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
       for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-      const dummyResponse: HttpResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
+      const dummyResponse: HttpResponse = {
+        status: 0,
+        statusText: '',
+        headers: {},
+        body: '',
+        time: 0,
+        size: 0,
+      };
       const bsResult = executePbDirectives(
-        beforeSendDirectives, dummyResponse,
+        beforeSendDirectives,
+        dummyResponse,
         { url, method: request.method, headers, body },
-        mergedVars, ctx.namedResults,
+        mergedVars,
+        ctx.namedResults,
       );
       const mutated = applyRequestMutations(
         { url, method: request.method, headers, body },
@@ -400,15 +495,19 @@
     }
 
     const sentRequest = { method: request.method, url, headers, body };
-    const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
-      await invoke('http_request', {
-        payload: {
-          method: request.method,
-          url,
-          headers,
-          body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
-        },
-      });
+    const res: {
+      status: number;
+      status_text: string;
+      headers: Record<string, string>;
+      body: string;
+    } = await invoke('http_request', {
+      payload: {
+        method: request.method,
+        url,
+        headers,
+        body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
+      },
+    });
 
     const elapsed = performance.now() - startTime;
     const response: HttpResponse = {
@@ -428,9 +527,19 @@
     ];
     let assertionResults: PbAssertionResult[] = [];
     if (allDirectives.length > 0) {
-      const mergedVars: Record<string, string> = { ...ctx.environmentVariables, ...localEnvOverrides, ...localGlobals };
+      const mergedVars: Record<string, string> = {
+        ...ctx.environmentVariables,
+        ...localEnvOverrides,
+        ...localGlobals,
+      };
       for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-      const pbResult = executePbDirectives(allDirectives, response, sentRequest, mergedVars, ctx.namedResults);
+      const pbResult = executePbDirectives(
+        allDirectives,
+        response,
+        sentRequest,
+        mergedVars,
+        ctx.namedResults,
+      );
       assertionResults = pbResult.assertionResults;
     }
 
@@ -479,7 +588,11 @@
     } catch {
       throw new Error(`Flow file is not valid JSON: ${params.flowFilePath}`);
     }
-    if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { steps?: unknown }).steps)) {
+    if (
+      typeof raw !== 'object' ||
+      raw === null ||
+      !Array.isArray((raw as { steps?: unknown }).steps)
+    ) {
       throw new Error(`Not a valid flow file: ${params.flowFilePath}`);
     }
     const flow = parseFlowFile(content);
@@ -520,10 +633,13 @@
     const stepById = new Map(flow.steps.map((s) => [s.id, s]));
     const steps = record.stepResults.map((r) => {
       const status: 'passed' | 'failed' | 'skipped' | 'error' =
-        r.status === 'failed' && r.error != null ? 'error'
-        : r.status === 'passed' ? 'passed'
-        : r.status === 'skipped' ? 'skipped'
-        : 'failed';
+        r.status === 'failed' && r.error != null
+          ? 'error'
+          : r.status === 'passed'
+            ? 'passed'
+            : r.status === 'skipped'
+              ? 'skipped'
+              : 'failed';
       return {
         id: r.stepId,
         label: stepById.get(r.stepId)?.label ?? '',
@@ -534,10 +650,11 @@
       };
     });
 
-    const overall: 'passed' | 'failed' | 'error' =
-      steps.some((s) => s.status === 'error') ? 'error'
-      : steps.some((s) => s.status === 'failed') ? 'failed'
-      : 'passed';
+    const overall: 'passed' | 'failed' | 'error' = steps.some((s) => s.status === 'error')
+      ? 'error'
+      : steps.some((s) => s.status === 'failed')
+        ? 'failed'
+        : 'passed';
 
     return { status: overall, summary: record.summary, steps };
   }
@@ -567,10 +684,16 @@
           respondBridge(req.id, { ok: true, data: collectWorkspaceRequests() });
           break;
         case 'execute_request':
-          respondBridge(req.id, { ok: true, data: await executeRequestSilently(req.params as ExecuteRequestParams) });
+          respondBridge(req.id, {
+            ok: true,
+            data: await executeRequestSilently(req.params as ExecuteRequestParams),
+          });
           break;
         case 'execute_flow':
-          respondBridge(req.id, { ok: true, data: await executeFlowSilently(req.params as ExecuteFlowParams) });
+          respondBridge(req.id, {
+            ok: true,
+            data: await executeFlowSilently(req.params as ExecuteFlowParams),
+          });
           break;
         case 'get_last_result':
           respondBridge(req.id, { ok: true, data: snapshotLastResult() });
@@ -622,12 +745,13 @@
 
   // Active tab's section tab (Body/Assertions) for pinned tabs
   $: activeBottomTab = (() => {
-    const key = $tabs.length > 0 && $selectedLocation
-      ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
-      : null;
+    const key =
+      $tabs.length > 0 && $selectedLocation
+        ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
+        : null;
     if (!key) return 'body' as BottomTab;
-    const tab = $tabs.find(t => `${t.location.filePath}::${t.location.requestIndex}` === key);
-    return tab?.bottomTab ?? 'body' as BottomTab;
+    const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
+    return tab?.bottomTab ?? ('body' as BottomTab);
   })();
 
   function handleBottomTabChange(e: CustomEvent<BottomTab>) {
@@ -638,12 +762,13 @@
 
   // Active response tab (Body/Headers/Request/Assertions) for pinned tabs
   $: activeResponseTab = (() => {
-    const key = $tabs.length > 0 && $selectedLocation
-      ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
-      : null;
+    const key =
+      $tabs.length > 0 && $selectedLocation
+        ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
+        : null;
     if (!key) return 'body' as ResponseTab;
-    const tab = $tabs.find(t => `${t.location.filePath}::${t.location.requestIndex}` === key);
-    return tab?.responseTab ?? 'body' as ResponseTab;
+    const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
+    return tab?.responseTab ?? ('body' as ResponseTab);
   })();
 
   function handleResponseTabChange(e: CustomEvent<ResponseTab>) {
@@ -692,7 +817,9 @@
     try {
       const migrated = await migrateFlowsDirectory(rootPath);
       if (migrated) addToast("Workspace updated: renamed 'flows' to '.flows'", 'info');
-    } catch { /* best effort */ }
+    } catch {
+      /* best effort */
+    }
 
     // Discover test flows and load run history
     try {
@@ -702,12 +829,16 @@
         flowMap[df.relativePath] = df.flow;
       }
       flows.set(flowMap);
-    } catch { /* no flows yet */ }
+    } catch {
+      /* no flows yet */
+    }
 
     try {
       const history = await loadFlowHistory(rootPath);
       flowRunHistory.set(history);
-    } catch { /* no history yet */ }
+    } catch {
+      /* no history yet */
+    }
 
     // Reset flow tabs
     flowTabs.set([]);
@@ -738,7 +869,7 @@
     const ws = get(workspace);
     const rootPath = ws.rootPath;
     if (!rootPath) return;
-    if (get(favorites).some(f => f.path === rootPath)) {
+    if (get(favorites).some((f) => f.path === rootPath)) {
       removeFavorite(rootPath);
     } else {
       pendingFavoritePath = rootPath;
@@ -752,8 +883,8 @@
     const path = pendingFavoritePath;
     showAddFavoriteModal = false;
     if (!path) return;
-    favorites.update(list => {
-      if (list.some(f => f.path === path)) return list;
+    favorites.update((list) => {
+      if (list.some((f) => f.path === path)) return list;
       const next = [...list, { path, name }];
       saveFavorites(next);
       return next;
@@ -768,8 +899,8 @@
 
   /** Remove a path from the favorites list. */
   function removeFavorite(path: string) {
-    favorites.update(list => {
-      const next = list.filter(f => f.path !== path);
+    favorites.update((list) => {
+      const next = list.filter((f) => f.path !== path);
       saveFavorites(next);
       return next;
     });
@@ -780,7 +911,7 @@
    * folder is favorited, otherwise the folder basename.
    */
   $: rootDisplayName =
-    $favorites.find(f => f.path === $workspace.rootPath)?.name ?? $workspace.rootName;
+    $favorites.find((f) => f.path === $workspace.rootPath)?.name ?? $workspace.rootName;
 
   /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
   async function openFavorite(path: string) {
@@ -834,7 +965,9 @@
     return results;
   }
 
-  async function scanForHttpFiles(rootDir: string): Promise<{ files: DiscoveredFile[]; emptyFolders: DiscoveredFolder[] }> {
+  async function scanForHttpFiles(
+    rootDir: string,
+  ): Promise<{ files: DiscoveredFile[]; emptyFolders: DiscoveredFolder[] }> {
     const emptyFolders: DiscoveredFolder[] = [];
     const entries = await readDir(rootDir);
     const files: DiscoveredFile[] = [];
@@ -864,17 +997,21 @@
       const parsed = parseEnvironmentFile(content);
       if (parsed) {
         envFile.set(parsed);
-        const names = Object.keys(parsed).filter(k => k !== '$shared');
+        const names = Object.keys(parsed).filter((k) => k !== '$shared');
         if (names.length > 0 && !$activeEnvironment) activeEnvironment.set(names[0]);
       }
-    } catch { /* file doesn't exist */ }
+    } catch {
+      /* file doesn't exist */
+    }
 
     try {
       const userPath = await join(rootDir, 'http-client.env.json.user');
       const content = await readTextFile(userPath);
       const parsed = parseEnvironmentFile(content);
       if (parsed) userEnvFile.set(parsed);
-    } catch { /* file doesn't exist */ }
+    } catch {
+      /* file doesn't exist */
+    }
 
     refreshKeyVaultSecrets();
   }
@@ -884,7 +1021,14 @@
   /** Validate and join a relative path onto a root, preventing directory traversal. */
   async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
     for (const seg of relativePath.split('/')) {
-      if (!seg || seg === '..' || seg === '.' || seg.includes('\0') || seg.includes('\\') || seg.includes('/')) {
+      if (
+        !seg ||
+        seg === '..' ||
+        seg === '.' ||
+        seg.includes('\0') ||
+        seg.includes('\\') ||
+        seg.includes('/')
+      ) {
         throw new Error(`Invalid path segment: "${seg}"`);
       }
     }
@@ -900,7 +1044,9 @@
       const parentDir = await dirname(outPath);
       try {
         await mkdir(parentDir, { recursive: true });
-      } catch { /* already exists */ }
+      } catch {
+        /* already exists */
+      }
       await writeTextFile(outPath, file.content);
       written++;
     }
@@ -930,7 +1076,9 @@
     const rootPath = $workspace.rootPath;
     if (!rootPath) return;
     try {
-      let current: EnvironmentFile = ensureSharedEnvironment($envFile ? structuredClone($envFile) : {});
+      let current: EnvironmentFile = ensureSharedEnvironment(
+        $envFile ? structuredClone($envFile) : {},
+      );
 
       for (const [envName, vars] of Object.entries(imported)) {
         if (!current[envName]) current[envName] = {};
@@ -945,12 +1093,15 @@
       await writeTextFile(envPath, JSON.stringify(current, null, 2));
       envFile.set(current);
 
-      const envNames = Object.keys(imported).filter(n => n !== '$shared');
+      const envNames = Object.keys(imported).filter((n) => n !== '$shared');
       if (!$activeEnvironment && envNames.length > 0) {
         activeEnvironment.set(envNames[0]);
       }
 
-      addToast(`Imported ${envNames.length} environment${envNames.length !== 1 ? 's' : ''}: ${envNames.join(', ')}`, 'info');
+      addToast(
+        `Imported ${envNames.length} environment${envNames.length !== 1 ? 's' : ''}: ${envNames.join(', ')}`,
+        'info',
+      );
     } catch (e: any) {
       addToast(`Failed to write environment file: ${e.message || e}`, 'error');
     }
@@ -968,12 +1119,21 @@
     try {
       let result: ImportResult;
       switch (format) {
-        case 'postman': result = importPostmanCollection(content); break;
-        case 'insomnia': result = importInsomniaExport(content); break;
-        case 'openapi': result = importOpenApiSpec(content); break;
+        case 'postman':
+          result = importPostmanCollection(content);
+          break;
+        case 'insomnia':
+          result = importInsomniaExport(content);
+          break;
+        case 'openapi':
+          result = importOpenApiSpec(content);
+          break;
       }
       const written = await writeImportedFiles(result);
-      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
+      addToast(
+        `Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`,
+        'info',
+      );
       await showEnvModalIfNeeded(result);
     } catch (e: any) {
       addToast(`Import failed: ${e.message || e}`, 'error');
@@ -991,7 +1151,10 @@
     try {
       const result = importOpenApiSpec(e.detail.content);
       const written = await writeImportedFiles(result);
-      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
+      addToast(
+        `Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`,
+        'info',
+      );
       await showEnvModalIfNeeded(result);
     } catch (e: any) {
       addToast(`Import failed: ${e.message || e}`, 'error');
@@ -1003,7 +1166,10 @@
   function findFileInTree(nodes: TreeNode[], path: string): any {
     for (const n of nodes) {
       if (n.type === 'file' && n.path === path) return n;
-      if (n.type === 'folder') { const f = findFileInTree(n.children, path); if (f) return f; }
+      if (n.type === 'folder') {
+        const f = findFileInTree(n.children, path);
+        if (f) return f;
+      }
     }
     return null;
   }
@@ -1061,11 +1227,20 @@
         const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
         for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
 
-        const dummyResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
+        const dummyResponse = {
+          status: 0,
+          statusText: '',
+          headers: {},
+          body: '',
+          time: 0,
+          size: 0,
+        };
         const bsResult = executePbDirectives(
-          beforeSendDirectives, dummyResponse,
+          beforeSendDirectives,
+          dummyResponse,
           { url, method: request.method, headers, body },
-          mergedVars, $namedResults,
+          mergedVars,
+          $namedResults,
         );
 
         // Apply request mutations
@@ -1080,27 +1255,31 @@
         // Apply set vars from beforeSend (file-scoped)
         if (Object.keys(bsResult.setVars).length > 0) {
           const filePath = $selectedLocation!.filePath;
-          pbFileOverrides.update(ev => ({
+          pbFileOverrides.update((ev) => ({
             ...ev,
             [filePath]: { ...(ev[filePath] ?? {}), ...bsResult.setVars },
           }));
         }
         if (Object.keys(bsResult.globalVars).length > 0) {
-          pbGlobals.update(g => ({ ...g, ...bsResult.globalVars }));
+          pbGlobals.update((g) => ({ ...g, ...bsResult.globalVars }));
         }
       }
 
       currentSentRequest.set({ method: request.method, url, headers, body });
 
-      const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
-        await invoke('http_request', {
-          payload: {
-            method: request.method,
-            url,
-            headers,
-            body: ['GET','HEAD','OPTIONS'].includes(request.method) ? null : body || null,
-          },
-        });
+      const res: {
+        status: number;
+        status_text: string;
+        headers: Record<string, string>;
+        body: string;
+      } = await invoke('http_request', {
+        payload: {
+          method: request.method,
+          url,
+          headers,
+          body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
+        },
+      });
 
       const elapsed = performance.now() - startTime;
 
@@ -1115,7 +1294,7 @@
       currentResponse.set(response);
 
       if (request.varName) {
-        namedResults.update(nr => ({
+        namedResults.update((nr) => ({
           ...nr,
           [request.varName!]: {
             request: { url, method: request.method, headers, body },
@@ -1132,7 +1311,8 @@
         for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
 
         const pbResult = executePbDirectives(
-          allDirectives, response,
+          allDirectives,
+          response,
           { url, method: request.method, headers, body },
           mergedVars,
           $namedResults,
@@ -1142,7 +1322,7 @@
 
         // Apply set vars as named results so {{key}} resolves in later requests
         if (Object.keys(pbResult.setVars).length > 0) {
-          namedResults.update(nr => {
+          namedResults.update((nr) => {
             const updated = { ...nr };
             for (const [key, value] of Object.entries(pbResult.setVars)) {
               // Store as a pseudo named result so substituteAll can pick it up.
@@ -1156,7 +1336,7 @@
           });
           // Inject set vars into file-scoped overrides so {{key}} works in this file
           const filePath = $selectedLocation!.filePath;
-          pbFileOverrides.update(ev => ({
+          pbFileOverrides.update((ev) => ({
             ...ev,
             [filePath]: { ...(ev[filePath] ?? {}), ...pbResult.setVars },
           }));
@@ -1164,13 +1344,17 @@
 
         // Apply global vars (workspace-scoped)
         if (Object.keys(pbResult.globalVars).length > 0) {
-          pbGlobals.update(g => ({ ...g, ...pbResult.globalVars }));
+          pbGlobals.update((g) => ({ ...g, ...pbResult.globalVars }));
         }
       }
     } catch (e: any) {
       currentResponse.set({
-        status: 0, statusText: 'Error', headers: {},
-        body: (typeof e === 'string' ? e : e.message) || 'Request failed.', time: Math.round(performance.now() - startTime), size: 0,
+        status: 0,
+        statusText: 'Error',
+        headers: {},
+        body: (typeof e === 'string' ? e : e.message) || 'Request failed.',
+        time: Math.round(performance.now() - startTime),
+        size: 0,
       });
     } finally {
       isLoading.set(false);
@@ -1189,7 +1373,9 @@
     activeFlowTabPath.set(null);
     activeFlowPath.set(null);
     const loc = e.detail;
-    const hasTab = $tabs.some(t => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex);
+    const hasTab = $tabs.some(
+      (t) => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex,
+    );
     if (hasTab) {
       activateTab(loc);
     } else {
@@ -1197,15 +1383,14 @@
     }
   }
 
-  function handlePinRequest(e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>) {
+  function handlePinRequest(
+    e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>,
+  ) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
     }
-    pinTab(
-      { filePath: e.detail.filePath, requestIndex: e.detail.requestIndex },
-      e.detail.label,
-    );
+    pinTab({ filePath: e.detail.filePath, requestIndex: e.detail.requestIndex }, e.detail.label);
   }
 
   function handleTabActivate(e: CustomEvent<RequestLocation>) {
@@ -1379,7 +1564,10 @@
         await writeTextFile(oldPath, content);
         markFileSaved(oldPath);
       } catch (err) {
-        addToast(`Failed to save file before rename: ${err instanceof Error ? err.message : err}`, 'error');
+        addToast(
+          `Failed to save file before rename: ${err instanceof Error ? err.message : err}`,
+          'error',
+        );
         return;
       }
     }
@@ -1458,7 +1646,6 @@
     toggleFolder(e.detail);
   }
 
-
   /** Resolve the full dependency chain in topological order, then run each unsent request. */
   async function handleRunAll(e: CustomEvent<string[]>) {
     const allFiles = getAllFileNodes($workspace.tree);
@@ -1482,7 +1669,7 @@
       const req = requestByName.get(name);
       if (!req) return;
       // Find this request's own dependencies
-      const text = `${req.url} ${req.headers.map(h => h.value).join(' ')} ${req.body}`;
+      const text = `${req.url} ${req.headers.map((h) => h.value).join(' ')} ${req.body}`;
       let match;
       const re = new RegExp(depRe.source, 'g');
       while ((match = re.exec(text)) !== null) {
@@ -1503,7 +1690,9 @@
     }
   }
 
-  function handleNameRequest(e: CustomEvent<{ filePath: string; requestIndex: number; varName: string }>) {
+  function handleNameRequest(
+    e: CustomEvent<{ filePath: string; requestIndex: number; varName: string }>,
+  ) {
     const { filePath, requestIndex, varName } = e.detail;
     const file = findFileInTree($workspace.tree, filePath);
     if (!file) return;
@@ -1511,10 +1700,10 @@
     if (!req) return;
     // Block duplicate names
     if (varName) {
-      const duplicate = getAllFileNodes($workspace.tree).some(f =>
-        f.requests.some((r, ri) =>
-          r.varName === varName && !(f.path === filePath && ri === requestIndex)
-        )
+      const duplicate = getAllFileNodes($workspace.tree).some((f) =>
+        f.requests.some(
+          (r, ri) => r.varName === varName && !(f.path === filePath && ri === requestIndex),
+        ),
       );
       if (duplicate) {
         addToast(`Name "${varName}" is already in use`);
@@ -1523,7 +1712,7 @@
     }
     // Remove old name from namedResults if it changed or was cleared
     if (req.varName && req.varName !== varName) {
-      namedResults.update(nr => {
+      namedResults.update((nr) => {
         const updated = { ...nr };
         delete updated[req.varName!];
         return updated;
@@ -1548,14 +1737,23 @@
 
     const { createEmptyFlow, writeFlowFile } = await import('./lib/flowIO');
     const flow = createEmptyFlow(name);
-    const safeName = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
+    const safeName =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'unnamed';
     const flowsDir = await join(rootPath, FLOWS_DIR);
-    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
+    try {
+      await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true });
+    } catch {
+      /* exists */
+    }
     const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
     const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
 
     await writeFlowFile(absolutePath, flow);
-    flows.update(f => ({ ...f, [relativePath]: flow }));
+    flows.update((f) => ({ ...f, [relativePath]: flow }));
     openFlowTab(relativePath, flow.name);
   }
 
@@ -1564,7 +1762,14 @@
   let runningFlowPath: string | null = null;
 
   /** Persisted UI state for flow editors, keyed by flow path. */
-  let flowUIState: Record<string, { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> }> = {};
+  let flowUIState: Record<
+    string,
+    {
+      expandedStepId: string | null;
+      collapsedKeys: Record<string, boolean>;
+      activeOverrideTabs: Record<string, string>;
+    }
+  > = {};
 
   async function handleRunFlow() {
     const flow = $activeFlow;
@@ -1588,19 +1793,35 @@
       $activeEnvironment,
       {
         onStepStart(stepId: string) {
-          flowRunState.update(s => s ? {
-            ...s,
-            stepResults: [...s.stepResults, {
-              stepId, status: 'running', response: null, sentRequest: null,
-              assertionResults: [], durationMs: 0, error: null,
-            }],
-          } : s);
+          flowRunState.update((s) =>
+            s
+              ? {
+                  ...s,
+                  stepResults: [
+                    ...s.stepResults,
+                    {
+                      stepId,
+                      status: 'running',
+                      response: null,
+                      sentRequest: null,
+                      assertionResults: [],
+                      durationMs: 0,
+                      error: null,
+                    },
+                  ],
+                }
+              : s,
+          );
         },
         onStepComplete(stepId: string, result: FlowStepResult) {
-          flowRunState.update(s => s ? {
-            ...s,
-            stepResults: s.stepResults.map(r => r.stepId === stepId ? result : r),
-          } : s);
+          flowRunState.update((s) =>
+            s
+              ? {
+                  ...s,
+                  stepResults: s.stepResults.map((r) => (r.stepId === stepId ? result : r)),
+                }
+              : s,
+          );
         },
       },
       flowAbortController.signal,
@@ -1622,8 +1843,10 @@
     try {
       const secretValues = Object.values($keyVaultState.variables ?? {});
       await saveFlowRunRecord(rootPath, record, secretValues);
-      flowRunHistory.update(h => [record, ...h]);
-    } catch { /* save failed silently */ }
+      flowRunHistory.update((h) => [record, ...h]);
+    } catch {
+      /* save failed silently */
+    }
 
     flowAbortController = null;
   }
@@ -1632,7 +1855,9 @@
     flowAbortController?.abort();
   }
 
-  async function handleSaveFlow(e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>) {
+  async function handleSaveFlow(
+    e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>,
+  ) {
     const { flowPath, flow } = e.detail;
     const rootPath = $workspace.rootPath;
     if (!rootPath) return;
@@ -1640,12 +1865,12 @@
     const { writeFlowFile } = await import('./lib/flowIO');
     const absolutePath = await safeJoinPath(rootPath, flowPath);
     await writeFlowFile(absolutePath, flow);
-    flows.update(f => ({ ...f, [flowPath]: flow }));
+    flows.update((f) => ({ ...f, [flowPath]: flow }));
 
     // Update tab label if the name changed
-    flowTabs.update(ts => ts.map(t =>
-      t.flowPath === flowPath ? { ...t, label: flow.name } : t
-    ));
+    flowTabs.update((ts) =>
+      ts.map((t) => (t.flowPath === flowPath ? { ...t, label: flow.name } : t)),
+    );
   }
 
   async function handleDuplicateFlow(e: CustomEvent<string>) {
@@ -1657,15 +1882,28 @@
 
     const { writeFlowFile } = await import('./lib/flowIO');
     const newName = `${sourceFlow.name} (copy)`;
-    const newFlow = { ...sourceFlow, name: newName, steps: sourceFlow.steps.map(s => ({ ...s, id: crypto.randomUUID() })) };
-    const safeName = newName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
+    const newFlow = {
+      ...sourceFlow,
+      name: newName,
+      steps: sourceFlow.steps.map((s) => ({ ...s, id: crypto.randomUUID() })),
+    };
+    const safeName =
+      newName
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'unnamed';
     const flowsDir = await join(rootPath, FLOWS_DIR);
-    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
+    try {
+      await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true });
+    } catch {
+      /* exists */
+    }
     const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
     const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
 
     await writeFlowFile(absolutePath, newFlow);
-    flows.update(f => ({ ...f, [relativePath]: newFlow }));
+    flows.update((f) => ({ ...f, [relativePath]: newFlow }));
     openFlowTab(relativePath, newFlow.name);
   }
 
@@ -1682,7 +1920,7 @@
       // Silently ignore - flow file may not exist on disk
     }
 
-    flows.update(f => {
+    flows.update((f) => {
       const updated = { ...f };
       delete updated[path];
       return updated;
@@ -1693,26 +1931,35 @@
 </script>
 
 <ToastContainer />
-<HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<HelpModal visible={showHelp} on:close={() => (showHelp = false)} />
 <SettingsModal
   visible={showSettings}
-  currentTheme={currentTheme}
-  onchangeTheme={(id) => { currentTheme = id; setTheme(id); }}
-  onclose={() => { showSettings = false; void refreshMcpStatus(); }}
+  {currentTheme}
+  onchangeTheme={(id) => {
+    currentTheme = id;
+    setTheme(id);
+  }}
+  onclose={() => {
+    showSettings = false;
+    void refreshMcpStatus();
+  }}
 />
 <VariableInspector
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
   envVarSources={$baseEnvVarsWithSource}
-  kvVariables={$keyVaultState.status === 'loaded' && $keyVaultState.cacheKey?.startsWith($activeEnvironment + '::') ? $keyVaultState.variables : {}}
+  kvVariables={$keyVaultState.status === 'loaded' &&
+  $keyVaultState.cacheKey?.startsWith($activeEnvironment + '::')
+    ? $keyVaultState.variables
+    : {}}
   varSourcePrefs={$varSourcePrefs}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
   namedResults={$namedResults}
   activeEnv={$activeEnvironment}
   activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
-  on:close={() => showVarInspector = false}
+  on:close={() => (showVarInspector = false)}
   on:clearRuntime={() => {
     pbFileOverrides.set({});
     pbGlobals.set({});
@@ -1731,7 +1978,7 @@
   visible={showImportCollectionModal}
   on:importFile={handleImportFile}
   on:importUrl={handleImportUrl}
-  on:cancel={() => showImportCollectionModal = false}
+  on:cancel={() => (showImportCollectionModal = false)}
 />
 <AddFavoriteModal
   visible={showAddFavoriteModal}
@@ -1741,17 +1988,14 @@
   on:cancel={cancelAddFavorite}
 />
 
-<svelte:window
-  on:dragover|preventDefault={() => {}}
-  on:drop|preventDefault={() => {}}
-/>
+<svelte:window on:dragover|preventDefault={() => {}} on:drop|preventDefault={() => {}} />
 
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
     {#if mcpRunning}
       <button
         class="mcp-pill"
-        on:click={() => showSettings = true}
+        on:click={() => (showSettings = true)}
         title="MCP server running on port {mcpPort}"
       >
         <span class="mcp-dot"></span>
@@ -1780,7 +2024,7 @@
         on:toggleFavorite={toggleFavorite}
         on:openFavorite={(e) => openFavorite(e.detail)}
         on:removeFavorite={(e) => removeFavorite(e.detail)}
-        on:importCollection={() => showImportCollectionModal = true}
+        on:importCollection={() => (showImportCollectionModal = true)}
         on:select={handleSelect}
         on:pinRequest={handlePinRequest}
         on:toggleFolder={handleToggleFolder}
@@ -1795,10 +2039,10 @@
         on:duplicateFile={handleDuplicateFile}
         on:cancelRename={handleCancelRename}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-        on:editEnv={() => showEnvEditor = true}
-        on:openVarInspector={() => showVarInspector = true}
-        on:openHelp={() => showHelp = true}
-        on:openSettings={() => showSettings = true}
+        on:editEnv={() => (showEnvEditor = true)}
+        on:openVarInspector={() => (showVarInspector = true)}
+        on:openHelp={() => (showHelp = true)}
+        on:openSettings={() => (showSettings = true)}
         on:nameRequest={handleNameRequest}
         on:openFlow={handleOpenFlow}
         on:createFlow={handleCreateFlow}
@@ -1820,7 +2064,10 @@
         on:activate={handleTabActivate}
         on:close={handleTabClose}
         on:activateFlowTab={(e) => activateFlowTab(e.detail)}
-        on:closeFlowTab={(e) => { delete flowUIState[e.detail]; closeFlowTab(e.detail); }}
+        on:closeFlowTab={(e) => {
+          delete flowUIState[e.detail];
+          closeFlowTab(e.detail);
+        }}
       />
       <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
         {#if showEnvEditor}
@@ -1835,9 +2082,9 @@
                 saveEnvFile(e.detail);
               }}
               on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-              on:close={() => showEnvEditor = false}
+              on:close={() => (showEnvEditor = false)}
               on:sourcePref={(e) => {
-                varSourcePrefs.update(p => ({ ...p, [e.detail.key]: e.detail.source }));
+                varSourcePrefs.update((p) => ({ ...p, [e.detail.key]: e.detail.source }));
               }}
               on:refreshKv={(e) => {
                 // Invalidate cache for this env so fresh secrets are fetched
@@ -1845,7 +2092,7 @@
                   if (key.startsWith(e.detail + '::')) delete kvCache[key];
                 }
                 kvCache = kvCache;
-                keyVaultState.update(s => ({ ...s, cacheKey: null }));
+                keyVaultState.update((s) => ({ ...s, cacheKey: null }));
                 refreshKeyVaultSecrets(e.detail);
               }}
             />
@@ -1858,14 +2105,19 @@
             rootPath={$workspace.rootPath ?? ''}
             runState={runningFlowPath === $activeFlowTabPath ? $flowRunState : null}
             lastRunRecord={lastFlowRunRecords[$activeFlowTabPath] ?? null}
-            runHistory={$flowRunHistory.filter(r => r.flowFilePath === $activeFlowTabPath)}
+            runHistory={$flowRunHistory.filter((r) => r.flowFilePath === $activeFlowTabPath)}
             uiState={flowUIState[$activeFlowTabPath] ?? null}
-            on:uiStateChange={(e) => { flowUIState[$activeFlowTabPath] = e.detail; flowUIState = flowUIState; }}
+            on:uiStateChange={(e) => {
+              flowUIState[$activeFlowTabPath] = e.detail;
+              flowUIState = flowUIState;
+            }}
             on:save={handleSaveFlow}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
             on:clearHistory={() => {
-              flowRunHistory.set($flowRunHistory.filter(r => r.flowFilePath !== $activeFlowTabPath));
+              flowRunHistory.set(
+                $flowRunHistory.filter((r) => r.flowFilePath !== $activeFlowTabPath),
+              );
               delete lastFlowRunRecords[$activeFlowTabPath];
               lastFlowRunRecords = lastFlowRunRecords;
               if ($workspace.rootPath && $activeFlow) {
@@ -1894,7 +2146,14 @@
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
-            <ResponseViewer response={$currentResponse} loading={$isLoading} sentRequest={$currentSentRequest} assertionResults={$pbAssertionResults} activeTab={activeResponseTab} on:tabChange={handleResponseTabChange} />
+            <ResponseViewer
+              response={$currentResponse}
+              loading={$isLoading}
+              sentRequest={$currentSentRequest}
+              assertionResults={$pbAssertionResults}
+              activeTab={activeResponseTab}
+              on:tabChange={handleResponseTabChange}
+            />
           </div>
         {:else}
           <div class="no-selection">
@@ -1908,27 +2167,41 @@
 
 <style>
   :global(*) {
-    margin: 0; padding: 0; box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
   :global(body) {
     font-family: var(--font-ui);
-    background: var(--color-bg); color: var(--color-text);
-    overflow: hidden; font-size: var(--text-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+    overflow: hidden;
+    font-size: var(--text-md);
   }
 
   .app {
-    display: flex; flex-direction: column;
-    height: 100vh; background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--color-bg);
   }
 
   .titlebar {
-    display: flex; justify-content: flex-end; align-items: center;
-    height: 28px; padding-right: var(--space-2);
-    background: var(--color-bg-sidebar); border-bottom: 1px solid var(--color-divider);
-    -webkit-app-region: drag; user-select: none; flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    height: 28px;
+    padding-right: var(--space-2);
+    background: var(--color-bg-sidebar);
+    border-bottom: 1px solid var(--color-divider);
+    -webkit-app-region: drag;
+    user-select: none;
+    flex-shrink: 0;
   }
   .mcp-pill {
-    display: flex; align-items: center; gap: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     padding: 2px 8px;
     border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
     border-radius: 10px;
@@ -1939,24 +2212,33 @@
     font-weight: var(--weight-semibold);
     cursor: pointer;
     -webkit-app-region: no-drag;
-    transition: background var(--duration-normal), border-color var(--duration-normal);
+    transition:
+      background var(--duration-normal),
+      border-color var(--duration-normal);
   }
   .mcp-pill:hover {
     background: color-mix(in srgb, var(--color-primary) 18%, transparent);
     border-color: color-mix(in srgb, var(--color-primary) 70%, transparent);
   }
   .mcp-dot {
-    width: 6px; height: 6px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--color-primary);
     box-shadow: 0 0 4px var(--color-primary);
   }
-  .layout { display: flex; flex: 1; overflow: hidden; }
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
 
   .sidebar-container {
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     background: var(--color-bg-sidebar);
-    flex-shrink: 0; overflow: hidden;
+    flex-shrink: 0;
+    overflow: hidden;
   }
 
   .sidebar-divider {
@@ -1966,16 +2248,40 @@
     background: var(--color-divider);
     transition: background var(--duration-normal);
   }
-  .sidebar-divider:hover, .sidebar-dragging .sidebar-divider {
+  .sidebar-divider:hover,
+  .sidebar-dragging .sidebar-divider {
     background: var(--color-primary);
   }
-  .sidebar-dragging { cursor: col-resize; user-select: none; }
+  .sidebar-dragging {
+    cursor: col-resize;
+    user-select: none;
+  }
 
-  .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .main-panels { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
-  .main-panels.dragging { cursor: col-resize; user-select: none; }
-  .editor-pane { overflow: auto; min-width: 0; }
-  .response-pane { flex: 1; overflow: auto; min-width: 0; }
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .main-panels {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+  }
+  .main-panels.dragging {
+    cursor: col-resize;
+    user-select: none;
+  }
+  .editor-pane {
+    overflow: auto;
+    min-width: 0;
+  }
+  .response-pane {
+    flex: 1;
+    overflow: auto;
+    min-width: 0;
+  }
 
   .divider {
     width: 3px;
@@ -1984,14 +2290,25 @@
     background: var(--color-divider);
     transition: background var(--duration-normal);
   }
-  .divider:hover, .dragging .divider {
+  .divider:hover,
+  .dragging .divider {
     background: var(--color-primary);
   }
-  .env-editor-pane { flex: 1; overflow: auto; }
+  .env-editor-pane {
+    flex: 1;
+    overflow: auto;
+  }
 
   .no-selection {
-    flex: 1; display: flex;
-    align-items: center; justify-content: center;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  .no-sel-logo { width: 360px; height: 360px; object-fit: contain; opacity: 0.45; }
+  .no-sel-logo {
+    width: 360px;
+    height: 360px;
+    object-fit: contain;
+    opacity: 0.45;
+  }
 </style>
