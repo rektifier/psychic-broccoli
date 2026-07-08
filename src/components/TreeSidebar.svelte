@@ -604,20 +604,20 @@
           {editingFolderPath}
           siblingNames={tree.filter((n) => n.type === 'file').map((n) => n.name)}
           siblingFolderNames={tree.map((n) => n.name)}
-          on:toggleFolder
-          on:select
-          on:pinRequest
-          on:addRequest
-          on:deleteRequest
-          on:deleteFile
-          on:deleteFolder
-          on:nameRequest
-          on:renameFile
-          on:renameFolder
-          on:duplicateFile
-          on:createFile
-          on:createFolder
-          on:cancelRename
+          onToggleFolder={(path) => dispatch('toggleFolder', path)}
+          onSelect={(location) => dispatch('select', location)}
+          onPinRequest={(detail) => dispatch('pinRequest', detail)}
+          onAddRequest={(filePath) => dispatch('addRequest', filePath)}
+          onDeleteRequest={(detail) => dispatch('deleteRequest', detail)}
+          onDeleteFile={(filePath) => dispatch('deleteFile', filePath)}
+          onDeleteFolder={(folderPath) => dispatch('deleteFolder', folderPath)}
+          onNameRequest={(detail) => dispatch('nameRequest', detail)}
+          onRenameFile={(detail) => dispatch('renameFile', detail)}
+          onRenameFolder={(detail) => dispatch('renameFolder', detail)}
+          onDuplicateFile={(filePath) => dispatch('duplicateFile', filePath)}
+          onCreateFile={(parentPath) => dispatch('createFile', parentPath)}
+          onCreateFolder={(parentPath) => dispatch('createFolder', parentPath)}
+          onCancelRename={() => dispatch('cancelRename')}
         />
       {/each}
     {/if}
