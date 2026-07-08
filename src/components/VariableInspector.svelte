@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type {
     Variable,
     NamedRequestResult,
@@ -8,33 +7,48 @@
     VarSource,
   } from '../lib/types';
 
-  export let visible: boolean = false;
-  export let fileVariables: Variable[] = [];
-  export let envVariables: Record<string, string> = {};
-  export let envVarSources: Record<string, ResolvedVarWithCascade> = {};
-  export let kvVariables: Record<string, string> = {};
-  export let varSourcePrefs: Record<string, VarSource> = {};
-  export let pbOverrides: Record<string, string> = {};
-  export let pbGlobals: Record<string, string> = {};
-  export let namedResults: Record<string, NamedRequestResult> = {};
-  export let activeEnv: string | null = null;
-  export let activeFileName: string = '';
+  interface Props {
+    visible?: boolean;
+    fileVariables?: Variable[];
+    envVariables?: Record<string, string>;
+    envVarSources?: Record<string, ResolvedVarWithCascade>;
+    kvVariables?: Record<string, string>;
+    varSourcePrefs?: Record<string, VarSource>;
+    pbOverrides?: Record<string, string>;
+    pbGlobals?: Record<string, string>;
+    namedResults?: Record<string, NamedRequestResult>;
+    activeEnv?: string | null;
+    activeFileName?: string;
+    onClose?: () => void;
+    onClearRuntime?: () => void;
+  }
 
-  const dispatch = createEventDispatcher<{
-    close: void;
-    clearRuntime: void;
-  }>();
+  let {
+    visible = false,
+    fileVariables = [],
+    envVariables = {},
+    envVarSources = {},
+    kvVariables = {},
+    varSourcePrefs = {},
+    pbOverrides = {},
+    pbGlobals = {},
+    namedResults = {},
+    activeEnv = null,
+    activeFileName = '',
+    onClose,
+    onClearRuntime,
+  }: Props = $props();
 
-  let fileExpanded = true;
-  let envExpanded = true;
-  let runtimeExpanded = true;
+  let fileExpanded = $state(true);
+  let envExpanded = $state(true);
+  let runtimeExpanded = $state(true);
 
-  let searchQuery = '';
-  let showKvSecrets = false;
-  let copiedKey: string | null = null;
+  let searchQuery = $state('');
+  let showKvSecrets = $state(false);
+  let copiedKey: string | null = $state(null);
   let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  let expandedCascadeKey: string | null = null;
+  let expandedCascadeKey: string | null = $state(null);
 
   function sourceTagLabel(source: VarSourceLayer): string {
     switch (source) {
@@ -90,66 +104,87 @@
     }
   }
 
-  $: if (visible) {
-    searchQuery = '';
-    copiedKey = null;
-    showKvSecrets = false;
-    expandedCascadeKey = null;
-  }
+  // Reset transient inspector state each time the modal opens.
+  $effect(() => {
+    if (visible) {
+      searchQuery = '';
+      copiedKey = null;
+      showKvSecrets = false;
+      expandedCascadeKey = null;
+    }
+  });
 
-  $: envEntries = Object.entries(envVariables).filter(
-    ([k]) => !(k in pbOverrides) && !(k in pbGlobals),
+  const envEntries = $derived(
+    Object.entries(envVariables).filter(([k]) => !(k in pbOverrides) && !(k in pbGlobals)),
   );
-  $: overrideEntries = Object.entries(pbOverrides).filter(([k]) => !(k in pbGlobals));
-  $: globalEntries = Object.entries(pbGlobals);
-  $: namedEntries = Object.entries(namedResults);
+  const overrideEntries = $derived(Object.entries(pbOverrides).filter(([k]) => !(k in pbGlobals)));
+  const globalEntries = $derived(Object.entries(pbGlobals));
+  const namedEntries = $derived(Object.entries(namedResults));
 
-  $: runtimeCount = overrideEntries.length + globalEntries.length + namedEntries.length;
-  $: hasRuntime = runtimeCount > 0;
+  const runtimeCount = $derived(
+    overrideEntries.length + globalEntries.length + namedEntries.length,
+  );
+  const hasRuntime = $derived(runtimeCount > 0);
 
-  $: searchQueryLower = searchQuery.trim().toLowerCase();
+  const searchQueryLower = $derived(searchQuery.trim().toLowerCase());
 
-  $: filteredFileVars = searchQueryLower
-    ? fileVariables.filter(
-        (v) =>
-          v.key.toLowerCase().includes(searchQueryLower) ||
-          v.value.toLowerCase().includes(searchQueryLower),
-      )
-    : fileVariables;
-  $: filteredEnvEntries = (
+  const filteredFileVars = $derived(
     searchQueryLower
+      ? fileVariables.filter(
+          (v) =>
+            v.key.toLowerCase().includes(searchQueryLower) ||
+            v.value.toLowerCase().includes(searchQueryLower),
+        )
+      : fileVariables,
+  );
+  const filteredEnvEntries = $derived(
+    (searchQueryLower
       ? envEntries.filter(
           ([k, v]) =>
             k.toLowerCase().includes(searchQueryLower) ||
             v.toLowerCase().includes(searchQueryLower),
         )
       : envEntries
-  )
-    .slice()
-    .sort((a, b) => sourcePriority(a[0]) - sourcePriority(b[0]));
-  $: filteredOverrides = searchQueryLower
-    ? overrideEntries.filter(
-        ([k, v]) =>
-          k.toLowerCase().includes(searchQueryLower) || v.toLowerCase().includes(searchQueryLower),
-      )
-    : overrideEntries;
-  $: filteredGlobals = searchQueryLower
-    ? globalEntries.filter(
-        ([k, v]) =>
-          k.toLowerCase().includes(searchQueryLower) || v.toLowerCase().includes(searchQueryLower),
-      )
-    : globalEntries;
-  $: filteredNamed = searchQueryLower
-    ? namedEntries.filter(([name, result]) => {
-        const summary = `${result.request.method} ${result.response.status}`.toLowerCase();
-        return name.toLowerCase().includes(searchQueryLower) || summary.includes(searchQueryLower);
-      })
-    : namedEntries;
-  $: filteredRuntimeCount =
-    filteredOverrides.length + filteredGlobals.length + filteredNamed.length;
+    )
+      .slice()
+      .sort((a, b) => sourcePriority(a[0]) - sourcePriority(b[0])),
+  );
+  const filteredOverrides = $derived(
+    searchQueryLower
+      ? overrideEntries.filter(
+          ([k, v]) =>
+            k.toLowerCase().includes(searchQueryLower) ||
+            v.toLowerCase().includes(searchQueryLower),
+        )
+      : overrideEntries,
+  );
+  const filteredGlobals = $derived(
+    searchQueryLower
+      ? globalEntries.filter(
+          ([k, v]) =>
+            k.toLowerCase().includes(searchQueryLower) ||
+            v.toLowerCase().includes(searchQueryLower),
+        )
+      : globalEntries,
+  );
+  const filteredNamed = $derived(
+    searchQueryLower
+      ? namedEntries.filter(([name, result]) => {
+          const summary = `${result.request.method} ${result.response.status}`.toLowerCase();
+          return (
+            name.toLowerCase().includes(searchQueryLower) || summary.includes(searchQueryLower)
+          );
+        })
+      : namedEntries,
+  );
+  const filteredRuntimeCount = $derived(
+    filteredOverrides.length + filteredGlobals.length + filteredNamed.length,
+  );
 
-  $: totalCount = fileVariables.length + envEntries.length + runtimeCount;
-  $: filteredTotal = filteredFileVars.length + filteredEnvEntries.length + filteredRuntimeCount;
+  const totalCount = $derived(fileVariables.length + envEntries.length + runtimeCount);
+  const filteredTotal = $derived(
+    filteredFileVars.length + filteredEnvEntries.length + filteredRuntimeCount,
+  );
 
   function masked(val: string): string {
     return '*'.repeat(Math.min(val.length, 12));
@@ -173,7 +208,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') dispatch('close');
+    if (e.key === 'Escape') onClose?.();
   }
 
   function badgeText(filtered: number, total: number): string {
@@ -182,11 +217,18 @@
   }
 </script>
 
-<svelte:window on:keydown={visible ? handleKeydown : undefined} />
+<svelte:window onkeydown={visible ? handleKeydown : undefined} />
 
 {#if visible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="overlay" on:click|self={() => dispatch('close')} role="dialog" tabindex="-1">
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) onClose?.();
+    }}
+    role="dialog"
+    tabindex="-1"
+  >
     <div class="modal">
       <div class="modal-header">
         <span class="title-group">
@@ -195,7 +237,7 @@
             <span class="active-env-badge">{activeEnv}</span>
           {/if}
         </span>
-        <button class="btn-close" on:click={() => dispatch('close')}>&times;</button>
+        <button class="btn-close" onclick={() => onClose?.()}>&times;</button>
       </div>
 
       <div class="modal-body">
@@ -241,8 +283,8 @@
             <!-- File Variables -->
             {#if fileVariables.length > 0}
               <section class="group">
-                <button class="group-header" on:click={() => (fileExpanded = !fileExpanded)}>
-                  <span class="chevron" class:open={fileExpanded}>
+                <button class="group-header" onclick={() => (fileExpanded = !fileExpanded)}>
+                  <span class={['chevron', { open: fileExpanded }]}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path
                         d="M3 1.5l4 3.5-4 3.5"
@@ -265,9 +307,8 @@
                     {:else}
                       {#each filteredFileVars as v}
                         <button
-                          class="row"
-                          class:copied={copiedKey === v.key}
-                          on:click={() => copyRef(v.key)}
+                          class={['row', { copied: copiedKey === v.key }]}
+                          onclick={() => copyRef(v.key)}
                         >
                           <span class="tag file">FILE</span>
                           <span class="key" title={v.key}>{v.key}</span>
@@ -287,8 +328,8 @@
             <!-- Environment Variables -->
             {#if envEntries.length > 0}
               <section class="group">
-                <button class="group-header" on:click={() => (envExpanded = !envExpanded)}>
-                  <span class="chevron" class:open={envExpanded}>
+                <button class="group-header" onclick={() => (envExpanded = !envExpanded)}>
+                  <span class={['chevron', { open: envExpanded }]}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path
                         d="M3 1.5l4 3.5-4 3.5"
@@ -309,8 +350,10 @@
                       class="kv-reveal-toggle"
                       role="button"
                       tabindex="0"
-                      on:click|stopPropagation={() => (showKvSecrets = !showKvSecrets)}
-                      >{showKvSecrets ? '[Hide secrets]' : '[Show secrets]'}</span
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        showKvSecrets = !showKvSecrets;
+                      }}>{showKvSecrets ? '[Hide secrets]' : '[Show secrets]'}</span
                     >
                   {/if}
                 </button>
@@ -337,9 +380,8 @@
                           : value}
                         <div class="env-row-wrapper">
                           <button
-                            class="row"
-                            class:copied={copiedKey === key}
-                            on:click={() => copyRef(key)}
+                            class={['row', { copied: copiedKey === key }]}
+                            onclick={() => copyRef(key)}
                           >
                             {#if isKv}
                               <span class="tag kv">KV</span>
@@ -362,8 +404,10 @@
                                 role="button"
                                 tabindex="0"
                                 title="Defined in {cascadeCount} layers"
-                                on:click|stopPropagation={() => toggleCascade(key)}
-                                >{cascadeCount} layers</span
+                                onclick={(e) => {
+                                  e.stopPropagation();
+                                  toggleCascade(key);
+                                }}>{cascadeCount} layers</span
                               >
                             {/if}
                             <span class="row-action"
@@ -412,8 +456,8 @@
             <!-- Runtime Variables -->
             {#if runtimeCount > 0}
               <section class="group">
-                <button class="group-header" on:click={() => (runtimeExpanded = !runtimeExpanded)}>
-                  <span class="chevron" class:open={runtimeExpanded}>
+                <button class="group-header" onclick={() => (runtimeExpanded = !runtimeExpanded)}>
+                  <span class={['chevron', { open: runtimeExpanded }]}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path
                         d="M3 1.5l4 3.5-4 3.5"
@@ -439,9 +483,8 @@
                           >
                           {#each filteredOverrides as [key, value]}
                             <button
-                              class="row"
-                              class:copied={copiedKey === key}
-                              on:click={() => copyRef(key)}
+                              class={['row', { copied: copiedKey === key }]}
+                              onclick={() => copyRef(key)}
                             >
                               <span class="tag set">SET</span>
                               <span class="key" title={key}>{key}</span>
@@ -459,9 +502,8 @@
                           <span class="subgroup-label">Workspace scope</span>
                           {#each filteredGlobals as [key, value]}
                             <button
-                              class="row"
-                              class:copied={copiedKey === key}
-                              on:click={() => copyRef(key)}
+                              class={['row', { copied: copiedKey === key }]}
+                              onclick={() => copyRef(key)}
                             >
                               <span class="tag global">GLOBAL</span>
                               <span class="key" title={key}>{key}</span>
@@ -479,9 +521,8 @@
                           <span class="subgroup-label">Named responses</span>
                           {#each filteredNamed as [name, result]}
                             <button
-                              class="row"
-                              class:copied={copiedKey === name}
-                              on:click={() => copyRef(name + '.response.body.$')}
+                              class={['row', { copied: copiedKey === name }]}
+                              onclick={() => copyRef(name + '.response.body.$')}
                             >
                               <span class="tag response">RESPONSE</span>
                               <span class="key" title={name}>{name}</span>
@@ -507,7 +548,7 @@
 
       {#if hasRuntime}
         <div class="modal-footer">
-          <button class="btn-clear-runtime" on:click={() => dispatch('clearRuntime')}
+          <button class="btn-clear-runtime" onclick={() => onClearRuntime?.()}
             >Clear all runtime variables</button
           >
         </div>

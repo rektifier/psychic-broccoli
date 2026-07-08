@@ -283,8 +283,7 @@
     showPicker = true;
   }
 
-  function handlePickerInsert(e: CustomEvent<string>) {
-    const value = e.detail;
+  function handlePickerInsert(value: string) {
     showPicker = false;
     if (pickerTarget === 'url') {
       update({ url: insertAtCursor(request.url, value) });
@@ -432,7 +431,7 @@
   {/if}
 
   <!-- Dependency bar -->
-  <DependencyBar {requestText} {namedResults} on:runAll />
+  <DependencyBar {requestText} {namedResults} onRunAll={(deps) => dispatch('runAll', deps)} />
 
   <!-- Headers (collapsible) -->
   <div class="section">
@@ -633,8 +632,8 @@
   {fileVariables}
   {envVariables}
   {namedResults}
-  on:insert={handlePickerInsert}
-  on:close={() => (showPicker = false)}
+  onInsert={handlePickerInsert}
+  onClose={() => (showPicker = false)}
 />
 
 <style>

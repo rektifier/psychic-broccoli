@@ -1,31 +1,44 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { HttpResponse, PbAssertionResult } from '../lib/types';
   import type { ResponseTab } from '../lib/stores';
 
-  export let response: HttpResponse | null = null;
-  export let loading: boolean = false;
-  export let sentRequest: {
-    method: string;
-    url: string;
-    headers: Record<string, string>;
-    body: string;
-  } | null = null;
-  export let assertionResults: PbAssertionResult[] = [];
-  export let activeTab: ResponseTab = 'body';
+  interface Props {
+    response?: HttpResponse | null;
+    loading?: boolean;
+    sentRequest?: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      body: string;
+    } | null;
+    assertionResults?: PbAssertionResult[];
+    activeTab?: ResponseTab;
+    onTabChange?: (tab: ResponseTab) => void;
+  }
 
-  const dispatch = createEventDispatcher<{ tabChange: ResponseTab }>();
+  let {
+    response = null,
+    loading = false,
+    sentRequest = null,
+    assertionResults = [],
+    activeTab: activeTabProp = 'body',
+    onTabChange,
+  }: Props = $props();
+
+  // Writable derived: local tab switches take effect immediately and are
+  // overridden whenever the parent passes a new activeTab value.
+  let activeTab = $derived(activeTabProp);
 
   function setTab(tab: ResponseTab) {
     activeTab = tab;
-    dispatch('tabChange', tab);
+    onTabChange?.(tab);
   }
 
-  $: passedCount = assertionResults.filter((t) => t.passed).length;
-  $: failedCount = assertionResults.filter((t) => !t.passed).length;
+  const passedCount = $derived(assertionResults.filter((t) => t.passed).length);
+  const failedCount = $derived(assertionResults.filter((t) => !t.passed).length);
   // Binary bodies arrive base64-encoded from the backend; show a notice
   // instead of the (useless) base64 text.
-  $: isBinaryBody = response?.bodyEncoding === 'base64';
+  const isBinaryBody = $derived(response?.bodyEncoding === 'base64');
 
   function getStatusClass(status: number): string {
     if (status >= 200 && status < 300) return 'status-success';
@@ -129,7 +142,7 @@
 
     <!-- Response Tabs -->
     <div class="tabs">
-      <button class="tab" class:active={activeTab === 'body'} on:click={() => setTab('body')}>
+      <button class={['tab', { active: activeTab === 'body' }]} onclick={() => setTab('body')}>
         Body
         {#if !isBinaryBody && isJson(response.body)}
           <span class="tab-badge">JSON</span>
@@ -137,30 +150,32 @@
           <span class="tab-badge">Binary</span>
         {/if}
       </button>
-      <button class="tab" class:active={activeTab === 'headers'} on:click={() => setTab('headers')}>
+      <button
+        class={['tab', { active: activeTab === 'headers' }]}
+        onclick={() => setTab('headers')}
+      >
         Headers
         <span class="tab-count">{Object.keys(response.headers).length}</span>
       </button>
       {#if sentRequest}
         <button
-          class="tab"
-          class:active={activeTab === 'request'}
-          on:click={() => setTab('request')}
+          class={['tab', { active: activeTab === 'request' }]}
+          onclick={() => setTab('request')}
         >
           Request
         </button>
       {/if}
       {#if assertionResults.length > 0}
         <button
-          class="tab"
-          class:active={activeTab === 'assertions'}
-          on:click={() => setTab('assertions')}
+          class={['tab', { active: activeTab === 'assertions' }]}
+          onclick={() => setTab('assertions')}
         >
           Assertions
           <span
-            class="tab-count assertion-count"
-            class:all-pass={failedCount === 0}
-            class:has-fail={failedCount > 0}
+            class={[
+              'tab-count assertion-count',
+              { 'all-pass': failedCount === 0, 'has-fail': failedCount > 0 },
+            ]}
           >
             {passedCount}/{assertionResults.length}
           </span>
@@ -176,7 +191,7 @@
             Binary response body ({formatSize(response.size)}). Text preview is not available.
           </div>
         {:else}
-          <pre class="body-output" class:json={isJson(response.body)}>{formatBody(
+          <pre class={['body-output', { json: isJson(response.body) }]}>{formatBody(
               response.body,
             )}</pre>
         {/if}
@@ -197,7 +212,7 @@
       {:else if activeTab === 'assertions'}
         <div class="assertion-results">
           {#each assertionResults as result}
-            <div class="assertion-entry" class:pass={result.passed} class:fail={!result.passed}>
+            <div class={['assertion-entry', { pass: result.passed, fail: !result.passed }]}>
               <span class="assertion-icon">{result.passed ? '\u2713' : '\u2717'}</span>
               <span class="assertion-label">{result.label}</span>
             </div>

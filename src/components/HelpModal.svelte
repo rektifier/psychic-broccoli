@@ -1,22 +1,30 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  interface Props {
+    visible?: boolean;
+    onClose?: () => void;
+  }
 
-  export let visible: boolean = false;
-
-  const dispatch = createEventDispatcher();
+  let { visible = false, onClose }: Props = $props();
 
   function close() {
-    dispatch('close');
+    onClose?.();
   }
 </script>
 
 {#if visible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="overlay" on:click|self={close} role="dialog" tabindex="-1">
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) close();
+    }}
+    role="dialog"
+    tabindex="-1"
+  >
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Quick guide</span>
-        <button class="btn-close" on:click={close}>&times;</button>
+        <button class="btn-close" onclick={close}>&times;</button>
       </div>
 
       <div class="section">

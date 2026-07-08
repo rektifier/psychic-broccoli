@@ -1,53 +1,69 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { Variable } from '../lib/types';
 
-  /** Discovered {{variable}} references to add to the environment */
-  export let variables: Variable[] = [];
-  /** Names of existing environments found in env files */
-  export let existingEnvironments: string[] = [];
-  /** Whether environment files already exist in the workspace */
-  export let hasEnvFile: boolean = false;
-  /** Whether the modal is visible */
-  export let visible: boolean = false;
+  interface Props {
+    /** Discovered {{variable}} references to add to the environment */
+    variables?: Variable[];
+    /** Names of existing environments found in env files */
+    existingEnvironments?: string[];
+    /** Whether environment files already exist in the workspace */
+    hasEnvFile?: boolean;
+    /** Whether the modal is visible */
+    visible?: boolean;
+    onConfirm?: (target: string) => void;
+    onSkip?: () => void;
+  }
 
-  const dispatch = createEventDispatcher<{
-    confirm: { target: string };
-    skip: void;
-  }>();
+  let {
+    variables = [],
+    existingEnvironments = [],
+    hasEnvFile = false,
+    visible = false,
+    onConfirm,
+    onSkip,
+  }: Props = $props();
 
-  let selectedTarget = '';
-  let newEnvName = 'development';
+  let selectedTarget = $state('');
+  let newEnvName = $state('development');
 
   // Reset state when modal opens
-  $: if (visible) {
-    if (!hasEnvFile) {
-      selectedTarget = '__new__';
-      newEnvName = 'development';
-    } else {
-      selectedTarget = existingEnvironments[0] ?? '__new__';
-      newEnvName = '';
+  $effect(() => {
+    if (visible) {
+      if (!hasEnvFile) {
+        selectedTarget = '__new__';
+        newEnvName = 'development';
+      } else {
+        selectedTarget = existingEnvironments[0] ?? '__new__';
+        newEnvName = '';
+      }
     }
-  }
+  });
 
   function confirm() {
     const target = selectedTarget === '__new__' ? newEnvName.trim() : selectedTarget;
     if (!target) return;
-    dispatch('confirm', { target });
+    onConfirm?.(target);
   }
 
   function skip() {
-    dispatch('skip');
+    onSkip?.();
   }
 </script>
 
 {#if visible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="overlay" on:click|self={skip} role="dialog" tabindex="-1">
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) skip();
+    }}
+    role="dialog"
+    tabindex="-1"
+  >
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Import variables to environment</span>
-        <button class="btn-close" on:click={skip}>&times;</button>
+        <button class="btn-close" onclick={skip}>&times;</button>
       </div>
 
       <div class="modal-body">
@@ -58,7 +74,9 @@
 
         <div class="var-list">
           {#each variables as v}
-            <span class="var-tag" class:has-value={!!v.value}>&#123;&#123;{v.key}&#125;&#125;</span>
+            <span class={['var-tag', { 'has-value': !!v.value }]}
+              >&#123;&#123;{v.key}&#125;&#125;</span
+            >
           {/each}
         </div>
 
@@ -86,7 +104,7 @@
               class="env-name-input"
               bind:value={newEnvName}
               placeholder="Environment name..."
-              on:keydown={(e) => {
+              onkeydown={(e) => {
                 if (e.key === 'Enter') confirm();
               }}
             />
@@ -95,8 +113,8 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn-skip" on:click={skip}>Skip</button>
-        <button class="btn-confirm" on:click={confirm}>Add variables</button>
+        <button class="btn-skip" onclick={skip}>Skip</button>
+        <button class="btn-confirm" onclick={confirm}>Add variables</button>
       </div>
     </div>
   </div>

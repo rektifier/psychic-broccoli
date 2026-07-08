@@ -1,29 +1,33 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { FlowRunRecord } from '../lib/types';
 
-  const dispatch = createEventDispatcher<{ clearHistory: void }>();
+  interface Props {
+    runRecord?: FlowRunRecord | null;
+    history?: FlowRunRecord[];
+    flowFilePath?: string;
+    onClearHistory?: () => void;
+  }
 
-  export let runRecord: FlowRunRecord | null = null;
-  export let history: FlowRunRecord[] = [];
-  export let flowFilePath: string = '';
+  let { runRecord = null, history = [], flowFilePath = '', onClearHistory }: Props = $props();
 
-  let selectedRunId: string | null = null;
-  let expandedStep: string | null = null;
-  let stepsOpen: boolean = true;
+  let selectedRunId: string | null = $state(null);
+  let expandedStep: string | null = $state(null);
+  let stepsOpen: boolean = $state(true);
 
-  $: relevantHistory = history.filter((r) => r.flowFilePath === flowFilePath);
-  $: displayRecord = selectedRunId
-    ? (relevantHistory.find((r) => r.id === selectedRunId) ?? runRecord)
-    : runRecord;
+  const relevantHistory = $derived(history.filter((r) => r.flowFilePath === flowFilePath));
+  const displayRecord = $derived(
+    selectedRunId ? (relevantHistory.find((r) => r.id === selectedRunId) ?? runRecord) : runRecord,
+  );
 
   // Reset collapse state when the displayed record changes
   let prevDisplayId: string | null = null;
-  $: if (displayRecord?.id !== prevDisplayId) {
-    prevDisplayId = displayRecord?.id ?? null;
-    stepsOpen = true;
-    expandedStep = null;
-  }
+  $effect(() => {
+    if (displayRecord?.id !== prevDisplayId) {
+      prevDisplayId = displayRecord?.id ?? null;
+      stepsOpen = true;
+      expandedStep = null;
+    }
+  });
 
   function selectRun(id: string) {
     selectedRunId = selectedRunId === id ? null : id;
@@ -69,8 +73,8 @@
   {#if displayRecord}
     <div class="results-card">
       <!-- Summary bar (toggles step results) -->
-      <button class="results-summary" on:click={() => (stepsOpen = !stepsOpen)}>
-        <span class="summary-chevron" class:open={stepsOpen}>
+      <button class="results-summary" onclick={() => (stepsOpen = !stepsOpen)}>
+        <span class={['summary-chevron', { open: stepsOpen }]}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path
               d="M3 1.5l4 3.5-4 3.5"
@@ -103,7 +107,7 @@
         <div class="results-steps">
           {#each displayRecord.stepResults as sr, i}
             <div class="result-step">
-              <button class="result-step-header" on:click={() => toggleStep(sr.stepId)}>
+              <button class="result-step-header" onclick={() => toggleStep(sr.stepId)}>
                 <span class="result-status-icon" style="color: {statusColor(sr.status)}">
                   {#if sr.status === 'passed'}&#10003;{:else if sr.status === 'failed'}&#10005;{:else if sr.status === 'running'}...{:else}-{/if}
                 </span>
@@ -121,15 +125,16 @@
                 {/if}
                 {#if sr.response}
                   <span
-                    class="result-http-code"
-                    class:ok={sr.response.status < 400}
-                    class:err={sr.response.status >= 400}>{sr.response.status}</span
+                    class={[
+                      'result-http-code',
+                      { ok: sr.response.status < 400, err: sr.response.status >= 400 },
+                    ]}>{sr.response.status}</span
                   >
                 {/if}
                 {#if sr.durationMs > 0}
                   <span class="result-dur">{sr.durationMs}ms</span>
                 {/if}
-                <span class="result-chevron" class:open={expandedStep === sr.stepId}>
+                <span class={['result-chevron', { open: expandedStep === sr.stepId }]}>
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                     <path
                       d="M3 1.5l4 3.5-4 3.5"
@@ -158,7 +163,7 @@
                       >
                       <div class="assertions-list">
                         {#each sr.assertionResults as ar}
-                          <div class="assertion-row" class:pass={ar.passed} class:fail={!ar.passed}>
+                          <div class={['assertion-row', { pass: ar.passed, fail: !ar.passed }]}>
                             <span class="assertion-icon">{ar.passed ? '\u2713' : '\u2717'}</span>
                             <span class="assertion-label">{ar.label}</span>
                           </div>
@@ -188,15 +193,16 @@
     <div class="results-history">
       <div class="history-header">
         <span class="history-title">Run history</span>
-        <button class="btn-clear-history" on:click={() => dispatch('clearHistory')}>Clear</button>
+        <button class="btn-clear-history" onclick={() => onClearHistory?.()}>Clear</button>
       </div>
       <div class="history-list">
         {#each relevantHistory.slice(0, 20) as rec}
           <button
-            class="history-item"
-            class:active={selectedRunId === rec.id}
-            class:is-current={rec.id === runRecord?.id}
-            on:click={() => selectRun(rec.id)}
+            class={[
+              'history-item',
+              { active: selectedRunId === rec.id, 'is-current': rec.id === runRecord?.id },
+            ]}
+            onclick={() => selectRun(rec.id)}
           >
             <span
               class="history-status"

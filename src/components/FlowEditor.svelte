@@ -261,8 +261,8 @@
     dispatch('save', { flowPath, flow });
   }
 
-  function addStep(e: CustomEvent<FlowStep>) {
-    flow = { ...flow, steps: applyAliasSync([...flow.steps, e.detail]) };
+  function addStep(step: FlowStep) {
+    flow = { ...flow, steps: applyAliasSync([...flow.steps, step]) };
     save();
   }
 
@@ -536,8 +536,7 @@
     showVarPicker = true;
   }
 
-  function handleVarPickerInsert(e: CustomEvent<string>) {
-    const value = e.detail;
+  function handleVarPickerInsert(value: string) {
     showVarPicker = false;
     const t = pickerTarget;
     if (!t) return;
@@ -1196,7 +1195,7 @@
         runRecord={lastRunRecord}
         history={runHistory}
         flowFilePath={flowPath}
-        on:clearHistory={() => dispatch('clearHistory')}
+        onClearHistory={() => dispatch('clearHistory')}
       />
     </div>
   {/if}
@@ -1206,11 +1205,11 @@
   <FlowStepPicker
     {tree}
     {rootPath}
-    on:pick={(e) => {
-      addStep(e);
+    onPick={(step) => {
+      addStep(step);
       showPicker = false;
     }}
-    on:close={() => (showPicker = false)}
+    onClose={() => (showPicker = false)}
   />
 {/if}
 
@@ -1222,8 +1221,8 @@
   flowAliases={pickerFlowAliases}
   flowName={flow.name}
   flowSetVars={flowScopeVars}
-  on:insert={handleVarPickerInsert}
-  on:close={() => {
+  onInsert={handleVarPickerInsert}
+  onClose={() => {
     showVarPicker = false;
     pickerTarget = null;
   }}

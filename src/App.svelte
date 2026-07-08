@@ -140,9 +140,9 @@
   let showImportEnvModal = false;
   let pendingImportVars: import('./lib/types').Variable[] = [];
 
-  async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
+  async function handleImportEnvConfirm(target: string) {
     showImportEnvModal = false;
-    await applyImportedVariables(e.detail.target, pendingImportVars);
+    await applyImportedVariables(target, pendingImportVars);
     pendingImportVars = [];
   }
 
@@ -308,9 +308,9 @@
     return tab?.responseTab ?? ('body' as ResponseTab);
   })();
 
-  function handleResponseTabChange(e: CustomEvent<ResponseTab>) {
+  function handleResponseTabChange(tab: ResponseTab) {
     if ($selectedLocation) {
-      setTabResponseTab($selectedLocation, e.detail);
+      setTabResponseTab($selectedLocation, tab);
     }
   }
 
@@ -437,14 +437,14 @@
     }
   }
 
-  async function handleImportFile(e: CustomEvent<{ content: string; format: ImportFormat }>) {
+  async function handleImportFile(content: string, format: ImportFormat) {
     showImportCollectionModal = false;
-    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, e.detail.format));
+    showEnvModalIfNeeded(await importCollectionContent(content, format));
   }
 
-  async function handleImportUrl(e: CustomEvent<{ content: string }>) {
+  async function handleImportUrl(content: string) {
     showImportCollectionModal = false;
-    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, 'openapi'));
+    showEnvModalIfNeeded(await importCollectionContent(content, 'openapi'));
   }
 
   // ─── Save File ───
@@ -708,7 +708,7 @@
 </script>
 
 <ToastContainer />
-<HelpModal visible={showHelp} on:close={() => (showHelp = false)} />
+<HelpModal visible={showHelp} onClose={() => (showHelp = false)} />
 <SettingsModal
   visible={showSettings}
   {currentTheme}
@@ -736,8 +736,8 @@
   namedResults={$namedResults}
   activeEnv={$activeEnvironment}
   activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
-  on:close={() => (showVarInspector = false)}
-  on:clearRuntime={() => {
+  onClose={() => (showVarInspector = false)}
+  onClearRuntime={() => {
     pbFileOverrides.set({});
     pbGlobals.set({});
     namedResults.set({});
@@ -748,14 +748,14 @@
   variables={pendingImportVars}
   existingEnvironments={$availableEnvironments}
   hasEnvFile={$envFile !== null}
-  on:confirm={handleImportEnvConfirm}
-  on:skip={handleImportEnvSkip}
+  onConfirm={handleImportEnvConfirm}
+  onSkip={handleImportEnvSkip}
 />
 <ImportCollectionModal
   visible={showImportCollectionModal}
-  on:importFile={handleImportFile}
-  on:importUrl={handleImportUrl}
-  on:cancel={() => (showImportCollectionModal = false)}
+  onImportFile={handleImportFile}
+  onImportUrl={handleImportUrl}
+  onCancel={() => (showImportCollectionModal = false)}
 />
 <AddFavoriteModal
   visible={showAddFavoriteModal}
@@ -922,7 +922,7 @@
               sentRequest={$currentSentRequest}
               assertionResults={$pbAssertionResults}
               activeTab={activeResponseTab}
-              on:tabChange={handleResponseTabChange}
+              onTabChange={handleResponseTabChange}
             />
           </div>
         {:else}

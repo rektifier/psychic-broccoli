@@ -1,35 +1,34 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import { open } from '@tauri-apps/plugin-dialog';
   import { readTextFile } from '@tauri-apps/plugin-fs';
   import { basename } from '@tauri-apps/api/path';
   import { detectImportFormat, formatLabel, type ImportFormat } from '../lib/detect';
-  import type { HttpInvokeResult } from '../lib/requestExec';
+  import { fetchSpecFromUrl } from '../lib/importIO';
   import { errorMessage } from '../lib/errors';
 
-  export let visible: boolean = false;
+  interface Props {
+    visible?: boolean;
+    onImportFile?: (content: string, format: ImportFormat) => void;
+    onImportUrl?: (content: string) => void;
+    onCancel?: () => void;
+  }
 
-  const dispatch = createEventDispatcher<{
-    importFile: { content: string; format: ImportFormat };
-    importUrl: { content: string };
-    cancel: void;
-  }>();
+  let { visible = false, onImportFile, onImportUrl, onCancel }: Props = $props();
 
   const VALID_EXTENSIONS = ['json', 'yaml', 'yml'];
 
-  let mode: 'file' | 'url' = 'file';
-  let selectedFile: { name: string; size: string; content: string } | null = null;
-  let detectedFormat: ImportFormat | null = null;
-  let detectionError = '';
-  let isDragOver = false;
+  let mode: 'file' | 'url' = $state('file');
+  let selectedFile: { name: string; size: string; content: string } | null = $state(null);
+  let detectedFormat: ImportFormat | null = $state(null);
+  let detectionError = $state('');
+  let isDragOver = $state(false);
   let dragDepth = 0;
-  let error = '';
+  let error = $state('');
 
   // URL mode state
-  let url = '';
-  let urlLoading = false;
-  let urlError = '';
+  let url = $state('');
+  let urlLoading = $state(false);
+  let urlError = $state('');
 
   // HTML5 drag-drop handlers for the drop zone
   function handleDragEnter(e: DragEvent) {
@@ -80,18 +79,20 @@
   }
 
   // Reset state when modal opens
-  $: if (visible) {
-    mode = 'file';
-    selectedFile = null;
-    detectedFormat = null;
-    detectionError = '';
-    isDragOver = false;
-    dragDepth = 0;
-    error = '';
-    url = '';
-    urlLoading = false;
-    urlError = '';
-  }
+  $effect(() => {
+    if (visible) {
+      mode = 'file';
+      selectedFile = null;
+      detectedFormat = null;
+      detectionError = '';
+      isDragOver = false;
+      dragDepth = 0;
+      error = '';
+      url = '';
+      urlLoading = false;
+      urlError = '';
+    }
+  });
 
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -146,7 +147,7 @@
 
   function doImport() {
     if (!selectedFile || !detectedFormat) return;
-    dispatch('importFile', { content: selectedFile.content, format: detectedFormat });
+    onImportFile?.(selectedFile.content, detectedFormat);
   }
 
   // URL mode
@@ -163,26 +164,8 @@
     urlError = '';
 
     try {
-      const res: HttpInvokeResult = await invoke('http_request', {
-        payload: {
-          method: 'GET',
-          url: trimmedUrl,
-          headers: { Accept: 'application/json, application/yaml, text/yaml, */*' },
-          body: null,
-        },
-      });
-
-      if (res.status >= 400) {
-        urlError = `Server returned ${res.status} ${res.status_text}`;
-        return;
-      }
-
-      if (res.body_encoding === 'base64') {
-        urlError = 'URL returned binary content, not a text spec';
-        return;
-      }
-
-      dispatch('importUrl', { content: res.body });
+      const content = await fetchSpecFromUrl(trimmedUrl);
+      onImportUrl?.(content);
     } catch (e) {
       urlError = errorMessage(e) || 'Failed to fetch spec';
     } finally {
@@ -191,7 +174,7 @@
   }
 
   function cancel() {
-    dispatch('cancel');
+    onCancel?.();
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -199,15 +182,22 @@
   }
 </script>
 
-<svelte:window on:keydown={visible ? handleKeydown : undefined} />
+<svelte:window onkeydown={visible ? handleKeydown : undefined} />
 
 {#if visible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="overlay" on:click|self={cancel} role="dialog" tabindex="-1">
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) cancel();
+    }}
+    role="dialog"
+    tabindex="-1"
+  >
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Import Collection</span>
-        <button class="btn-close" on:click={cancel}>&times;</button>
+        <button class="btn-close" onclick={cancel}>&times;</button>
       </div>
 
       <div class="modal-body">
@@ -215,12 +205,11 @@
           {#if !selectedFile}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
-              class="drop-zone"
-              class:drag-over={isDragOver}
-              on:dragenter={handleDragEnter}
-              on:dragleave={handleDragLeave}
-              on:dragover={handleDragOver}
-              on:drop={handleDrop}
+              class={['drop-zone', { 'drag-over': isDragOver }]}
+              ondragenter={handleDragEnter}
+              ondragleave={handleDragLeave}
+              ondragover={handleDragOver}
+              ondrop={handleDrop}
             >
               <svg class="drop-icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
                 <path
@@ -240,7 +229,7 @@
               </svg>
               <span class="drop-text">Drop a collection file here</span>
               <span class="drop-or">or</span>
-              <button class="btn-browse" on:click={browseFile}>Browse files</button>
+              <button class="btn-browse" onclick={browseFile}>Browse files</button>
             </div>
             <p class="supported-formats">
               Supports Postman, Insomnia, and OpenAPI / Swagger (.json, .yaml, .yml)
@@ -262,7 +251,7 @@
               {#if detectedFormat}
                 <span class="format-badge">{formatLabel(detectedFormat)}</span>
               {/if}
-              <button class="btn-clear" on:click={clearFile} title="Remove file">
+              <button class="btn-clear" onclick={clearFile} title="Remove file">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path
                     d="M3 3l6 6M9 3l-6 6"
@@ -285,7 +274,7 @@
 
           <button
             class="mode-switch"
-            on:click={() => {
+            onclick={() => {
               mode = 'url';
               clearFile();
             }}
@@ -302,7 +291,7 @@
             bind:value={url}
             placeholder="https://petstore.swagger.io/v2/swagger.json"
             disabled={urlLoading}
-            on:keydown={(e) => {
+            onkeydown={(e) => {
               if (e.key === 'Enter') fetchSpec();
             }}
           />
@@ -313,7 +302,7 @@
 
           <button
             class="mode-switch"
-            on:click={() => {
+            onclick={() => {
               mode = 'file';
               urlError = '';
             }}
@@ -324,17 +313,17 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn-cancel" on:click={cancel} disabled={urlLoading}>Cancel</button>
+        <button class="btn-cancel" onclick={cancel} disabled={urlLoading}>Cancel</button>
         {#if mode === 'file'}
           <button
             class="btn-confirm"
-            on:click={doImport}
+            onclick={doImport}
             disabled={!selectedFile || !detectedFormat}
           >
             Import
           </button>
         {:else}
-          <button class="btn-confirm" on:click={fetchSpec} disabled={urlLoading || !url.trim()}>
+          <button class="btn-confirm" onclick={fetchSpec} disabled={urlLoading || !url.trim()}>
             {#if urlLoading}
               Fetching...
             {:else}
