@@ -6,6 +6,7 @@
   import { basename } from '@tauri-apps/api/path';
   import { detectImportFormat, formatLabel, type ImportFormat } from '../lib/detect';
   import type { HttpInvokeResult } from '../lib/requestExec';
+  import { errorMessage } from '../lib/errors';
 
   export let visible: boolean = false;
 
@@ -73,8 +74,8 @@
       if (detectedFormat) {
         doImport();
       }
-    } catch (e: any) {
-      error = `Failed to read dropped file: ${e.message || e}`;
+    } catch (e) {
+      error = `Failed to read dropped file: ${errorMessage(e)}`;
     }
   }
 
@@ -131,8 +132,8 @@
       const content = await readTextFile(filePath as string);
       const name = await basename(filePath as string);
       loadFileContent(name, content);
-    } catch (e: any) {
-      error = `Failed to read file: ${e.message || e}`;
+    } catch (e) {
+      error = `Failed to read file: ${errorMessage(e)}`;
     }
   }
 
@@ -182,8 +183,8 @@
       }
 
       dispatch('importUrl', { content: res.body });
-    } catch (e: any) {
-      urlError = typeof e === 'string' ? e : e.message || 'Failed to fetch spec';
+    } catch (e) {
+      urlError = errorMessage(e) || 'Failed to fetch spec';
     } finally {
       urlLoading = false;
     }

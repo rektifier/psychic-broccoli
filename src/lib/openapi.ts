@@ -1,13 +1,7 @@
 import * as yaml from 'js-yaml';
-import type {
-  HttpMethod,
-  HttpHeader,
-  HttpRequest,
-  ConvertedFile,
-  ImportResult,
-  Variable,
-} from './types';
+import type { HttpHeader, HttpRequest, ConvertedFile, ImportResult, Variable } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
+import { normalizeMethod, sanitizeFilename, sanitizeVarName, newImportId } from './importShared';
 
 // ─── OpenAPI Types (subset needed for import) ────────────────────────────────
 
@@ -94,18 +88,6 @@ interface SecurityScheme {
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-
-const VALID_METHODS = new Set<string>([
-  'GET',
-  'POST',
-  'PUT',
-  'PATCH',
-  'DELETE',
-  'HEAD',
-  'OPTIONS',
-  'TRACE',
-  'CONNECT',
-]);
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'] as const;
 
@@ -246,9 +228,7 @@ function buildRequest(
   security: SecurityRequirement[],
 ): HttpRequest {
   const upperMethod = method.toUpperCase();
-  const normalizedMethod: HttpMethod = VALID_METHODS.has(upperMethod)
-    ? (upperMethod as HttpMethod)
-    : 'GET';
+  const normalizedMethod = normalizeMethod(method);
 
   // Build URL: {{baseUrl}} + path with {param} -> {{param}}
   let url = `{{baseUrl}}${path.replace(/\{(\w+)\}/g, '{{$1}}')}`;
@@ -329,7 +309,7 @@ function buildRequest(
   const name = operation.summary || operation.operationId || `${upperMethod} ${path}`;
 
   return {
-    id: `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newImportId(),
     name,
     varName: operation.operationId ?? null,
     method: normalizedMethod,
@@ -641,12 +621,4 @@ function deriveTagFromPath(path: string): string {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'unnamed';
-}
-
-function sanitizeVarName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '') || 'unnamed';
 }

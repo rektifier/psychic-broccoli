@@ -1,6 +1,5 @@
 import * as yaml from 'js-yaml';
 import type {
-  HttpMethod,
   HttpHeader,
   HttpRequest,
   Variable,
@@ -9,6 +8,7 @@ import type {
   EnvironmentFile,
 } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
+import { normalizeMethod, sanitizeFilename, sanitizeVarName, newImportId } from './importShared';
 
 // ─── Shared Types ──────────────────────────────────────────────────────────
 
@@ -103,20 +103,6 @@ interface V4Resource {
   authentication?: InsomniaAuth;
   data?: Record<string, unknown>;
 }
-
-// ─── Valid HTTP methods ────────────────────────────────────────────────────
-
-const VALID_METHODS = new Set<string>([
-  'GET',
-  'POST',
-  'PUT',
-  'PATCH',
-  'DELETE',
-  'HEAD',
-  'OPTIONS',
-  'TRACE',
-  'CONNECT',
-]);
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -277,7 +263,7 @@ function convertV5Request(item: V5Item, nameById: Map<string, string>): HttpRequ
   const body = convertTemplateVars(rawBody, nameById);
 
   return {
-    id: `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newImportId(),
     name: item.name || `${method} ${url}`,
     varName: null,
     method,
@@ -394,7 +380,7 @@ function convertV4Request(resource: V4Resource, nameById: Map<string, string>): 
   const body = convertTemplateVars(rawBody, nameById);
 
   return {
-    id: `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newImportId(),
     name: resource.name || `${method} ${url}`,
     varName: null,
     method,
@@ -417,11 +403,6 @@ function extractV4EnvVars(resources: V4Resource[], workspaceId: string | null): 
 }
 
 // ─── Shared Request Conversion Helpers ─────────────────────────────────────
-
-function normalizeMethod(method: string): HttpMethod {
-  const upper = method.toUpperCase();
-  return VALID_METHODS.has(upper) ? (upper as HttpMethod) : 'GET';
-}
 
 function appendQueryParams(url: string, parameters?: InsomniaParam[]): string {
   const enabled = (parameters ?? []).filter((p) => !p.disabled);
@@ -561,14 +542,4 @@ function convertTemplateVars(text: string, nameById: Map<string, string>): strin
   result = result.replace(/\{\{(\w[\w.]*)\s+\}\}/g, '{{$1}}');
 
   return result;
-}
-
-// ─── Utilities ─────────────────────────────────────────────────────────────
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'unnamed';
-}
-
-function sanitizeVarName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '') || 'unnamed';
 }

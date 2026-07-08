@@ -15,9 +15,9 @@ import {
   extractVariableRefs,
   createEmptyRequest,
   buildWorkspaceTree,
-  getAllFileNodes,
   createEmptyFileNode,
 } from './parser';
+import { getAllFileNodes } from './tree';
 import type { SubstitutionContext, RequestMutations } from './parser';
 import type { HttpResponse, NamedRequestResult, PbDirective } from './types';
 

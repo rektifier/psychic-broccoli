@@ -26,6 +26,7 @@ import {
   getEnvironmentNames,
   serializeHttpFile,
 } from './parser';
+import { findFile, findFolder, collectFilePaths, removeNodeByPath } from './tree';
 
 // ─── Workspace ──────────────────────────────────────────────────────────────
 
@@ -204,22 +205,10 @@ export function setTabResponseTab(loc: RequestLocation, responseTab: ResponseTab
 
 // ─── Derived: Active File & Request ─────────────────────────────────────────
 
-/** Find a FileNode by path in the workspace tree. */
-function findFileNode(nodes: TreeNode[], filePath: string): FileNode | null {
-  for (const node of nodes) {
-    if (node.type === 'file' && node.path === filePath) return node;
-    if (node.type === 'folder') {
-      const found = findFileNode(node.children, filePath);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
 /** The currently active file node. */
 export const activeFile = derived([workspace, selectedLocation], ([$ws, $loc]) => {
   if (!$loc) return null;
-  return findFileNode($ws.tree, $loc.filePath);
+  return findFile($ws.tree, $loc.filePath);
 });
 
 /** The currently selected request. */
@@ -296,7 +285,7 @@ export function deleteRequestFromFile(filePath: string, requestIndex: number) {
   // Fix selection
   const loc = get(selectedLocation);
   if (loc && loc.filePath === filePath) {
-    const file = findFileNode(get(workspace).tree, filePath);
+    const file = findFile(get(workspace).tree, filePath);
     if (file) {
       const maxIdx = file.requests.length - 1;
       if (loc.requestIndex > maxIdx) {
@@ -308,55 +297,22 @@ export function deleteRequestFromFile(filePath: string, requestIndex: number) {
 
 /** Remove a file from the workspace tree and close its tabs. */
 export function removeFileFromTree(filePath: string) {
-  function filterTree(nodes: TreeNode[]): TreeNode[] {
-    return nodes
-      .filter((n) => !(n.type === 'file' && n.path === filePath))
-      .map((n) => (n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n));
-  }
-
-  const file = findFileNode(get(workspace).tree, filePath);
+  const file = findFile(get(workspace).tree, filePath);
   if (file) {
     for (let i = file.requests.length - 1; i >= 0; i--) {
       closeTab({ filePath, requestIndex: i });
     }
   }
 
-  workspace.update((ws) => ({ ...ws, tree: filterTree(ws.tree) }));
+  workspace.update((ws) => ({ ...ws, tree: removeNodeByPath(ws.tree, filePath) }));
 }
 
 /** Remove a folder and all its contents from the workspace tree, closing all affected tabs. */
 export function removeFolderFromTree(folderPath: string) {
-  function collectFilePaths(nodes: TreeNode[]): string[] {
-    const paths: string[] = [];
-    for (const n of nodes) {
-      if (n.type === 'file') paths.push(n.path);
-      if (n.type === 'folder') paths.push(...collectFilePaths(n.children));
-    }
-    return paths;
-  }
-
-  function findFolder(nodes: TreeNode[]): FolderNode | null {
-    for (const n of nodes) {
-      if (n.type === 'folder' && n.path === folderPath) return n as FolderNode;
-      if (n.type === 'folder') {
-        const found = findFolder(n.children);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  function filterTree(nodes: TreeNode[]): TreeNode[] {
-    return nodes
-      .filter((n) => !(n.type === 'folder' && n.path === folderPath))
-      .map((n) => (n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n));
-  }
-
-  const folder = findFolder(get(workspace).tree);
+  const folder = findFolder(get(workspace).tree, folderPath);
   if (folder) {
-    const filePaths = collectFilePaths(folder.children);
-    for (const fp of filePaths) {
-      const file = findFileNode(get(workspace).tree, fp);
+    for (const fp of collectFilePaths(folder.children)) {
+      const file = findFile(get(workspace).tree, fp);
       if (file) {
         for (let i = file.requests.length - 1; i >= 0; i--) {
           closeTab({ filePath: fp, requestIndex: i });
@@ -365,7 +321,7 @@ export function removeFolderFromTree(folderPath: string) {
     }
   }
 
-  workspace.update((ws) => ({ ...ws, tree: filterTree(ws.tree) }));
+  workspace.update((ws) => ({ ...ws, tree: removeNodeByPath(ws.tree, folderPath) }));
 }
 
 /** Mark a file as saved (not dirty). */

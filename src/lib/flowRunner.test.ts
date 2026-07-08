@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { FileNode, TreeNode } from './types';
-import { getAllFileNodes, createFileNode } from './parser';
+import { createFileNode } from './parser';
+import { getAllFileNodes } from './tree';
 
 // ─── getAllFileNodes (used by flow runner to resolve step targets) ───────────
 
