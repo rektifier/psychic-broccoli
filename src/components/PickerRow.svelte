@@ -1,14 +1,28 @@
 <script lang="ts">
-  export let label: string;
-  export let value: string;
-  export let inserted: boolean = false;
-  export let nested: boolean = false;
-  export let maxValueLength: number = 30;
+  interface Props {
+    label: string;
+    value: string;
+    inserted?: boolean;
+    nested?: boolean;
+    maxValueLength?: number;
+    onclick?: (e: MouseEvent) => void;
+  }
 
-  $: truncated = value.length > maxValueLength ? value.slice(0, maxValueLength) + '...' : value;
+  let {
+    label,
+    value,
+    inserted = false,
+    nested = false,
+    maxValueLength = 30,
+    onclick,
+  }: Props = $props();
+
+  let truncated = $derived(
+    value.length > maxValueLength ? value.slice(0, maxValueLength) + '...' : value,
+  );
 </script>
 
-<button class="picker-row" class:row-nested={nested} class:inserted on:click>
+<button class={['picker-row', { 'row-nested': nested, inserted }]} {onclick}>
   <span class="row-key">{label}</span>
   <span class="row-value">{truncated}</span>
   <span class="row-action">{inserted ? 'Inserted' : 'Insert'}</span>
@@ -30,9 +44,15 @@
     text-align: left;
     transition: background var(--duration-fast);
   }
-  .picker-row:hover { background: var(--color-bg-subtle); }
-  .picker-row.inserted { background: color-mix(in srgb, var(--color-success) 12%, transparent); }
-  .picker-row.row-nested { padding-left: var(--space-6); }
+  .picker-row:hover {
+    background: var(--color-bg-subtle);
+  }
+  .picker-row.inserted {
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  }
+  .picker-row.row-nested {
+    padding-left: var(--space-6);
+  }
 
   .row-key {
     font-family: var(--font-mono);
@@ -65,7 +85,9 @@
     opacity: 0;
     transition: opacity var(--duration-fast);
   }
-  .picker-row:hover .row-action { opacity: 1; }
+  .picker-row:hover .row-action {
+    opacity: 1;
+  }
   .picker-row.inserted .row-action {
     opacity: 1;
     color: var(--color-success);

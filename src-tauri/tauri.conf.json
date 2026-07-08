@@ -34,7 +34,7 @@
     ],
     "resources": {
       "../getting-started/*": "getting-started/",
-      "../getting-started/flows/*": "getting-started/flows/"
+      "../getting-started/.flows/*": "getting-started/.flows/"
     }
   }
 }

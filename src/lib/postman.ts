@@ -1,5 +1,6 @@
-import type { HttpMethod, HttpHeader, HttpRequest, ConvertedFile, ImportResult } from './types';
+import type { HttpHeader, HttpRequest, ConvertedFile, ImportResult } from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
+import { normalizeMethod, sanitizeFilename, newImportId } from './importShared';
 
 // ─── Postman Collection v2.1 Types ─────────────────────────────────────────
 
@@ -15,8 +16,8 @@ interface PostmanCollection {
 
 interface PostmanItem {
   name: string;
-  item?: PostmanItem[];       // folder
-  request?: PostmanRequest;   // request
+  item?: PostmanItem[]; // folder
+  request?: PostmanRequest; // request
   variable?: PostmanVariable[];
 }
 
@@ -73,13 +74,6 @@ interface PostmanVariable {
   key: string;
   value: string;
 }
-
-// ─── Valid HTTP methods ────────────────────────────────────────────────────
-
-const VALID_METHODS = new Set<string>([
-  'GET', 'POST', 'PUT', 'PATCH', 'DELETE',
-  'HEAD', 'OPTIONS', 'TRACE', 'CONNECT',
-]);
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -163,21 +157,15 @@ function collectFiles(
   }
 }
 
-function convertItemsToHttp(
-  items: PostmanItem[],
-  collectionAuth?: PostmanAuth,
-): string {
+function convertItemsToHttp(items: PostmanItem[], collectionAuth?: PostmanAuth): string {
   const requests = items
-    .filter(item => item.request)
-    .map(item => convertRequest(item, collectionAuth));
+    .filter((item) => item.request)
+    .map((item) => convertRequest(item, collectionAuth));
 
   return serializeHttpFile(requests, []);
 }
 
-function convertRequest(
-  item: PostmanItem,
-  collectionAuth?: PostmanAuth,
-): HttpRequest {
+function convertRequest(item: PostmanItem, collectionAuth?: PostmanAuth): HttpRequest {
   const req = item.request!;
   const method = normalizeMethod(req.method);
   const url = buildUrl(req.url);
@@ -185,7 +173,7 @@ function convertRequest(
   const body = buildBody(req.body);
 
   return {
-    id: `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newImportId(),
     name: item.name || `${method} ${url}`,
     varName: null,
     method,
@@ -194,11 +182,6 @@ function convertRequest(
     body,
     directives: [],
   };
-}
-
-function normalizeMethod(method: string): HttpMethod {
-  const upper = method.toUpperCase();
-  return VALID_METHODS.has(upper) ? upper as HttpMethod : 'GET';
 }
 
 function buildUrl(url: PostmanUrl | string | undefined): string {
@@ -212,9 +195,9 @@ function buildUrl(url: PostmanUrl | string | undefined): string {
   if (url.port) result += `:${url.port}`;
   if (url.path) result += `/${url.path.join('/')}`;
 
-  const enabledParams = (url.query ?? []).filter(q => !q.disabled);
+  const enabledParams = (url.query ?? []).filter((q) => !q.disabled);
   if (enabledParams.length > 0) {
-    result += '?' + enabledParams.map(q => `${q.key}=${q.value}`).join('&');
+    result += '?' + enabledParams.map((q) => `${q.key}=${q.value}`).join('&');
   }
 
   return result || 'https://';
@@ -245,9 +228,7 @@ function buildHeaders(
   }
 
   if (body) {
-    const hasContentType = result.some(
-      h => h.key.toLowerCase() === 'content-type' && h.enabled,
-    );
+    const hasContentType = result.some((h) => h.key.toLowerCase() === 'content-type' && h.enabled);
     if (!hasContentType) {
       const contentType = inferContentType(body);
       if (contentType) {
@@ -262,25 +243,33 @@ function buildHeaders(
 function resolveAuth(auth: PostmanAuth): HttpHeader | null {
   switch (auth.type) {
     case 'bearer': {
-      const token = auth.bearer?.find(b => b.key === 'token')?.value;
+      const token = auth.bearer?.find((b) => b.key === 'token')?.value;
       if (token) {
         return { key: 'Authorization', value: `Bearer ${token}`, enabled: true };
       }
       return null;
     }
     case 'basic': {
-      const username = auth.basic?.find(b => b.key === 'username')?.value ?? '';
-      const password = auth.basic?.find(b => b.key === 'password')?.value ?? '';
+      const username = auth.basic?.find((b) => b.key === 'username')?.value ?? '';
+      const password = auth.basic?.find((b) => b.key === 'password')?.value ?? '';
       if (username.includes('{{') || password.includes('{{')) {
-        return { key: 'Authorization', value: `Basic {{$base64 ${username}:${password}}}`, enabled: true };
+        return {
+          key: 'Authorization',
+          value: `Basic {{$base64 ${username}:${password}}}`,
+          enabled: true,
+        };
       }
-      const encoded = btoa(new TextEncoder().encode(`${username}:${password}`).reduce((s, b) => s + String.fromCharCode(b), ''));
+      const encoded = btoa(
+        new TextEncoder()
+          .encode(`${username}:${password}`)
+          .reduce((s, b) => s + String.fromCharCode(b), ''),
+      );
       return { key: 'Authorization', value: `Basic ${encoded}`, enabled: true };
     }
     case 'apikey': {
-      const key = auth.apikey?.find(a => a.key === 'key')?.value;
-      const value = auth.apikey?.find(a => a.key === 'value')?.value;
-      const addTo = auth.apikey?.find(a => a.key === 'in')?.value;
+      const key = auth.apikey?.find((a) => a.key === 'key')?.value;
+      const value = auth.apikey?.find((a) => a.key === 'value')?.value;
+      const addTo = auth.apikey?.find((a) => a.key === 'in')?.value;
       if (key && value && addTo !== 'query') {
         return { key, value, enabled: true };
       }
@@ -322,8 +311,8 @@ function buildBody(body?: PostmanBody): string {
 
     case 'urlencoded': {
       const pairs = (body.urlencoded ?? [])
-        .filter(p => !p.disabled)
-        .map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`);
+        .filter((p) => !p.disabled)
+        .map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`);
       return pairs.join('&');
     }
 
@@ -342,16 +331,12 @@ function buildBody(body?: PostmanBody): string {
 
     case 'formdata': {
       const parts = (body.formdata ?? [])
-        .filter(p => !p.disabled && p.type !== 'file')
-        .map(p => `${p.key}=${p.value}`);
+        .filter((p) => !p.disabled && p.type !== 'file')
+        .map((p) => `${p.key}=${p.value}`);
       return parts.join('\n');
     }
 
     default:
       return '';
   }
-}
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'unnamed';
 }

@@ -1,16 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
-import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey, isKeyVaultConfig } from './keyvault';
+import {
+  extractKeyVaultConfig,
+  fetchKeyVaultSecrets,
+  kvCacheKey,
+  isKeyVaultConfig,
+} from './keyvault';
 import type { EnvironmentFile, KeyVaultConfig } from './types';
 
 // ─── isKeyVaultConfig ─────────────────────────────────────────────────────
 
 describe('isKeyVaultConfig', () => {
   it('returns true for valid config', () => {
-    expect(isKeyVaultConfig({
-      provider: 'AzureKeyVault',
-      vaultUrl: 'https://v.vault.azure.net',
-      secretName: 's',
-    })).toBe(true);
+    expect(
+      isKeyVaultConfig({
+        provider: 'AzureKeyVault',
+        vaultUrl: 'https://v.vault.azure.net',
+        secretName: 's',
+      }),
+    ).toBe(true);
   });
 
   it('returns false for wrong provider', () => {
@@ -29,7 +36,9 @@ describe('isKeyVaultConfig', () => {
   });
 
   it('returns false when fields are non-string', () => {
-    expect(isKeyVaultConfig({ provider: 'AzureKeyVault', vaultUrl: 123, secretName: 's' })).toBe(false);
+    expect(isKeyVaultConfig({ provider: 'AzureKeyVault', vaultUrl: 123, secretName: 's' })).toBe(
+      false,
+    );
   });
 });
 

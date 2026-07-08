@@ -2,8 +2,7 @@
 // Full set from the Visual Studio .http spec, including TRACE and CONNECT.
 
 export type HttpMethod =
-  | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  | 'HEAD' | 'OPTIONS' | 'TRACE' | 'CONNECT';
+  'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'TRACE' | 'CONNECT';
 
 // ─── Request / Response ─────────────────────────────────────────────────────
 
@@ -36,6 +35,9 @@ export interface HttpResponse {
   statusText: string;
   headers: Record<string, string>;
   body: string;
+  /** "utf8" (default) when `body` is response text; "base64" when the raw
+   *  bytes were not valid UTF-8 and `body` holds their base64 encoding. */
+  bodyEncoding?: 'utf8' | 'base64';
   time: number;
   size: number;
 }
@@ -86,6 +88,14 @@ export interface Workspace {
   rootPath: string | null;
   rootName: string;
   tree: TreeNode[];
+}
+
+/** A favorited workspace folder with a user-chosen display name. */
+export interface Favorite {
+  /** Absolute path of the favorited workspace folder. Unique key. */
+  path: string;
+  /** User-chosen display name, shown instead of the folder basename. */
+  name: string;
 }
 
 // ─── Variables ──────────────────────────────────────────────────────────────

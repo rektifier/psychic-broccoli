@@ -24,9 +24,10 @@ export function autoAliasFor(index: number): string {
 /** Walk steps and assign auto aliases to every unlocked step.
  *  Returns the new steps array plus a map of {oldName: newName} for every
  *  alias that actually changed (used to cascade references). */
-export function normalizeFlowAliases(
-  steps: FlowStep[],
-): { steps: FlowStep[]; renames: Record<string, string> } {
+export function normalizeFlowAliases(steps: FlowStep[]): {
+  steps: FlowStep[];
+  renames: Record<string, string>;
+} {
   // Names claimed by locked steps are reserved and cannot be reused by auto aliases.
   const reserved = new Set<string>();
   for (const s of steps) {
@@ -59,10 +60,7 @@ export function normalizeFlowAliases(
 /** Rewrite `{{oldName.xxx}}` occurrences to `{{newName.xxx}}` in a string.
  *  Uses a sentinel two-pass substitution so simultaneous swaps
  *  (e.g. Step2 <-> Step3) don't collide. */
-export function applyRenamesToString(
-  text: string,
-  renames: Record<string, string>,
-): string {
+export function applyRenamesToString(text: string, renames: Record<string, string>): string {
   if (!text) return text;
   const entries = Object.entries(renames);
   if (entries.length === 0) return text;
@@ -96,8 +94,10 @@ function rewriteOverrides(
   const next: FlowStepOverrides = { ...overrides };
   if (next.url !== undefined) next.url = applyRenamesToString(next.url, renames);
   if (next.body !== undefined) next.body = applyRenamesToString(next.body, renames);
-  if (next.beforeSend !== undefined) next.beforeSend = applyRenamesToString(next.beforeSend, renames);
-  if (next.afterReceive !== undefined) next.afterReceive = applyRenamesToString(next.afterReceive, renames);
+  if (next.beforeSend !== undefined)
+    next.beforeSend = applyRenamesToString(next.beforeSend, renames);
+  if (next.afterReceive !== undefined)
+    next.afterReceive = applyRenamesToString(next.afterReceive, renames);
   if (next.headers) {
     next.headers = next.headers.map((h: HttpHeader) => ({
       ...h,
@@ -120,7 +120,7 @@ export function rewriteAliasReferences(
   renames: Record<string, string>,
 ): FlowStep[] {
   if (Object.keys(renames).length === 0) return steps;
-  return steps.map(s => ({ ...s, overrides: rewriteOverrides(s.overrides, renames) }));
+  return steps.map((s) => ({ ...s, overrides: rewriteOverrides(s.overrides, renames) }));
 }
 
 /** One-shot: normalize auto aliases and cascade any resulting renames into references. */

@@ -1,6 +1,14 @@
-import yaml from 'js-yaml';
-import type { HttpMethod, HttpHeader, HttpRequest, Variable, ConvertedFile, ImportResult, EnvironmentFile } from './types';
+import * as yaml from 'js-yaml';
+import type {
+  HttpHeader,
+  HttpRequest,
+  Variable,
+  ConvertedFile,
+  ImportResult,
+  EnvironmentFile,
+} from './types';
 import { serializeHttpFile, extractVariableRefs } from './parser';
+import { normalizeMethod, sanitizeFilename, sanitizeVarName, newImportId } from './importShared';
 
 // ─── Shared Types ──────────────────────────────────────────────────────────
 
@@ -37,7 +45,7 @@ interface InsomniaAuth {
 // ─── v5 YAML Types ─────────────────────────────────────────────────────────
 
 interface V5Export {
-  type: string;          // "collection.insomnia.rest/5.0"
+  type: string; // "collection.insomnia.rest/5.0"
   schema_version: string;
   name: string;
   collection: V5Item[];
@@ -96,13 +104,6 @@ interface V4Resource {
   data?: Record<string, unknown>;
 }
 
-// ─── Valid HTTP methods ────────────────────────────────────────────────────
-
-const VALID_METHODS = new Set<string>([
-  'GET', 'POST', 'PUT', 'PATCH', 'DELETE',
-  'HEAD', 'OPTIONS', 'TRACE', 'CONNECT',
-]);
-
 // ─── Public API ────────────────────────────────────────────────────────────
 
 /**
@@ -153,7 +154,7 @@ function importV5Yaml(content: string): ImportResult {
   }
 
   if (topLevelRequests.length > 0) {
-    const requests = topLevelRequests.map(r => convertV5Request(r, nameById));
+    const requests = topLevelRequests.map((r) => convertV5Request(r, nameById));
     const httpContent = serializeHttpFile(requests, envVars);
     files.push({
       relativePath: `${sanitizeFilename(collectionName)}.http`,
@@ -234,7 +235,7 @@ function collectV5Files(
   }
 
   if (requests.length > 0) {
-    const converted = requests.map(r => convertV5Request(r, nameById));
+    const converted = requests.map((r) => convertV5Request(r, nameById));
     const content = serializeHttpFile(converted, []);
     files.push({ relativePath: `${folderPath}.http`, content });
   }
@@ -244,10 +245,7 @@ function collectV5Files(
   }
 }
 
-function convertV5Request(
-  item: V5Item,
-  nameById: Map<string, string>,
-): HttpRequest {
+function convertV5Request(item: V5Item, nameById: Map<string, string>): HttpRequest {
   const method = normalizeMethod(item.method ?? 'GET');
 
   // Build URL: replace :param with pathParameter values, then append query params
@@ -265,7 +263,7 @@ function convertV5Request(
   const body = convertTemplateVars(rawBody, nameById);
 
   return {
-    id: `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newImportId(),
     name: item.name || `${method} ${url}`,
     varName: null,
     method,
@@ -290,14 +288,17 @@ function importV4Json(content: string): ImportResult {
   for (const r of data.resources) {
     const pid = r.parentId ?? '__root__';
     let list = childrenOf.get(pid);
-    if (!list) { list = []; childrenOf.set(pid, list); }
+    if (!list) {
+      list = [];
+      childrenOf.set(pid, list);
+    }
     list.push(r);
   }
   for (const children of childrenOf.values()) {
     children.sort((a, b) => (a.metaSortKey ?? 0) - (b.metaSortKey ?? 0));
   }
 
-  const workspaces = data.resources.filter(r => r._type === 'workspace');
+  const workspaces = data.resources.filter((r) => r._type === 'workspace');
   const workspaceId = workspaces[0]?._id ?? null;
   const collectionName = workspaces[0]?.name || 'Imported';
 
@@ -326,7 +327,7 @@ function importV4Json(content: string): ImportResult {
   }
 
   if (topLevelRequests.length > 0) {
-    const requests = topLevelRequests.map(r => convertV4Request(r, nameById));
+    const requests = topLevelRequests.map((r) => convertV4Request(r, nameById));
     const httpContent = serializeHttpFile(requests, baseEnvVars);
     files.push({
       relativePath: `${sanitizeFilename(collectionName)}.http`,
@@ -360,7 +361,7 @@ function collectV4Files(
   }
 
   if (requests.length > 0) {
-    const converted = requests.map(r => convertV4Request(r, nameById));
+    const converted = requests.map((r) => convertV4Request(r, nameById));
     const content = serializeHttpFile(converted, []);
     files.push({ relativePath: `${folderPath}.http`, content });
   }
@@ -370,10 +371,7 @@ function collectV4Files(
   }
 }
 
-function convertV4Request(
-  resource: V4Resource,
-  nameById: Map<string, string>,
-): HttpRequest {
+function convertV4Request(resource: V4Resource, nameById: Map<string, string>): HttpRequest {
   const method = normalizeMethod(resource.method ?? 'GET');
   const rawUrl = appendQueryParams(resource.url || 'https://', resource.parameters);
   const url = convertTemplateVars(rawUrl, nameById);
@@ -382,7 +380,7 @@ function convertV4Request(
   const body = convertTemplateVars(rawBody, nameById);
 
   return {
-    id: `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newImportId(),
     name: resource.name || `${method} ${url}`,
     varName: null,
     method,
@@ -395,7 +393,7 @@ function convertV4Request(
 
 function extractV4EnvVars(resources: V4Resource[], workspaceId: string | null): Variable[] {
   if (!workspaceId) return [];
-  const baseEnv = resources.find(r => r._type === 'environment' && r.parentId === workspaceId);
+  const baseEnv = resources.find((r) => r._type === 'environment' && r.parentId === workspaceId);
   if (!baseEnv?.data) return [];
   const vars: Variable[] = [];
   for (const [key, value] of Object.entries(baseEnv.data)) {
@@ -406,16 +404,11 @@ function extractV4EnvVars(resources: V4Resource[], workspaceId: string | null): 
 
 // ─── Shared Request Conversion Helpers ─────────────────────────────────────
 
-function normalizeMethod(method: string): HttpMethod {
-  const upper = method.toUpperCase();
-  return VALID_METHODS.has(upper) ? upper as HttpMethod : 'GET';
-}
-
 function appendQueryParams(url: string, parameters?: InsomniaParam[]): string {
-  const enabled = (parameters ?? []).filter(p => !p.disabled);
+  const enabled = (parameters ?? []).filter((p) => !p.disabled);
   if (enabled.length === 0) return url;
   const sep = url.includes('?') ? '&' : '?';
-  return url + sep + enabled.map(p => `${p.name}=${p.value}`).join('&');
+  return url + sep + enabled.map((p) => `${p.name}=${p.value}`).join('&');
 }
 
 function buildHeaders(
@@ -442,7 +435,7 @@ function buildHeaders(
   }
 
   if (body?.mimeType) {
-    const hasContentType = result.some(h => h.key.toLowerCase() === 'content-type' && h.enabled);
+    const hasContentType = result.some((h) => h.key.toLowerCase() === 'content-type' && h.enabled);
     if (!hasContentType) {
       result.push({ key: 'Content-Type', value: body.mimeType, enabled: true });
     }
@@ -465,7 +458,11 @@ function resolveAuth(auth: InsomniaAuth, nameById?: Map<string, string>): HttpHe
       const resolvedUser = nameById ? convertTemplateVars(username, nameById) : username;
       const resolvedPass = nameById ? convertTemplateVars(password, nameById) : password;
       if (resolvedUser.includes('{{') || resolvedPass.includes('{{')) {
-        return { key: 'Authorization', value: `Basic {{$base64 ${resolvedUser}:${resolvedPass}}}`, enabled: true };
+        return {
+          key: 'Authorization',
+          value: `Basic {{$base64 ${resolvedUser}:${resolvedPass}}}`,
+          enabled: true,
+        };
       }
       const encoded = btoa(`${resolvedUser}:${resolvedPass}`);
       return { key: 'Authorization', value: `Basic ${encoded}`, enabled: true };
@@ -490,13 +487,13 @@ function buildBody(body?: InsomniaBody): string {
     const mime = body.mimeType ?? '';
     if (mime.includes('x-www-form-urlencoded')) {
       return body.params
-        .filter(p => !p.disabled)
-        .map(p => `${encodeURIComponent(p.name)}=${encodeURIComponent(p.value)}`)
+        .filter((p) => !p.disabled)
+        .map((p) => `${encodeURIComponent(p.name)}=${encodeURIComponent(p.value)}`)
         .join('&');
     }
     return body.params
-      .filter(p => !p.disabled && p.type !== 'file')
-      .map(p => `${p.name}=${p.value}`)
+      .filter((p) => !p.disabled && p.type !== 'file')
+      .map((p) => `${p.name}=${p.value}`)
       .join('\n');
   }
   return '';
@@ -545,14 +542,4 @@ function convertTemplateVars(text: string, nameById: Map<string, string>): strin
   result = result.replace(/\{\{(\w[\w.]*)\s+\}\}/g, '{{$1}}');
 
   return result;
-}
-
-// ─── Utilities ─────────────────────────────────────────────────────────────
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'unnamed';
-}
-
-function sanitizeVarName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '') || 'unnamed';
 }

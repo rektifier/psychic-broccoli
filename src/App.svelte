@@ -12,103 +12,120 @@
   import TabBar from './components/TabBar.svelte';
   import FlowEditor from './components/FlowEditor.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
-  import { loadTheme, setTheme, type ThemeId } from './lib/theme';
+  import AddFavoriteModal from './components/AddFavoriteModal.svelte';
+  import { loadTheme, setTheme, loadFavorites, saveFavorites, type ThemeId } from './lib/theme';
   import logoUrl from './assets/logo.png';
   import {
-    workspace, selectedLocation, currentResponse, isLoading,
-    activeFile, activeRequest, activeFileVariables,
-    envFile, userEnvFile, activeEnvironment, availableEnvironments,
-    resolvedEnvVars, baseEnvVarsWithSource, pbFileOverrides, activeFileOverrides, namedResults, dotenvVariables,
-    pbAssertionResults, pbGlobals,
-    keyVaultState, varSourcePrefs,
-    updateRequestInTree, addRequestToFile, deleteRequestFromFile, removeFileFromTree, removeFolderFromTree,
-    addFileToTree, addFolderToTree, renameFolderInTree, renameFileInTree, editingFilePath, editingFolderPath,
-    toggleFolder, markFileSaved, addToast,
-    tabs, isPreview, pinTab, activateTab, closeTab, previewRequest,
-    cacheCurrentTabResponse, currentSentRequest, setTabBottomTab, setTabResponseTab,
-    flows, flowRunHistory, flowRunState, flowTabs, activeFlowTabPath,
-    openFlowTab, closeFlowTab, activateFlowTab, activeFlowPath, activeFlow,
+    workspace,
+    selectedLocation,
+    currentResponse,
+    isLoading,
+    activeFile,
+    activeRequest,
+    activeFileVariables,
+    envFile,
+    userEnvFile,
+    activeEnvironment,
+    availableEnvironments,
+    resolvedEnvVars,
+    baseEnvVarsWithSource,
+    pbFileOverrides,
+    activeFileOverrides,
+    namedResults,
+    dotenvVariables,
+    pbAssertionResults,
+    pbGlobals,
+    keyVaultState,
+    varSourcePrefs,
+    updateRequestInTree,
+    editingFilePath,
+    editingFolderPath,
+    markFileSaved,
+    addToast,
+    tabs,
+    isPreview,
+    pinTab,
+    activateTab,
+    closeTab,
+    previewRequest,
+    cacheCurrentTabResponse,
+    currentSentRequest,
+    setTabBottomTab,
+    setTabResponseTab,
+    flowRunHistory,
+    flowRunState,
+    flowTabs,
+    activeFlowTabPath,
+    closeFlowTab,
+    activateFlowTab,
+    activeFlowPath,
+    activeFlow,
+    favorites,
   } from './lib/stores';
-  import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
-    serializeHttpFile, substituteAll, parseEnvironmentFile, ensureSharedEnvironment,
-    buildWorkspaceTree, createFileNode, createEmptyFileNode, getAllFileNodes,
-    executePbDirectives, parseScriptText, applyRequestMutations, resolveEnvironmentVariables,
-  } from './lib/parser';
-  import type { SubstitutionContext } from './lib/parser';
-  import { importPostmanCollection } from './lib/postman';
-  import { importInsomniaExport } from './lib/insomnia';
-  import { importOpenApiSpec } from './lib/openapi';
-  import type { HttpRequest, HttpResponse, RequestLocation, EnvironmentFile, TreeNode, ImportResult, PbAssertionResult, KeyVaultState } from './lib/types';
+    refreshKeyVaultSecrets,
+    resetKeyVaultCache,
+    refreshKeyVaultForEnv,
+  } from './lib/keyvaultCache';
+  import { serializeHttpFile } from './lib/parser';
+  import { substituteAll } from './lib/substitution';
+  import type { SubstitutionContext } from './lib/substitution';
+  import { errorMessage } from './lib/errors';
+  import type { HttpRequest, RequestLocation, EnvironmentFile } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
-  import type { DiscoveredFile, DiscoveredFolder } from './lib/parser';
-  import { scanForFlowFiles, loadFlowHistory, saveFlowRunRecord, clearFlowRunHistory, parseFlowFile, FLOWS_DIR } from './lib/flowIO';
-  import { generateFolderName } from './lib/folderCreate';
+  import { saveFlowRunRecord, clearFlowRunHistory } from './lib/flowIO';
+  import { openFolderByPath } from './lib/workspaceIO';
+  import { importCollectionContent, applyImportedVariables } from './lib/importIO';
+  import { saveFlow, deleteFlow } from './lib/flowOps';
+  import { runAllRequests } from './lib/requestOps';
   import { runFlow } from './lib/flowRunner';
+  import { executeHttpRequest } from './lib/requestExec';
+  import { startMcpBridge } from './lib/mcpBridge';
+  import type { PbVarEffects } from './lib/requestExec';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile, readDir, rename } from '@tauri-apps/plugin-fs';
+  import { writeTextFile } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
-  import { listen, emit } from '@tauri-apps/api/event';
-  import { join, basename, dirname } from '@tauri-apps/api/path';
+  import { join } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
 
-  let showEnvEditor = false;
-  let showVarInspector = false;
+  let showEnvEditor = $state(false);
+  let showVarInspector = $state(false);
 
-  let showHelp = false;
+  let showHelp = $state(false);
 
   // ─── Theme / Settings ───
-  let currentTheme: ThemeId = 'default';
-  let showSettings = false;
-  loadTheme().then(t => currentTheme = t);
+  let currentTheme: ThemeId = $state('default');
+  let showSettings = $state(false);
+  loadTheme().then((t) => (currentTheme = t));
+  loadFavorites().then((f) => favorites.set(f));
+
+  // ─── MCP status (titlebar pill) ───
+  let mcpRunning = $state(false);
+  let mcpPort = $state(3742);
+
+  async function refreshMcpStatus() {
+    try {
+      const settings = await invoke<{ enabled: boolean; port: number; token: string }>(
+        'mcp_get_settings',
+      );
+      mcpPort = settings.port;
+      mcpRunning = await invoke<boolean>('mcp_is_running');
+    } catch {}
+  }
 
   // ─── Import Collection Modal ───
-  let showImportCollectionModal = false;
+  let showImportCollectionModal = $state(false);
 
   // ─── Import Environment Modal ───
-  let showImportEnvModal = false;
-  let pendingImportVars: import('./lib/types').Variable[] = [];
+  let showImportEnvModal = $state(false);
+  let pendingImportVars: import('./lib/types').Variable[] = $state([]);
 
-  async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
+  async function handleImportEnvConfirm(target: string) {
     showImportEnvModal = false;
-    const envName = e.detail.target;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath || pendingImportVars.length === 0) return;
-
-    try {
-      // Load or create the env file
-      let currentEnv: EnvironmentFile = ensureSharedEnvironment($envFile ?? {});
-
-      // Ensure the target environment exists
-      if (!currentEnv[envName]) {
-        currentEnv[envName] = {};
-      }
-
-      // Add discovered variables with their values (only if not already present)
-      for (const v of pendingImportVars) {
-        if (!(v.key in currentEnv[envName])) {
-          (currentEnv[envName] as Record<string, string>)[v.key] = v.value;
-        }
-      }
-
-      // Write the env file
-      const envPath = await join(rootPath, 'http-client.env.json');
-      await writeTextFile(envPath, JSON.stringify(currentEnv, null, 2));
-
-      // Update stores
-      envFile.set(currentEnv);
-      if (!$activeEnvironment) {
-        activeEnvironment.set(envName);
-      }
-
-      addToast(`Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`, 'info');
-    } catch (e: any) {
-      addToast(`Failed to update environment file: ${e.message || e}`, 'error');
-    }
-
+    await applyImportedVariables(target, pendingImportVars);
     pendingImportVars = [];
   }
 
@@ -117,11 +134,38 @@
     pendingImportVars = [];
   }
 
+  // ─── Layout persistence ───
+  // Pane/sidebar sizes are persisted to the webview's localStorage, which Tauri
+  // keeps across app restarts. Window size/position is handled separately by the
+  // tauri-plugin-window-state plugin (see src-tauri).
+
+  const LAYOUT_KEY_EDITOR_PCT = 'pb.layout.editorWidthPercent';
+  const LAYOUT_KEY_SIDEBAR_PX = 'pb.layout.sidebarWidth';
+
+  function loadLayoutNumber(key: string, fallback: number): number {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return fallback;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function saveLayoutNumber(key: string, value: number) {
+    try {
+      localStorage.setItem(key, String(value));
+    } catch {
+      // ignore (e.g. storage disabled) - persistence is best-effort
+    }
+  }
+
   // ─── Resizable Panes ───
 
-  let editorWidthPercent = 50;
-  let dragging = false;
-  let mainPanelsEl: HTMLDivElement;
+  let editorWidthPercent = $state(loadLayoutNumber(LAYOUT_KEY_EDITOR_PCT, 50));
+  let dragging = $state(false);
+  let mainPanelsEl: HTMLDivElement | undefined = $state();
 
   function onDividerDown(e: MouseEvent) {
     e.preventDefault();
@@ -142,13 +186,14 @@
     dragging = false;
     document.removeEventListener('mousemove', onDividerMove);
     document.removeEventListener('mouseup', onDividerUp);
+    saveLayoutNumber(LAYOUT_KEY_EDITOR_PCT, editorWidthPercent);
   }
 
   // ─── Resizable Sidebar ───
 
-  let sidebarWidth = 260;
-  let sidebarDragging = false;
-  let layoutEl: HTMLDivElement;
+  let sidebarWidth = $state(loadLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, 260));
+  let sidebarDragging = $state(false);
+  let layoutEl: HTMLDivElement | undefined = $state();
 
   function onSidebarDividerDown(e: MouseEvent) {
     e.preventDefault();
@@ -168,378 +213,24 @@
     sidebarDragging = false;
     document.removeEventListener('mousemove', onSidebarDividerMove);
     document.removeEventListener('mouseup', onSidebarDividerUp);
+    saveLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, sidebarWidth);
   }
 
   // ─── Key Vault ───
-
-  let lastKvEnv: string | null = null;
-  let kvFetchSeq = 0;
-  /** Per-environment KV cache - persists across env switches, cleared on folder change. */
-  let kvCache: Record<string, KeyVaultState> = {};
-  const idleKv: KeyVaultState = { status: 'idle', variables: {}, error: null, cacheKey: null };
-
-  async function refreshKeyVaultSecrets(forEnv?: string) {
-    const env = forEnv ?? $activeEnvironment;
-    if (!env) {
-      keyVaultState.set(idleKv);
-      return;
-    }
-
-    const config = extractKeyVaultConfig(env, $envFile, $userEnvFile);
-    if (!config) {
-      // No KV config for this env - restore idle but keep cache for other envs
-      keyVaultState.set(idleKv);
-      return;
-    }
-
-    const newCacheKey = kvCacheKey(env, config);
-
-    // Check per-env cache first
-    const cached = kvCache[newCacheKey];
-    if (cached && cached.status === 'loaded') {
-      keyVaultState.set(cached);
-      return;
-    }
-
-    // Only clear conflict preferences when switching environments
-    if (lastKvEnv !== env) {
-      varSourcePrefs.set({});
-    }
-    lastKvEnv = env;
-
-    const seq = ++kvFetchSeq;
-    keyVaultState.set({ status: 'loading', variables: {}, error: null, cacheKey: newCacheKey });
-
-    try {
-      const vars = await fetchKeyVaultSecrets(config);
-      if (kvFetchSeq === seq) {
-        const state: KeyVaultState = { status: 'loaded', variables: vars, error: null, cacheKey: newCacheKey };
-        kvCache[newCacheKey] = state;
-        kvCache = kvCache;
-        keyVaultState.set(state);
-      }
-    } catch (err: unknown) {
-      if (kvFetchSeq === seq) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const state: KeyVaultState = { status: 'error', variables: {}, error: msg, cacheKey: newCacheKey };
-        keyVaultState.set(state);
-        addToast(`Key Vault error: ${msg}`, 'error');
-      }
-    }
-  }
+  // Cache and fetch live in src/lib/keyvaultCache.ts; App.svelte only owns
+  // the environment-change subscription.
 
   const unsubKv = activeEnvironment.subscribe(() => {
     refreshKeyVaultSecrets();
   });
 
   // ─── MCP Bridge ───
-  // The embedded MCP server (Rust) reaches live app state through Tauri events:
-  // it emits `mcp:request` with { id, kind, params }; we do the work for `kind`
-  // and emit `mcp:response` with { id, ok, data?, error? }, matched by `id`.
-  // New MCP tools that need frontend state add a `kind` branch here.
+  // Bridge logic lives in src/lib/mcpBridge.ts; App.svelte only owns the
+  // listener's lifecycle (started here, torn down in onDestroy).
 
-  interface BridgeRequest {
-    id: string;
-    kind: string;
-    params: unknown;
-  }
+  const mcpBridgeUnlisten = startMcpBridge();
 
-  function respondBridge(id: string, payload: { ok: true; data: unknown } | { ok: false; error: string }) {
-    emit('mcp:response', { id, ...payload }).catch(() => {});
-  }
-
-  /** Gather every request across all .http files in the open workspace. */
-  function collectWorkspaceRequests() {
-    const ws = get(workspace);
-    if (!ws.rootPath) return [];
-    return getAllFileNodes(ws.tree).flatMap((file) => {
-      const filePath = file.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/');
-      return file.requests.map((req, requestIndex) => ({
-        filePath,
-        requestIndex,
-        name: req.name,
-        method: req.method,
-        url: req.url,
-      }));
-    });
-  }
-
-  interface ExecuteRequestParams {
-    filePath: string;
-    requestIndex: number;
-    environment?: string | null;
-  }
-
-  /**
-   * Run a single request for the MCP `execute_request` tool and return the
-   * structured result. This is the silent twin of `sendRequest`: it must never
-   * touch UI stores (`currentResponse`, `currentSentRequest`, `pbAssertionResults`,
-   * tabs, `namedResults`, `pbGlobals`, `pbFileOverrides`). All runtime state from
-   * pb directives is kept in locals and discarded after the call.
-   */
-  async function executeRequestSilently(params: ExecuteRequestParams) {
-    const ws = get(workspace);
-    if (!ws.rootPath) throw new Error('No workspace folder is open');
-
-    const normalized = params.filePath.replaceAll('\\', '/');
-    const file = getAllFileNodes(ws.tree).find(
-      (f) => f.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/') === normalized,
-    );
-    if (!file) throw new Error(`File not found in workspace: ${params.filePath}`);
-
-    const request = file.requests[params.requestIndex];
-    if (!request) {
-      throw new Error(`No request at index ${params.requestIndex} in ${params.filePath}`);
-    }
-
-    // Resolve environment variables for the requested environment, falling back to
-    // the active one. For the active environment, reuse the fully-resolved store so
-    // Key Vault secrets, globals, and pb.set overrides are included exactly as the
-    // UI sees them; for any other environment, resolve it fresh from the env files.
-    const active = get(activeEnvironment);
-    const effectiveEnv = params.environment ?? active;
-    let environmentVariables: Record<string, string>;
-    if (effectiveEnv && effectiveEnv === active) {
-      environmentVariables = { ...get(resolvedEnvVars) };
-    } else if (effectiveEnv) {
-      environmentVariables = {
-        ...resolveEnvironmentVariables(effectiveEnv, get(envFile), get(userEnvFile)),
-        ...get(pbGlobals),
-        ...(get(pbFileOverrides)[file.path] ?? {}),
-      };
-    } else {
-      environmentVariables = { ...get(pbGlobals) };
-    }
-
-    const ctx: SubstitutionContext = {
-      fileVariables: file.variables,
-      environmentVariables,
-      // Read-only copy: chaining can resolve existing named results, but the
-      // silent run must not mutate the shared store.
-      namedResults: { ...get(namedResults) },
-      dotenvVariables: get(dotenvVariables),
-    };
-
-    const startTime = performance.now();
-    let url = substituteAll(request.url, ctx);
-    let body = substituteAll(request.body, ctx);
-    let headers: Record<string, string> = {};
-    for (const h of request.headers) {
-      if (h.enabled) headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
-    }
-
-    // beforeSend scripts — runtime vars stay local and never reach the stores.
-    const localEnvOverrides: Record<string, string> = {};
-    const localGlobals: Record<string, string> = {};
-    const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
-    if (beforeSendDirectives.length > 0) {
-      const mergedVars: Record<string, string> = { ...ctx.environmentVariables };
-      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-      const dummyResponse: HttpResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
-      const bsResult = executePbDirectives(
-        beforeSendDirectives, dummyResponse,
-        { url, method: request.method, headers, body },
-        mergedVars, ctx.namedResults,
-      );
-      const mutated = applyRequestMutations(
-        { url, method: request.method, headers, body },
-        bsResult.requestMutations,
-      );
-      url = mutated.url;
-      headers = mutated.headers;
-      body = mutated.body;
-      Object.assign(localEnvOverrides, bsResult.setVars);
-      Object.assign(localGlobals, bsResult.globalVars);
-      Object.assign(localEnvOverrides, bsResult.globalVars);
-    }
-
-    const sentRequest = { method: request.method, url, headers, body };
-    const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
-      await invoke('http_request', {
-        payload: {
-          method: request.method,
-          url,
-          headers,
-          body: ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ? null : body || null,
-        },
-      });
-
-    const elapsed = performance.now() - startTime;
-    const response: HttpResponse = {
-      status: res.status,
-      statusText: res.status_text,
-      headers: res.headers,
-      body: res.body,
-      time: Math.round(elapsed),
-      size: new TextEncoder().encode(res.body).length,
-    };
-
-    // pb directives + afterReceive scripts — assertion results only; no store writes.
-    const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
-    const allDirectives = [
-      ...(request.directives || []).filter((d) => d.enabled !== false),
-      ...afterReceiveDirectives,
-    ];
-    let assertionResults: PbAssertionResult[] = [];
-    if (allDirectives.length > 0) {
-      const mergedVars: Record<string, string> = { ...ctx.environmentVariables, ...localEnvOverrides, ...localGlobals };
-      for (const v of ctx.fileVariables) mergedVars[v.key] = v.value;
-      const pbResult = executePbDirectives(allDirectives, response, sentRequest, mergedVars, ctx.namedResults);
-      assertionResults = pbResult.assertionResults;
-    }
-
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-      body: response.body,
-      time: response.time,
-      assertions: assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
-    };
-  }
-
-  interface ExecuteFlowParams {
-    flowFilePath: string;
-    environment?: string | null;
-  }
-
-  /**
-   * Run a whole flow for the MCP `execute_flow` tool and return the structured
-   * run record. This is the silent twin of `handleRunFlow`: it loads and runs the
-   * flow but must never touch UI stores (`flowRunState`, `flowRunHistory`,
-   * `lastFlowRunRecords`, tabs) and must not persist a results file. `runFlow`
-   * keeps all run state in isolated locals, which are discarded after mapping.
-   */
-  async function executeFlowSilently(params: ExecuteFlowParams) {
-    const ws = get(workspace);
-    if (!ws.rootPath) throw new Error('No workspace folder is open');
-
-    const relPath = params.flowFilePath.replaceAll('\\', '/');
-    if (!relPath.endsWith('.pb-flow.json')) {
-      throw new Error(`Not a flow file (expected .pb-flow.json): ${params.flowFilePath}`);
-    }
-    const absolutePath = await join(ws.rootPath, relPath);
-
-    let content: string;
-    try {
-      content = await readTextFile(absolutePath);
-    } catch {
-      throw new Error(`Flow file not found: ${params.flowFilePath}`);
-    }
-
-    let raw: unknown;
-    try {
-      raw = JSON.parse(content);
-    } catch {
-      throw new Error(`Flow file is not valid JSON: ${params.flowFilePath}`);
-    }
-    if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { steps?: unknown }).steps)) {
-      throw new Error(`Not a valid flow file: ${params.flowFilePath}`);
-    }
-    const flow = parseFlowFile(content);
-
-    // Resolve environment variables for the requested environment, falling back to
-    // the active one. Mirror executeRequestSilently: reuse the resolved store for
-    // the active env (so Key Vault secrets, globals, and pb.set overrides are
-    // included as the UI sees them); resolve any other env fresh from the files.
-    const active = get(activeEnvironment);
-    const effectiveEnv = params.environment ?? active;
-    let environmentVariables: Record<string, string>;
-    if (effectiveEnv && effectiveEnv === active) {
-      environmentVariables = { ...get(resolvedEnvVars) };
-    } else if (effectiveEnv) {
-      environmentVariables = {
-        ...resolveEnvironmentVariables(effectiveEnv, get(envFile), get(userEnvFile)),
-        ...get(pbGlobals),
-      };
-    } else {
-      environmentVariables = { ...get(pbGlobals) };
-    }
-
-    // No-op callbacks: a silent run reports nothing to the UI. runFlow returns a
-    // fully isolated record; we never write it to stores or to disk.
-    const record = await runFlow(
-      flow,
-      ws.rootPath,
-      ws.tree,
-      environmentVariables,
-      get(dotenvVariables),
-      effectiveEnv,
-      { onStepStart() {}, onStepComplete() {} },
-    );
-
-    // Map the internal record onto the tool's output shape. The flow runner stores
-    // both network errors and assertion/HTTP failures as `failed`; split them back
-    // out so a network-level failure (non-null `error`) surfaces as `error`.
-    const stepById = new Map(flow.steps.map((s) => [s.id, s]));
-    const steps = record.stepResults.map((r) => {
-      const status: 'passed' | 'failed' | 'skipped' | 'error' =
-        r.status === 'failed' && r.error != null ? 'error'
-        : r.status === 'passed' ? 'passed'
-        : r.status === 'skipped' ? 'skipped'
-        : 'failed';
-      return {
-        id: r.stepId,
-        label: stepById.get(r.stepId)?.label ?? '',
-        status,
-        durationMs: r.durationMs,
-        assertions: r.assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
-        error: r.error,
-      };
-    });
-
-    const overall: 'passed' | 'failed' | 'error' =
-      steps.some((s) => s.status === 'error') ? 'error'
-      : steps.some((s) => s.status === 'failed') ? 'failed'
-      : 'passed';
-
-    return { status: overall, summary: record.summary, steps };
-  }
-
-  /**
-   * Snapshot the user's most recent manual request result for the MCP
-   * `get_last_result` tool. Reads the live UI stores without mutating them and
-   * returns the `execute_request` shape, or `null` if no request has run yet.
-   */
-  function snapshotLastResult() {
-    const response = get(currentResponse);
-    if (!response) return null;
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-      body: response.body,
-      time: response.time,
-      assertions: get(pbAssertionResults).map((a) => ({ label: a.label, passed: a.passed })),
-    };
-  }
-
-  async function handleBridgeRequest(req: BridgeRequest) {
-    try {
-      switch (req.kind) {
-        case 'list_requests':
-          respondBridge(req.id, { ok: true, data: collectWorkspaceRequests() });
-          break;
-        case 'execute_request':
-          respondBridge(req.id, { ok: true, data: await executeRequestSilently(req.params as ExecuteRequestParams) });
-          break;
-        case 'execute_flow':
-          respondBridge(req.id, { ok: true, data: await executeFlowSilently(req.params as ExecuteFlowParams) });
-          break;
-        case 'get_last_result':
-          respondBridge(req.id, { ok: true, data: snapshotLastResult() });
-          break;
-        default:
-          respondBridge(req.id, { ok: false, error: `Unknown MCP bridge request: ${req.kind}` });
-      }
-    } catch (e) {
-      respondBridge(req.id, { ok: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-
-  const mcpBridgeUnlisten = listen<BridgeRequest>('mcp:request', (event) => {
-    void handleBridgeRequest(event.payload);
-  });
+  void refreshMcpStatus();
 
   onDestroy(() => {
     unsubKv();
@@ -561,51 +252,58 @@
     };
   }
 
-  // Clear stale named results and response when environment changes
+  // Clear stale named results and response when environment changes.
+  // lastEnv is intentionally a plain (untracked) variable: the effect must
+  // re-run only when $activeEnvironment changes, and the first run (which
+  // sees lastEnv === null) records the initial environment without clearing.
   let lastEnv: string | null = null;
-  $: if ($activeEnvironment !== lastEnv) {
-    if (lastEnv !== null) {
-      namedResults.set({});
-      currentResponse.set(null);
-      currentSentRequest.set(null);
+  $effect(() => {
+    if ($activeEnvironment !== lastEnv) {
+      if (lastEnv !== null) {
+        namedResults.set({});
+        currentResponse.set(null);
+        currentSentRequest.set(null);
+      }
+      lastEnv = $activeEnvironment;
     }
-    lastEnv = $activeEnvironment;
-  }
+  });
 
   // Active tab's section tab (Body/Assertions) for pinned tabs
-  $: activeBottomTab = (() => {
-    const key = $tabs.length > 0 && $selectedLocation
-      ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
-      : null;
+  let activeBottomTab: BottomTab = $derived.by(() => {
+    const key =
+      $tabs.length > 0 && $selectedLocation
+        ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
+        : null;
     if (!key) return 'body' as BottomTab;
-    const tab = $tabs.find(t => `${t.location.filePath}::${t.location.requestIndex}` === key);
-    return tab?.bottomTab ?? 'body' as BottomTab;
-  })();
+    const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
+    return tab?.bottomTab ?? ('body' as BottomTab);
+  });
 
-  function handleBottomTabChange(e: CustomEvent<BottomTab>) {
+  function handleBottomTabChange(tab: BottomTab) {
     if ($selectedLocation) {
-      setTabBottomTab($selectedLocation, e.detail);
+      setTabBottomTab($selectedLocation, tab);
     }
   }
 
   // Active response tab (Body/Headers/Request/Assertions) for pinned tabs
-  $: activeResponseTab = (() => {
-    const key = $tabs.length > 0 && $selectedLocation
-      ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
-      : null;
+  let activeResponseTab: ResponseTab = $derived.by(() => {
+    const key =
+      $tabs.length > 0 && $selectedLocation
+        ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
+        : null;
     if (!key) return 'body' as ResponseTab;
-    const tab = $tabs.find(t => `${t.location.filePath}::${t.location.requestIndex}` === key);
-    return tab?.responseTab ?? 'body' as ResponseTab;
-  })();
+    const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
+    return tab?.responseTab ?? ('body' as ResponseTab);
+  });
 
-  function handleResponseTabChange(e: CustomEvent<ResponseTab>) {
+  function handleResponseTabChange(tab: ResponseTab) {
     if ($selectedLocation) {
-      setTabResponseTab($selectedLocation, e.detail);
+      setTabResponseTab($selectedLocation, tab);
     }
   }
 
   // Reactive resolved URL - all store dependencies are explicit so Svelte tracks them
-  $: computedResolvedUrl = (() => {
+  let computedResolvedUrl = $derived.by(() => {
     if (!$activeRequest || !$activeRequest.url.includes('{{')) return '';
     const resolved = substituteAll($activeRequest.url, {
       fileVariables: $activeFileVariables,
@@ -615,275 +313,122 @@
     });
     // Only show if substitution actually changed something
     return resolved !== $activeRequest.url ? resolved : '';
-  })();
+  });
 
   // ─── Open Folder (scan for .http files) ───
+  // Scanning and opening live in src/lib/workspaceIO.ts; the Key Vault hooks
+  // reset and refill the per-environment secret cache in lib/keyvaultCache.ts.
 
-  async function openFolderByPath(rootPath: string) {
-    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
-    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
-    const rootName = await basename(rootPath);
-
-    workspace.set({ rootPath, rootName, tree });
-    selectedLocation.set(null);
-    currentResponse.set(null);
-    namedResults.set({});
-    tabs.set([]);
-    currentSentRequest.set(null);
-
-    // Reset environment state before loading new env files
-    envFile.set(null);
-    userEnvFile.set(null);
-    kvCache = {};
-    activeEnvironment.set(null);
-
-    // Auto-discover env files from workspace root
-    await tryLoadEnvFiles(rootPath);
-
-    // Discover test flows and load run history
-    try {
-      const discoveredFlows = await scanForFlowFiles(rootPath, rootPath);
-      const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
-      for (const df of discoveredFlows) {
-        flowMap[df.relativePath] = df.flow;
-      }
-      flows.set(flowMap);
-    } catch { /* no flows yet */ }
-
-    try {
-      const history = await loadFlowHistory(rootPath);
-      flowRunHistory.set(history);
-    } catch { /* no history yet */ }
-
-    // Reset flow tabs
-    flowTabs.set([]);
-    activeFlowTabPath.set(null);
+  function openWorkspaceFolder(rootPath: string) {
+    return openFolderByPath(rootPath, {
+      resetCache: resetKeyVaultCache,
+      refresh: () => {
+        refreshKeyVaultSecrets();
+      },
+    });
   }
 
   async function openFolder() {
     try {
       const rootPath = await open({ directory: true, title: 'Select workspace folder' });
       if (!rootPath) return;
-      await openFolderByPath(rootPath as string);
-    } catch (e: any) {
-      addToast(`Failed to open folder: ${e.message || e}`, 'error');
+      await openWorkspaceFolder(rootPath as string);
+    } catch (e) {
+      addToast(`Failed to open folder: ${errorMessage(e)}`, 'error');
+    }
+  }
+
+  // ─── Favorites ───
+
+  let showAddFavoriteModal = $state(false);
+  let pendingFavoritePath = $state('');
+  let pendingFavoriteName = $state('');
+
+  /**
+   * Toggle the currently open workspace folder in/out of the favorites list.
+   * Removing is immediate; adding opens a modal to name the favorite first.
+   */
+  function toggleFavorite() {
+    const ws = get(workspace);
+    const rootPath = ws.rootPath;
+    if (!rootPath) return;
+    if (get(favorites).some((f) => f.path === rootPath)) {
+      removeFavorite(rootPath);
+    } else {
+      pendingFavoritePath = rootPath;
+      pendingFavoriteName = ws.rootName;
+      showAddFavoriteModal = true;
+    }
+  }
+
+  /** Create the pending favorite with the chosen name. */
+  function confirmAddFavorite(name: string) {
+    const path = pendingFavoritePath;
+    showAddFavoriteModal = false;
+    if (!path) return;
+    favorites.update((list) => {
+      if (list.some((f) => f.path === path)) return list;
+      const next = [...list, { path, name }];
+      saveFavorites(next);
+      return next;
+    });
+    pendingFavoritePath = '';
+  }
+
+  function cancelAddFavorite() {
+    showAddFavoriteModal = false;
+    pendingFavoritePath = '';
+  }
+
+  /** Remove a path from the favorites list. */
+  function removeFavorite(path: string) {
+    favorites.update((list) => {
+      const next = list.filter((f) => f.path !== path);
+      saveFavorites(next);
+      return next;
+    });
+  }
+
+  /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
+  async function openFavorite(path: string) {
+    try {
+      await openWorkspaceFolder(path);
+    } catch (e) {
+      addToast(`Could not open favorite "${path}": ${errorMessage(e)}`, 'error');
     }
   }
 
   async function openGettingStarted() {
     try {
       const path = await invoke<string>('extract_getting_started');
-      await openFolderByPath(path);
-    } catch (e: any) {
-      addToast(`Failed to open getting-started folder: ${e.message || e}`, 'error');
+      await openWorkspaceFolder(path);
+    } catch (e) {
+      addToast(`Failed to open getting-started folder: ${errorMessage(e)}`, 'error');
     }
-  }
-
-  // ── Recursively scan a directory for .http/.rest files ──
-
-  async function scanDir(
-    dir: string,
-    rootDir: string,
-    emptyFolderSink: DiscoveredFolder[],
-  ): Promise<DiscoveredFile[]> {
-    const entries = await readDir(dir);
-    const results: DiscoveredFile[] = [];
-    let hasHttpDescendant = false;
-
-    for (const entry of entries) {
-      const fullPath = await join(dir, entry.name);
-      if (entry.isDirectory) {
-        const subFiles = await scanDir(fullPath, rootDir, emptyFolderSink);
-        results.push(...subFiles);
-        if (subFiles.length > 0) hasHttpDescendant = true;
-      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
-        const content = await readTextFile(fullPath);
-        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
-        results.push({ absolutePath: fullPath, relativePath, content });
-        hasHttpDescendant = true;
-      }
-    }
-
-    if (!hasHttpDescendant) {
-      const relDir = dir.substring(rootDir.length + 1).replaceAll('\\', '/');
-      emptyFolderSink.push({ relativePath: relDir });
-    }
-
-    return results;
-  }
-
-  async function scanForHttpFiles(rootDir: string): Promise<{ files: DiscoveredFile[]; emptyFolders: DiscoveredFolder[] }> {
-    const emptyFolders: DiscoveredFolder[] = [];
-    const entries = await readDir(rootDir);
-    const files: DiscoveredFile[] = [];
-
-    for (const entry of entries) {
-      const fullPath = await join(rootDir, entry.name);
-      if (entry.isDirectory) {
-        const subFiles = await scanDir(fullPath, rootDir, emptyFolders);
-        files.push(...subFiles);
-      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
-        const content = await readTextFile(fullPath);
-        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
-        files.push({ absolutePath: fullPath, relativePath, content });
-      }
-    }
-
-    return { files, emptyFolders };
-  }
-
-  // ── Auto-discover env files from workspace root ──
-
-  async function tryLoadEnvFiles(rootDir: string) {
-    try {
-      const envPath = await join(rootDir, 'http-client.env.json');
-      const content = await readTextFile(envPath);
-      const parsed = parseEnvironmentFile(content);
-      if (parsed) {
-        envFile.set(parsed);
-        const names = Object.keys(parsed).filter(k => k !== '$shared');
-        if (names.length > 0 && !$activeEnvironment) activeEnvironment.set(names[0]);
-      }
-    } catch { /* file doesn't exist */ }
-
-    try {
-      const userPath = await join(rootDir, 'http-client.env.json.user');
-      const content = await readTextFile(userPath);
-      const parsed = parseEnvironmentFile(content);
-      if (parsed) userEnvFile.set(parsed);
-    } catch { /* file doesn't exist */ }
-
-    refreshKeyVaultSecrets();
   }
 
   // ─── Import Collections ───
+  // Writing and env-merge live in src/lib/importIO.ts; App.svelte only owns
+  // the modal state and shows the env-target modal for returned variables.
 
-  /** Validate and join a relative path onto a root, preventing directory traversal. */
-  async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
-    for (const seg of relativePath.split('/')) {
-      if (!seg || seg === '..' || seg === '.' || seg.includes('\0') || seg.includes('\\') || seg.includes('/')) {
-        throw new Error(`Invalid path segment: "${seg}"`);
-      }
-    }
-    return join(rootPath, relativePath);
-  }
-
-  async function writeImportedFiles(result: ImportResult): Promise<number> {
-    const rootPath = $workspace.rootPath!;
-    const { mkdir } = await import('@tauri-apps/plugin-fs');
-    let written = 0;
-    for (const file of result.files) {
-      const outPath = await safeJoinPath(rootPath, file.relativePath);
-      const parentDir = await dirname(outPath);
-      try {
-        await mkdir(parentDir, { recursive: true });
-      } catch { /* already exists */ }
-      await writeTextFile(outPath, file.content);
-      written++;
-    }
-
-    // Refresh workspace tree
-    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
-    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
-    const rootName = await basename(rootPath);
-    workspace.set({ rootPath, rootName, tree });
-
-    return written;
-  }
-
-  /** After writing files, write the env file directly if multi-env, or show the modal. */
-  async function showEnvModalIfNeeded(result: ImportResult) {
-    if (result.environmentFile && Object.keys(result.environmentFile).length > 0) {
-      await writeImportedEnvironmentFile(result.environmentFile);
-      return;
-    }
-    if (result.discoveredVariables.length > 0) {
-      pendingImportVars = result.discoveredVariables;
+  function showEnvModalIfNeeded(vars: import('./lib/types').Variable[]) {
+    if (vars.length > 0) {
+      pendingImportVars = vars;
       showImportEnvModal = true;
     }
   }
 
-  async function writeImportedEnvironmentFile(imported: EnvironmentFile) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-    try {
-      let current: EnvironmentFile = ensureSharedEnvironment($envFile ? structuredClone($envFile) : {});
-
-      for (const [envName, vars] of Object.entries(imported)) {
-        if (!current[envName]) current[envName] = {};
-        for (const [key, value] of Object.entries(vars)) {
-          if (typeof value === 'string' && !(key in current[envName])) {
-            current[envName][key] = value;
-          }
-        }
-      }
-
-      const envPath = await join(rootPath, 'http-client.env.json');
-      await writeTextFile(envPath, JSON.stringify(current, null, 2));
-      envFile.set(current);
-
-      const envNames = Object.keys(imported).filter(n => n !== '$shared');
-      if (!$activeEnvironment && envNames.length > 0) {
-        activeEnvironment.set(envNames[0]);
-      }
-
-      addToast(`Imported ${envNames.length} environment${envNames.length !== 1 ? 's' : ''}: ${envNames.join(', ')}`, 'info');
-    } catch (e: any) {
-      addToast(`Failed to write environment file: ${e.message || e}`, 'error');
-    }
+  async function handleImportFile(content: string, format: ImportFormat) {
+    showImportCollectionModal = false;
+    showEnvModalIfNeeded(await importCollectionContent(content, format));
   }
 
-  async function handleImportFile(e: CustomEvent<{ content: string; format: ImportFormat }>) {
+  async function handleImportUrl(content: string) {
     showImportCollectionModal = false;
-    const { content, format } = e.detail;
-
-    if (!$workspace.rootPath) {
-      addToast('Open a workspace folder first before importing.', 'error');
-      return;
-    }
-
-    try {
-      let result: ImportResult;
-      switch (format) {
-        case 'postman': result = importPostmanCollection(content); break;
-        case 'insomnia': result = importInsomniaExport(content); break;
-        case 'openapi': result = importOpenApiSpec(content); break;
-      }
-      const written = await writeImportedFiles(result);
-      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
-      await showEnvModalIfNeeded(result);
-    } catch (e: any) {
-      addToast(`Import failed: ${e.message || e}`, 'error');
-    }
-  }
-
-  async function handleImportUrl(e: CustomEvent<{ content: string }>) {
-    showImportCollectionModal = false;
-
-    if (!$workspace.rootPath) {
-      addToast('Open a workspace folder first before importing.', 'error');
-      return;
-    }
-
-    try {
-      const result = importOpenApiSpec(e.detail.content);
-      const written = await writeImportedFiles(result);
-      addToast(`Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`, 'info');
-      await showEnvModalIfNeeded(result);
-    } catch (e: any) {
-      addToast(`Import failed: ${e.message || e}`, 'error');
-    }
+    showEnvModalIfNeeded(await importCollectionContent(content, 'openapi'));
   }
 
   // ─── Save File ───
-
-  function findFileInTree(nodes: TreeNode[], path: string): any {
-    for (const n of nodes) {
-      if (n.type === 'file' && n.path === path) return n;
-      if (n.type === 'folder') { const f = findFileInTree(n.children, path); if (f) return f; }
-    }
-    return null;
-  }
 
   async function saveActiveFile() {
     const file = $activeFile;
@@ -893,8 +438,8 @@
       const content = serializeHttpFile(file.requests, file.variables);
       await writeTextFile(file.path, content);
       markFileSaved(file.path);
-    } catch (e: any) {
-      addToast(`Failed to save file: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to save file: ${errorMessage(e)}`, 'error');
     }
   }
 
@@ -906,12 +451,26 @@
     try {
       const envPath = await join(rootPath, 'http-client.env.json');
       await writeTextFile(envPath, JSON.stringify(data, null, 2));
-    } catch (e: any) {
-      addToast(`Failed to save environment file: ${e.message || e}`, 'error');
+    } catch (e) {
+      addToast(`Failed to save environment file: ${errorMessage(e)}`, 'error');
     }
   }
 
   // ─── Send Request ───
+
+  /** Commit pb.set (file-scoped) and pb.global effects from a manual send to the stores. */
+  function commitPbVars(effects: PbVarEffects) {
+    if (Object.keys(effects.setVars).length > 0 && $selectedLocation) {
+      const filePath = $selectedLocation.filePath;
+      pbFileOverrides.update((ev) => ({
+        ...ev,
+        [filePath]: { ...(ev[filePath] ?? {}), ...effects.setVars },
+      }));
+    }
+    if (Object.keys(effects.globalVars).length > 0) {
+      pbGlobals.update((g) => ({ ...g, ...effects.globalVars }));
+    }
+  }
 
   async function sendRequest(request: HttpRequest) {
     isLoading.set(true);
@@ -923,131 +482,29 @@
     const startTime = performance.now();
 
     try {
-      let url = substituteAll(request.url, ctx);
-      let body = substituteAll(request.body, ctx);
-      let headers: Record<string, string> = {};
-      for (const h of request.headers) {
-        if (h.enabled) {
-          headers[substituteAll(h.key, ctx)] = substituteAll(h.value, ctx);
-        }
+      const result = await executeHttpRequest(request, ctx, {
+        alias: request.varName,
+        onBeforeInvoke(sent, beforeSend) {
+          currentSentRequest.set(sent);
+          commitPbVars(beforeSend);
+        },
+      });
+
+      currentResponse.set(result.response);
+      if (result.namedResult) {
+        const { name, result: named } = result.namedResult;
+        namedResults.update((nr) => ({ ...nr, [name]: named }));
       }
-
-      // ── Execute beforeSend scripts ──
-      const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
-      if (beforeSendDirectives.length > 0) {
-        const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
-        for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
-
-        const dummyResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
-        const bsResult = executePbDirectives(
-          beforeSendDirectives, dummyResponse,
-          { url, method: request.method, headers, body },
-          mergedVars, $namedResults,
-        );
-
-        // Apply request mutations
-        const mutated = applyRequestMutations(
-          { url, method: request.method, headers, body },
-          bsResult.requestMutations,
-        );
-        url = mutated.url;
-        headers = mutated.headers;
-        body = mutated.body;
-
-        // Apply set vars from beforeSend (file-scoped)
-        if (Object.keys(bsResult.setVars).length > 0) {
-          const filePath = $selectedLocation!.filePath;
-          pbFileOverrides.update(ev => ({
-            ...ev,
-            [filePath]: { ...(ev[filePath] ?? {}), ...bsResult.setVars },
-          }));
-        }
-        if (Object.keys(bsResult.globalVars).length > 0) {
-          pbGlobals.update(g => ({ ...g, ...bsResult.globalVars }));
-        }
-      }
-
-      currentSentRequest.set({ method: request.method, url, headers, body });
-
-      const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
-        await invoke('http_request', {
-          payload: {
-            method: request.method,
-            url,
-            headers,
-            body: ['GET','HEAD','OPTIONS'].includes(request.method) ? null : body || null,
-          },
-        });
-
-      const elapsed = performance.now() - startTime;
-
-      const response: HttpResponse = {
-        status: res.status,
-        statusText: res.status_text,
-        headers: res.headers,
-        body: res.body,
-        time: Math.round(elapsed),
-        size: new TextEncoder().encode(res.body).length,
-      };
-      currentResponse.set(response);
-
-      if (request.varName) {
-        namedResults.update(nr => ({
-          ...nr,
-          [request.varName!]: {
-            request: { url, method: request.method, headers, body },
-            response,
-          },
-        }));
-      }
-
-      // ── Execute pb directives + afterReceive scripts ──
-      const afterReceiveDirectives = parseScriptText(request.afterReceive ?? '');
-      const allDirectives = [...(request.directives || []), ...afterReceiveDirectives];
-      if (allDirectives.length > 0) {
-        const mergedVars: Record<string, string> = { ...$resolvedEnvVars, ...$pbGlobals };
-        for (const v of $activeFileVariables) mergedVars[v.key] = v.value;
-
-        const pbResult = executePbDirectives(
-          allDirectives, response,
-          { url, method: request.method, headers, body },
-          mergedVars,
-          $namedResults,
-        );
-
-        pbAssertionResults.set(pbResult.assertionResults);
-
-        // Apply set vars as named results so {{key}} resolves in later requests
-        if (Object.keys(pbResult.setVars).length > 0) {
-          namedResults.update(nr => {
-            const updated = { ...nr };
-            for (const [key, value] of Object.entries(pbResult.setVars)) {
-              // Store as a pseudo named result so substituteAll can pick it up.
-              // We also inject into env vars for simpler resolution.
-              updated[`__pb_${key}`] = {
-                request: { url, method: request.method, headers, body },
-                response,
-              };
-            }
-            return updated;
-          });
-          // Inject set vars into file-scoped overrides so {{key}} works in this file
-          const filePath = $selectedLocation!.filePath;
-          pbFileOverrides.update(ev => ({
-            ...ev,
-            [filePath]: { ...(ev[filePath] ?? {}), ...pbResult.setVars },
-          }));
-        }
-
-        // Apply global vars (workspace-scoped)
-        if (Object.keys(pbResult.globalVars).length > 0) {
-          pbGlobals.update(g => ({ ...g, ...pbResult.globalVars }));
-        }
-      }
-    } catch (e: any) {
+      pbAssertionResults.set(result.assertionResults);
+      commitPbVars(result.afterReceive);
+    } catch (e) {
       currentResponse.set({
-        status: 0, statusText: 'Error', headers: {},
-        body: (typeof e === 'string' ? e : e.message) || 'Request failed.', time: Math.round(performance.now() - startTime), size: 0,
+        status: 0,
+        statusText: 'Error',
+        headers: {},
+        body: errorMessage(e) || 'Request failed.',
+        time: Math.round(performance.now() - startTime),
+        size: 0,
       });
     } finally {
       isLoading.set(false);
@@ -1057,7 +514,7 @@
 
   // ─── Event Handlers ───
 
-  function handleSelect(e: CustomEvent<RequestLocation>) {
+  function handleSelect(loc: RequestLocation) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
@@ -1065,8 +522,9 @@
     // Deactivate any flow tab when selecting a request
     activeFlowTabPath.set(null);
     activeFlowPath.set(null);
-    const loc = e.detail;
-    const hasTab = $tabs.some(t => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex);
+    const hasTab = $tabs.some(
+      (t) => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex,
+    );
     if (hasTab) {
       activateTab(loc);
     } else {
@@ -1074,18 +532,15 @@
     }
   }
 
-  function handlePinRequest(e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>) {
+  function handlePinRequest(detail: { filePath: string; requestIndex: number; label: string }) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
     }
-    pinTab(
-      { filePath: e.detail.filePath, requestIndex: e.detail.requestIndex },
-      e.detail.label,
-    );
+    pinTab({ filePath: detail.filePath, requestIndex: detail.requestIndex }, detail.label);
   }
 
-  function handleTabActivate(e: CustomEvent<RequestLocation>) {
+  function handleTabActivate(location: RequestLocation) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
@@ -1093,355 +548,34 @@
     // Deactivate any flow tab when switching to a request tab
     activeFlowTabPath.set(null);
     activeFlowPath.set(null);
-    activateTab(e.detail);
+    activateTab(location);
   }
 
-  function handleTabClose(e: CustomEvent<RequestLocation>) {
-    closeTab(e.detail);
+  function handleTabClose(location: RequestLocation) {
+    closeTab(location);
   }
 
-  function handleUpdateRequest(e: CustomEvent<HttpRequest>) {
+  function handleUpdateRequest(updated: HttpRequest) {
     if (!$selectedLocation) return;
-    updateRequestInTree($selectedLocation.filePath, $selectedLocation.requestIndex, e.detail);
-  }
-
-  function handleAddRequest(e: CustomEvent<string>) {
-    addRequestToFile(e.detail);
-  }
-
-  function handleDeleteRequest(e: CustomEvent<{ filePath: string; requestIndex: number }>) {
-    deleteRequestFromFile(e.detail.filePath, e.detail.requestIndex);
-  }
-
-  async function handleDeleteFile(e: CustomEvent<string>) {
-    const filePath = e.detail;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      await remove(filePath);
-    } catch (err) {
-      addToast(`Failed to delete file: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    removeFileFromTree(filePath);
-  }
-
-  async function handleDeleteFolder(e: CustomEvent<string>) {
-    const folderPath = e.detail;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      await remove(folderPath, { recursive: true });
-    } catch (err) {
-      addToast(`Failed to delete folder: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    removeFolderFromTree(folderPath);
-  }
-
-  async function handleCreateFile(e: CustomEvent<string | null>) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const folderPath = e.detail || rootPath;
-
-    // Generate unique filename
-    let stem = 'new-request';
-    let fileName = stem + '.http';
-    let filePath = await join(folderPath, fileName);
-    let counter = 2;
-
-    // Check for collisions in the tree
-    const existingNames = new Set<string>();
-    function collectNames(nodes: TreeNode[]) {
-      for (const n of nodes) {
-        if (n.type === 'file') existingNames.add(n.path);
-        if (n.type === 'folder') collectNames(n.children);
-      }
-    }
-    collectNames($workspace.tree);
-
-    while (existingNames.has(filePath)) {
-      fileName = `${stem}-${counter}.http`;
-      filePath = await join(folderPath, fileName);
-      counter++;
-    }
-
-    const fileNode = createEmptyFileNode(filePath, fileName);
-    const content = serializeHttpFile(fileNode.requests, fileNode.variables);
-
-    try {
-      await writeTextFile(filePath, content);
-    } catch (err) {
-      addToast(`Failed to create file: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    fileNode.dirty = false;
-    fileNode.savedContent = content;
-    addFileToTree(folderPath === rootPath ? null : folderPath, fileNode);
-    editingFilePath.set(filePath);
-  }
-
-  async function handleCreateFolder(e: CustomEvent<string | null>) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const parentDir = e.detail || rootPath;
-
-    // Collect sibling names in the target parent
-    const siblings = new Set<string>();
-    function collectSiblings(nodes: TreeNode[], targetPath: string) {
-      for (const n of nodes) {
-        if (n.type === 'folder' && n.path === targetPath) {
-          for (const c of n.children) siblings.add(c.name);
-          return;
-        }
-        if (n.type === 'folder') collectSiblings(n.children, targetPath);
-      }
-    }
-    if (parentDir === rootPath) {
-      for (const n of $workspace.tree) siblings.add(n.name);
-    } else {
-      collectSiblings($workspace.tree, parentDir);
-    }
-
-    const folderName = generateFolderName(siblings);
-    const folderPath = await join(parentDir, folderName);
-
-    try {
-      const { mkdir } = await import('@tauri-apps/plugin-fs');
-      await mkdir(folderPath, { recursive: true });
-    } catch (err) {
-      addToast(`Failed to create folder: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    addFolderToTree(parentDir === rootPath ? null : parentDir, {
-      type: 'folder',
-      name: folderName,
-      path: folderPath,
-      children: [],
-      expanded: true,
-    });
-    editingFolderPath.set(folderPath);
-  }
-
-  async function handleRenameFolder(e: CustomEvent<{ oldPath: string; newName: string }>) {
-    const { oldPath, newName } = e.detail;
-    const dir = await dirname(oldPath);
-    const newPath = await join(dir, newName);
-
-    try {
-      await rename(oldPath, newPath);
-    } catch (err) {
-      addToast(`Failed to rename folder: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    renameFolderInTree(oldPath, newPath, newName);
-    editingFolderPath.set(null);
-  }
-
-  async function handleRenameFile(e: CustomEvent<{ oldPath: string; newName: string }>) {
-    const { oldPath, newName } = e.detail;
-
-    // If file is dirty, save first
-    const file = findFileInTree($workspace.tree, oldPath);
-    if (file && file.dirty) {
-      try {
-        const content = serializeHttpFile(file.requests, file.variables);
-        await writeTextFile(oldPath, content);
-        markFileSaved(oldPath);
-      } catch (err) {
-        addToast(`Failed to save file before rename: ${err instanceof Error ? err.message : err}`, 'error');
-        return;
-      }
-    }
-
-    const dir = await dirname(oldPath);
-    const newPath = await join(dir, newName);
-
-    try {
-      await rename(oldPath, newPath);
-    } catch (err) {
-      addToast(`Failed to rename file: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    renameFileInTree(oldPath, newPath, newName);
-    editingFilePath.set(null);
-  }
-
-  async function handleDuplicateFile(e: CustomEvent<string>) {
-    const sourcePath = e.detail;
-
-    let content: string;
-    try {
-      content = await readTextFile(sourcePath);
-    } catch (err) {
-      addToast(`Failed to read file: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    const dir = await dirname(sourcePath);
-    const sourceBase = await basename(sourcePath);
-    const sourceStem = sourceBase.replace(/\.(http|rest)$/, '');
-
-    // Generate unique copy name
-    let copyStem = `${sourceStem} (copy)`;
-    let copyName = copyStem + '.http';
-    let copyPath = await join(dir, copyName);
-    let counter = 2;
-
-    const existingNames = new Set<string>();
-    function collectNames(nodes: TreeNode[]) {
-      for (const n of nodes) {
-        if (n.type === 'file') existingNames.add(n.path);
-        if (n.type === 'folder') collectNames(n.children);
-      }
-    }
-    collectNames($workspace.tree);
-
-    while (existingNames.has(copyPath)) {
-      copyStem = `${sourceStem} (copy ${counter})`;
-      copyName = copyStem + '.http';
-      copyPath = await join(dir, copyName);
-      counter++;
-    }
-
-    try {
-      await writeTextFile(copyPath, content);
-    } catch (err) {
-      addToast(`Failed to duplicate file: ${err instanceof Error ? err.message : err}`, 'error');
-      return;
-    }
-
-    const fileNode = createFileNode(copyPath, copyName, content);
-    const rootPath = $workspace.rootPath;
-    const parentPath = dir === rootPath ? null : dir;
-    addFileToTree(parentPath, fileNode);
-    editingFilePath.set(copyPath);
-  }
-
-  function handleCancelRename() {
-    editingFilePath.set(null);
-    editingFolderPath.set(null);
-  }
-
-  function handleToggleFolder(e: CustomEvent<string>) {
-    toggleFolder(e.detail);
-  }
-
-
-  /** Resolve the full dependency chain in topological order, then run each unsent request. */
-  async function handleRunAll(e: CustomEvent<string[]>) {
-    const allFiles = getAllFileNodes($workspace.tree);
-    const depRe = /\{\{(\w+)\.(?:request|response)\./g;
-
-    // Build a lookup: varName -> HttpRequest
-    const requestByName = new Map<string, HttpRequest>();
-    for (const file of allFiles) {
-      for (const req of file.requests) {
-        if (req.varName) requestByName.set(req.varName, req);
-      }
-    }
-
-    // Collect transitive dependencies in execution order (deepest first)
-    const ordered: string[] = [];
-    const visited = new Set<string>();
-
-    function resolve(name: string) {
-      if (visited.has(name)) return;
-      visited.add(name);
-      const req = requestByName.get(name);
-      if (!req) return;
-      // Find this request's own dependencies
-      const text = `${req.url} ${req.headers.map(h => h.value).join(' ')} ${req.body}`;
-      let match;
-      const re = new RegExp(depRe.source, 'g');
-      while ((match = re.exec(text)) !== null) {
-        resolve(match[1]);
-      }
-      ordered.push(name);
-    }
-
-    for (const name of e.detail) {
-      resolve(name);
-    }
-
-    // Execute in order, skipping already-sent requests
-    for (const name of ordered) {
-      if ($namedResults[name]) continue;
-      const req = requestByName.get(name);
-      if (req) await sendRequest(req);
-    }
-  }
-
-  function handleNameRequest(e: CustomEvent<{ filePath: string; requestIndex: number; varName: string }>) {
-    const { filePath, requestIndex, varName } = e.detail;
-    const file = findFileInTree($workspace.tree, filePath);
-    if (!file) return;
-    const req = file.requests[requestIndex];
-    if (!req) return;
-    // Block duplicate names
-    if (varName) {
-      const duplicate = getAllFileNodes($workspace.tree).some(f =>
-        f.requests.some((r, ri) =>
-          r.varName === varName && !(f.path === filePath && ri === requestIndex)
-        )
-      );
-      if (duplicate) {
-        addToast(`Name "${varName}" is already in use`);
-        return;
-      }
-    }
-    // Remove old name from namedResults if it changed or was cleared
-    if (req.varName && req.varName !== varName) {
-      namedResults.update(nr => {
-        const updated = { ...nr };
-        delete updated[req.varName!];
-        return updated;
-      });
-    }
-    updateRequestInTree(filePath, requestIndex, { ...req, varName: varName || null });
+    updateRequestInTree($selectedLocation.filePath, $selectedLocation.requestIndex, updated);
   }
 
   // ─── Flow Handlers ───
 
-  function handleOpenFlow(e: CustomEvent<string>) {
-    const path = e.detail;
-    const flow = $flows[path];
-    if (!flow) return;
-    openFlowTab(path, flow.name);
-  }
-
-  async function handleCreateFlow(e: CustomEvent<string>) {
-    const name = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { createEmptyFlow, writeFlowFile } = await import('./lib/flowIO');
-    const flow = createEmptyFlow(name);
-    const safeName = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
-    const flowsDir = await join(rootPath, FLOWS_DIR);
-    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
-    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
-    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
-
-    await writeFlowFile(absolutePath, flow);
-    flows.update(f => ({ ...f, [relativePath]: flow }));
-    openFlowTab(relativePath, flow.name);
-  }
-
+  // Not $state: only read inside handlers, never by the template.
   let flowAbortController: AbortController | null = null;
-  let lastFlowRunRecords: Record<string, FlowRunRecord> = {};
-  let runningFlowPath: string | null = null;
+  const lastFlowRunRecords: Record<string, FlowRunRecord> = $state({});
+  let runningFlowPath: string | null = $state(null);
 
   /** Persisted UI state for flow editors, keyed by flow path. */
-  let flowUIState: Record<string, { expandedStepId: string | null; collapsedKeys: Record<string, boolean>; activeOverrideTabs: Record<string, string> }> = {};
+  const flowUIState: Record<
+    string,
+    {
+      expandedStepId: string | null;
+      collapsedKeys: Record<string, boolean>;
+      activeOverrideTabs: Record<string, string>;
+    }
+  > = $state({});
 
   async function handleRunFlow() {
     const flow = $activeFlow;
@@ -1465,19 +599,35 @@
       $activeEnvironment,
       {
         onStepStart(stepId: string) {
-          flowRunState.update(s => s ? {
-            ...s,
-            stepResults: [...s.stepResults, {
-              stepId, status: 'running', response: null, sentRequest: null,
-              assertionResults: [], durationMs: 0, error: null,
-            }],
-          } : s);
+          flowRunState.update((s) =>
+            s
+              ? {
+                  ...s,
+                  stepResults: [
+                    ...s.stepResults,
+                    {
+                      stepId,
+                      status: 'running',
+                      response: null,
+                      sentRequest: null,
+                      assertionResults: [],
+                      durationMs: 0,
+                      error: null,
+                    },
+                  ],
+                }
+              : s,
+          );
         },
         onStepComplete(stepId: string, result: FlowStepResult) {
-          flowRunState.update(s => s ? {
-            ...s,
-            stepResults: s.stepResults.map(r => r.stepId === stepId ? result : r),
-          } : s);
+          flowRunState.update((s) =>
+            s
+              ? {
+                  ...s,
+                  stepResults: s.stepResults.map((r) => (r.stepId === stepId ? result : r)),
+                }
+              : s,
+          );
         },
       },
       flowAbortController.signal,
@@ -1485,7 +635,6 @@
 
     record.flowFilePath = flowPathVal;
     lastFlowRunRecords[flowPathVal] = record;
-    lastFlowRunRecords = lastFlowRunRecords; // trigger reactivity
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
     runningFlowPath = null;
 
@@ -1493,11 +642,16 @@
     // globals stay inside the FlowRunRecord and do not cross back into the
     // workspace stores the regular request editor / inspector reads from.
 
-    // Persist and update history
+    // Persist and update history. Resolved Key Vault values are scrubbed from
+    // the on-disk copy so no secrets land in run history; the in-memory record
+    // (lastFlowRunRecords / flowRunState) keeps real values for this session.
     try {
-      await saveFlowRunRecord(rootPath, record);
-      flowRunHistory.update(h => [record, ...h]);
-    } catch { /* save failed silently */ }
+      const secretValues = Object.values($keyVaultState.variables ?? {});
+      await saveFlowRunRecord(rootPath, record, secretValues);
+      flowRunHistory.update((h) => [record, ...h]);
+    } catch {
+      /* save failed silently */
+    }
 
     flowAbortController = null;
   }
@@ -1506,88 +660,43 @@
     flowAbortController?.abort();
   }
 
-  async function handleSaveFlow(e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>) {
-    const { flowPath, flow } = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { writeFlowFile } = await import('./lib/flowIO');
-    const absolutePath = await safeJoinPath(rootPath, flowPath);
-    await writeFlowFile(absolutePath, flow);
-    flows.update(f => ({ ...f, [flowPath]: flow }));
-
-    // Update tab label if the name changed
-    flowTabs.update(ts => ts.map(t =>
-      t.flowPath === flowPath ? { ...t, label: flow.name } : t
-    ));
-  }
-
-  async function handleDuplicateFlow(e: CustomEvent<string>) {
-    const sourcePath = e.detail;
-    const sourceFlow = $flows[sourcePath];
-    if (!sourceFlow) return;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { writeFlowFile } = await import('./lib/flowIO');
-    const newName = `${sourceFlow.name} (copy)`;
-    const newFlow = { ...sourceFlow, name: newName, steps: sourceFlow.steps.map(s => ({ ...s, id: crypto.randomUUID() })) };
-    const safeName = newName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed';
-    const flowsDir = await join(rootPath, FLOWS_DIR);
-    try { await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true }); } catch { /* exists */ }
-    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
-    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
-
-    await writeFlowFile(absolutePath, newFlow);
-    flows.update(f => ({ ...f, [relativePath]: newFlow }));
-    openFlowTab(relativePath, newFlow.name);
-  }
-
-  async function handleDeleteFlow(e: CustomEvent<string>) {
-    const path = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      const absolutePath = await safeJoinPath(rootPath, path);
-      await remove(absolutePath);
-    } catch {
-      // Silently ignore - flow file may not exist on disk
-    }
-
-    flows.update(f => {
-      const updated = { ...f };
-      delete updated[path];
-      return updated;
-    });
+  async function handleDeleteFlow(path: string) {
     delete flowUIState[path];
-    closeFlowTab(path);
+    await deleteFlow(path);
   }
 </script>
 
 <ToastContainer />
-<HelpModal visible={showHelp} on:close={() => showHelp = false} />
+<HelpModal visible={showHelp} onClose={() => (showHelp = false)} />
 <SettingsModal
   visible={showSettings}
-  currentTheme={currentTheme}
-  onchangeTheme={(id) => { currentTheme = id; setTheme(id); }}
-  onclose={() => showSettings = false}
+  {currentTheme}
+  onchangeTheme={(id) => {
+    currentTheme = id;
+    setTheme(id);
+  }}
+  onclose={() => {
+    showSettings = false;
+    void refreshMcpStatus();
+  }}
 />
 <VariableInspector
   visible={showVarInspector}
   fileVariables={$activeFileVariables}
   envVariables={$resolvedEnvVars}
   envVarSources={$baseEnvVarsWithSource}
-  kvVariables={$keyVaultState.status === 'loaded' && $keyVaultState.cacheKey?.startsWith($activeEnvironment + '::') ? $keyVaultState.variables : {}}
+  kvVariables={$keyVaultState.status === 'loaded' &&
+  $keyVaultState.cacheKey?.startsWith($activeEnvironment + '::')
+    ? $keyVaultState.variables
+    : {}}
   varSourcePrefs={$varSourcePrefs}
   pbOverrides={$activeFileOverrides}
   pbGlobals={$pbGlobals}
   namedResults={$namedResults}
   activeEnv={$activeEnvironment}
   activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
-  on:close={() => showVarInspector = false}
-  on:clearRuntime={() => {
+  onClose={() => (showVarInspector = false)}
+  onClearRuntime={() => {
     pbFileOverrides.set({});
     pbGlobals.set({});
     namedResults.set({});
@@ -1598,67 +707,62 @@
   variables={pendingImportVars}
   existingEnvironments={$availableEnvironments}
   hasEnvFile={$envFile !== null}
-  on:confirm={handleImportEnvConfirm}
-  on:skip={handleImportEnvSkip}
+  onConfirm={handleImportEnvConfirm}
+  onSkip={handleImportEnvSkip}
 />
 <ImportCollectionModal
   visible={showImportCollectionModal}
-  on:importFile={handleImportFile}
-  on:importUrl={handleImportUrl}
-  on:cancel={() => showImportCollectionModal = false}
+  onImportFile={handleImportFile}
+  onImportUrl={handleImportUrl}
+  onCancel={() => (showImportCollectionModal = false)}
+/>
+<AddFavoriteModal
+  visible={showAddFavoriteModal}
+  folderPath={pendingFavoritePath}
+  defaultName={pendingFavoriteName}
+  onConfirm={confirmAddFavorite}
+  onCancel={cancelAddFavorite}
 />
 
-<svelte:window
-  on:dragover|preventDefault={() => {}}
-  on:drop|preventDefault={() => {}}
-/>
+<svelte:window ondragover={(e) => e.preventDefault()} ondrop={(e) => e.preventDefault()} />
 
 <main class="app">
-  <div class="titlebar" data-tauri-drag-region></div>
+  <div class="titlebar" data-tauri-drag-region>
+    {#if mcpRunning}
+      <button
+        class="mcp-pill"
+        onclick={() => (showSettings = true)}
+        title="MCP server running on port {mcpPort}"
+      >
+        <span class="mcp-dot"></span>
+        MCP :{mcpPort}
+      </button>
+    {/if}
+  </div>
 
-  <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
+  <div class={['layout', { 'sidebar-dragging': sidebarDragging }]} bind:this={layoutEl}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
       <TreeSidebar
-        tree={$workspace.tree}
         selected={$selectedLocation}
-        rootName={$workspace.rootName}
-        hasWorkspace={!!$workspace.rootPath}
         editingFilePath={$editingFilePath}
         editingFolderPath={$editingFolderPath}
-        environments={$availableEnvironments}
-        activeEnv={$activeEnvironment}
-        flows={$flows}
-        activeFlowPath={$activeFlowTabPath}
-        on:openFolder={openFolder}
-        on:openGettingStarted={openGettingStarted}
-        on:importCollection={() => showImportCollectionModal = true}
-        on:select={handleSelect}
-        on:pinRequest={handlePinRequest}
-        on:toggleFolder={handleToggleFolder}
-        on:addRequest={handleAddRequest}
-        on:deleteRequest={handleDeleteRequest}
-        on:deleteFile={handleDeleteFile}
-        on:deleteFolder={handleDeleteFolder}
-        on:createFile={handleCreateFile}
-        on:createFolder={handleCreateFolder}
-        on:renameFile={handleRenameFile}
-        on:renameFolder={handleRenameFolder}
-        on:duplicateFile={handleDuplicateFile}
-        on:cancelRename={handleCancelRename}
-        on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-        on:editEnv={() => showEnvEditor = true}
-        on:openVarInspector={() => showVarInspector = true}
-        on:openHelp={() => showHelp = true}
-        on:openSettings={() => showSettings = true}
-        on:nameRequest={handleNameRequest}
-        on:openFlow={handleOpenFlow}
-        on:createFlow={handleCreateFlow}
-        on:duplicateFlow={handleDuplicateFlow}
-        on:deleteFlow={handleDeleteFlow}
+        onOpenFolder={openFolder}
+        onOpenGettingStarted={openGettingStarted}
+        onToggleFavorite={toggleFavorite}
+        onOpenFavorite={openFavorite}
+        onRemoveFavorite={removeFavorite}
+        onImportCollection={() => (showImportCollectionModal = true)}
+        onSelect={handleSelect}
+        onPinRequest={handlePinRequest}
+        onEditEnv={() => (showEnvEditor = true)}
+        onOpenVarInspector={() => (showVarInspector = true)}
+        onOpenHelp={() => (showHelp = true)}
+        onOpenSettings={() => (showSettings = true)}
+        onDeleteFlow={handleDeleteFlow}
       />
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
+    <div class="sidebar-divider" onmousedown={onSidebarDividerDown} role="separator"></div>
 
     <div class="main-area">
       <TabBar
@@ -1668,12 +772,15 @@
         previewLabel={$activeRequest?.name ?? ''}
         flowTabs={$flowTabs}
         activeFlowPath={$activeFlowTabPath}
-        on:activate={handleTabActivate}
-        on:close={handleTabClose}
-        on:activateFlowTab={(e) => activateFlowTab(e.detail)}
-        on:closeFlowTab={(e) => { delete flowUIState[e.detail]; closeFlowTab(e.detail); }}
+        onActivate={handleTabActivate}
+        onClose={handleTabClose}
+        onActivateFlowTab={(flowPath) => activateFlowTab(flowPath)}
+        onCloseFlowTab={(flowPath) => {
+          delete flowUIState[flowPath];
+          closeFlowTab(flowPath);
+        }}
       />
-      <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
+      <div class={['main-panels', { dragging }]} bind:this={mainPanelsEl}>
         {#if showEnvEditor}
           <div class="env-editor-pane">
             <EnvironmentEditor
@@ -1681,24 +788,16 @@
               userEnvFile={$userEnvFile}
               activeEnv={$activeEnvironment ?? '$shared'}
               kvState={$keyVaultState}
-              on:update={(e) => {
-                envFile.set(e.detail);
-                saveEnvFile(e.detail);
+              onUpdate={(updated) => {
+                envFile.set(updated);
+                saveEnvFile(updated);
               }}
-              on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-              on:close={() => showEnvEditor = false}
-              on:sourcePref={(e) => {
-                varSourcePrefs.update(p => ({ ...p, [e.detail.key]: e.detail.source }));
+              onChangeEnv={(env) => activeEnvironment.set(env)}
+              onClose={() => (showEnvEditor = false)}
+              onSourcePref={(key, source) => {
+                varSourcePrefs.update((p) => ({ ...p, [key]: source }));
               }}
-              on:refreshKv={(e) => {
-                // Invalidate cache for this env so fresh secrets are fetched
-                for (const key of Object.keys(kvCache)) {
-                  if (key.startsWith(e.detail + '::')) delete kvCache[key];
-                }
-                kvCache = kvCache;
-                keyVaultState.update(s => ({ ...s, cacheKey: null }));
-                refreshKeyVaultSecrets(e.detail);
-              }}
+              onRefreshKv={(env) => refreshKeyVaultForEnv(env)}
             />
           </div>
         {:else if $activeFlowTabPath && $activeFlow}
@@ -1709,16 +808,19 @@
             rootPath={$workspace.rootPath ?? ''}
             runState={runningFlowPath === $activeFlowTabPath ? $flowRunState : null}
             lastRunRecord={lastFlowRunRecords[$activeFlowTabPath] ?? null}
-            runHistory={$flowRunHistory.filter(r => r.flowFilePath === $activeFlowTabPath)}
+            runHistory={$flowRunHistory.filter((r) => r.flowFilePath === $activeFlowTabPath)}
             uiState={flowUIState[$activeFlowTabPath] ?? null}
-            on:uiStateChange={(e) => { flowUIState[$activeFlowTabPath] = e.detail; flowUIState = flowUIState; }}
-            on:save={handleSaveFlow}
-            on:run={handleRunFlow}
-            on:abort={handleAbortFlow}
-            on:clearHistory={() => {
-              flowRunHistory.set($flowRunHistory.filter(r => r.flowFilePath !== $activeFlowTabPath));
+            onUiStateChange={(state) => {
+              flowUIState[$activeFlowTabPath] = state;
+            }}
+            onSave={(detail) => saveFlow(detail.flowPath, detail.flow)}
+            onRun={handleRunFlow}
+            onAbort={handleAbortFlow}
+            onClearHistory={() => {
+              flowRunHistory.set(
+                $flowRunHistory.filter((r) => r.flowFilePath !== $activeFlowTabPath),
+              );
               delete lastFlowRunRecords[$activeFlowTabPath];
-              lastFlowRunRecords = lastFlowRunRecords;
               if ($workspace.rootPath && $activeFlow) {
                 clearFlowRunHistory($workspace.rootPath, $activeFlow.name);
               }
@@ -1735,17 +837,24 @@
               envVariables={$resolvedEnvVars}
               namedResults={$namedResults}
               bottomTab={activeBottomTab}
-              on:update={handleUpdateRequest}
-              on:send={(e) => sendRequest(e.detail)}
-              on:save={saveActiveFile}
-              on:runAll={handleRunAll}
-              on:bottomTabChange={handleBottomTabChange}
+              onUpdate={handleUpdateRequest}
+              onSend={sendRequest}
+              onSave={saveActiveFile}
+              onRunAll={(deps) => runAllRequests(deps, sendRequest)}
+              onBottomTabChange={handleBottomTabChange}
             />
           </div>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
+          <div class="divider" onmousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
-            <ResponseViewer response={$currentResponse} loading={$isLoading} sentRequest={$currentSentRequest} assertionResults={$pbAssertionResults} activeTab={activeResponseTab} on:tabChange={handleResponseTabChange} />
+            <ResponseViewer
+              response={$currentResponse}
+              loading={$isLoading}
+              sentRequest={$currentSentRequest}
+              assertionResults={$pbAssertionResults}
+              activeTab={activeResponseTab}
+              onTabChange={handleResponseTabChange}
+            />
           </div>
         {:else}
           <div class="no-selection">
@@ -1759,31 +868,78 @@
 
 <style>
   :global(*) {
-    margin: 0; padding: 0; box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
   :global(body) {
     font-family: var(--font-ui);
-    background: var(--color-bg); color: var(--color-text);
-    overflow: hidden; font-size: var(--text-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+    overflow: hidden;
+    font-size: var(--text-md);
   }
 
   .app {
-    display: flex; flex-direction: column;
-    height: 100vh; background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--color-bg);
   }
 
   .titlebar {
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
     height: 28px;
-    background: var(--color-bg-sidebar); border-bottom: 1px solid var(--color-divider);
-    -webkit-app-region: drag; user-select: none; flex-shrink: 0;
+    padding-right: var(--space-2);
+    background: var(--color-bg-sidebar);
+    border-bottom: 1px solid var(--color-divider);
+    -webkit-app-region: drag;
+    user-select: none;
+    flex-shrink: 0;
   }
-  .layout { display: flex; flex: 1; overflow: hidden; }
+  .mcp-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    color: var(--color-primary);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono, monospace);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+    transition:
+      background var(--duration-normal),
+      border-color var(--duration-normal);
+  }
+  .mcp-pill:hover {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 70%, transparent);
+  }
+  .mcp-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    box-shadow: 0 0 4px var(--color-primary);
+  }
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
 
   .sidebar-container {
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     background: var(--color-bg-sidebar);
-    flex-shrink: 0; overflow: hidden;
+    flex-shrink: 0;
+    overflow: hidden;
   }
 
   .sidebar-divider {
@@ -1793,16 +949,40 @@
     background: var(--color-divider);
     transition: background var(--duration-normal);
   }
-  .sidebar-divider:hover, .sidebar-dragging .sidebar-divider {
+  .sidebar-divider:hover,
+  .sidebar-dragging .sidebar-divider {
     background: var(--color-primary);
   }
-  .sidebar-dragging { cursor: col-resize; user-select: none; }
+  .sidebar-dragging {
+    cursor: col-resize;
+    user-select: none;
+  }
 
-  .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .main-panels { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
-  .main-panels.dragging { cursor: col-resize; user-select: none; }
-  .editor-pane { overflow: auto; min-width: 0; }
-  .response-pane { flex: 1; overflow: auto; min-width: 0; }
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .main-panels {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+  }
+  .main-panels.dragging {
+    cursor: col-resize;
+    user-select: none;
+  }
+  .editor-pane {
+    overflow: auto;
+    min-width: 0;
+  }
+  .response-pane {
+    flex: 1;
+    overflow: auto;
+    min-width: 0;
+  }
 
   .divider {
     width: 3px;
@@ -1811,14 +991,25 @@
     background: var(--color-divider);
     transition: background var(--duration-normal);
   }
-  .divider:hover, .dragging .divider {
+  .divider:hover,
+  .dragging .divider {
     background: var(--color-primary);
   }
-  .env-editor-pane { flex: 1; overflow: auto; }
+  .env-editor-pane {
+    flex: 1;
+    overflow: auto;
+  }
 
   .no-selection {
-    flex: 1; display: flex;
-    align-items: center; justify-content: center;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  .no-sel-logo { width: 360px; height: 360px; object-fit: contain; opacity: 0.45; }
+  .no-sel-logo {
+    width: 360px;
+    height: 360px;
+    object-fit: contain;
+    opacity: 0.45;
+  }
 </style>

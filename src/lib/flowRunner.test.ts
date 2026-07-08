@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { FileNode, TreeNode } from './types';
-import { getAllFileNodes, createFileNode } from './parser';
+import { createFileNode } from './workspaceTree';
+import { getAllFileNodes } from './tree';
 
 // ─── getAllFileNodes (used by flow runner to resolve step targets) ───────────
 
@@ -38,13 +39,23 @@ describe('getAllFileNodes', () => {
   });
 
   it('handles deeply nested folders', () => {
-    const tree: TreeNode[] = [{
-      type: 'folder', name: 'a', path: '/root/a', expanded: false,
-      children: [{
-        type: 'folder', name: 'b', path: '/root/a/b', expanded: false,
-        children: [makeFileNode('/root/a/b/deep.http', 'deep.http')],
-      }],
-    }];
+    const tree: TreeNode[] = [
+      {
+        type: 'folder',
+        name: 'a',
+        path: '/root/a',
+        expanded: false,
+        children: [
+          {
+            type: 'folder',
+            name: 'b',
+            path: '/root/a/b',
+            expanded: false,
+            children: [makeFileNode('/root/a/b/deep.http', 'deep.http')],
+          },
+        ],
+      },
+    ];
     const files = getAllFileNodes(tree);
     expect(files).toHaveLength(1);
     expect(files[0].name).toBe('deep.http');
@@ -55,7 +66,11 @@ describe('getAllFileNodes', () => {
 
 describe('createFileNode', () => {
   it('parses requests from content', () => {
-    const node = createFileNode('/root/test.http', 'test.http', 'GET https://example.com\n\n###\n\nPOST https://example.com\n');
+    const node = createFileNode(
+      '/root/test.http',
+      'test.http',
+      'GET https://example.com\n\n###\n\nPOST https://example.com\n',
+    );
     expect(node.requests).toHaveLength(2);
     expect(node.requests[0].method).toBe('GET');
     expect(node.requests[1].method).toBe('POST');
@@ -68,7 +83,11 @@ describe('createFileNode', () => {
   });
 
   it('preserves varName from @name directive', () => {
-    const node = createFileNode('/root/test.http', 'test.http', '# @name login\nPOST https://example.com/login\n');
+    const node = createFileNode(
+      '/root/test.http',
+      'test.http',
+      '# @name login\nPOST https://example.com/login\n',
+    );
     expect(node.requests[0].varName).toBe('login');
   });
 

@@ -1,50 +1,78 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import type { Variable, NamedRequestResult, ResolvedVarWithCascade, VarSourceLayer, VarSource } from '../lib/types';
+  import type {
+    Variable,
+    NamedRequestResult,
+    ResolvedVarWithCascade,
+    VarSourceLayer,
+    VarSource,
+  } from '../lib/types';
 
-  export let visible: boolean = false;
-  export let fileVariables: Variable[] = [];
-  export let envVariables: Record<string, string> = {};
-  export let envVarSources: Record<string, ResolvedVarWithCascade> = {};
-  export let kvVariables: Record<string, string> = {};
-  export let varSourcePrefs: Record<string, VarSource> = {};
-  export let pbOverrides: Record<string, string> = {};
-  export let pbGlobals: Record<string, string> = {};
-  export let namedResults: Record<string, NamedRequestResult> = {};
-  export let activeEnv: string | null = null;
-  export let activeFileName: string = '';
+  interface Props {
+    visible?: boolean;
+    fileVariables?: Variable[];
+    envVariables?: Record<string, string>;
+    envVarSources?: Record<string, ResolvedVarWithCascade>;
+    kvVariables?: Record<string, string>;
+    varSourcePrefs?: Record<string, VarSource>;
+    pbOverrides?: Record<string, string>;
+    pbGlobals?: Record<string, string>;
+    namedResults?: Record<string, NamedRequestResult>;
+    activeEnv?: string | null;
+    activeFileName?: string;
+    onClose?: () => void;
+    onClearRuntime?: () => void;
+  }
 
-  const dispatch = createEventDispatcher<{
-    close: void;
-    clearRuntime: void;
-  }>();
+  let {
+    visible = false,
+    fileVariables = [],
+    envVariables = {},
+    envVarSources = {},
+    kvVariables = {},
+    varSourcePrefs = {},
+    pbOverrides = {},
+    pbGlobals = {},
+    namedResults = {},
+    activeEnv = null,
+    activeFileName = '',
+    onClose,
+    onClearRuntime,
+  }: Props = $props();
 
-  let fileExpanded = true;
-  let envExpanded = true;
-  let runtimeExpanded = true;
+  let fileExpanded = $state(true);
+  let envExpanded = $state(true);
+  let runtimeExpanded = $state(true);
 
-  let searchQuery = '';
-  let showKvSecrets = false;
-  let copiedKey: string | null = null;
+  let searchQuery = $state('');
+  let showKvSecrets = $state(false);
+  let copiedKey: string | null = $state(null);
   let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  let expandedCascadeKey: string | null = null;
+  let expandedCascadeKey: string | null = $state(null);
 
   function sourceTagLabel(source: VarSourceLayer): string {
     switch (source) {
-      case 'shared': return 'SHARED';
-      case 'user-shared': return 'SHARED.USER';
-      case 'env': return 'ENV';
-      case 'user-env': return 'ENV.USER';
+      case 'shared':
+        return 'SHARED';
+      case 'user-shared':
+        return 'SHARED.USER';
+      case 'env':
+        return 'ENV';
+      case 'user-env':
+        return 'ENV.USER';
     }
   }
 
   function sourceTagClass(source: VarSourceLayer): string {
     switch (source) {
-      case 'shared': return 'source-shared';
-      case 'user-shared': return 'source-user';
-      case 'env': return 'source-env';
-      case 'user-env': return 'source-user';
+      case 'shared':
+        return 'source-shared';
+      case 'user-shared':
+        return 'source-user';
+      case 'env':
+        return 'source-env';
+      case 'user-env':
+        return 'source-user';
     }
   }
 
@@ -65,62 +93,98 @@
     const srcInfo = envVarSources[key];
     if (!srcInfo) return 5;
     switch (srcInfo.source) {
-      case 'user-env':    return 1;
-      case 'env':         return 2;
-      case 'user-shared': return 3;
-      case 'shared':      return 4;
+      case 'user-env':
+        return 1;
+      case 'env':
+        return 2;
+      case 'user-shared':
+        return 3;
+      case 'shared':
+        return 4;
     }
   }
 
-  $: if (visible) { searchQuery = ''; copiedKey = null; showKvSecrets = false; expandedCascadeKey = null; }
+  // Reset transient inspector state each time the modal opens.
+  $effect(() => {
+    if (visible) {
+      searchQuery = '';
+      copiedKey = null;
+      showKvSecrets = false;
+      expandedCascadeKey = null;
+    }
+  });
 
-  $: envEntries = Object.entries(envVariables).filter(([k]) =>
-    !(k in pbOverrides) && !(k in pbGlobals)
+  const envEntries = $derived(
+    Object.entries(envVariables).filter(([k]) => !(k in pbOverrides) && !(k in pbGlobals)),
   );
-  $: overrideEntries = Object.entries(pbOverrides).filter(([k]) => !(k in pbGlobals));
-  $: globalEntries = Object.entries(pbGlobals);
-  $: namedEntries = Object.entries(namedResults).filter(([k]) => !k.startsWith('__pb_'));
+  const overrideEntries = $derived(Object.entries(pbOverrides).filter(([k]) => !(k in pbGlobals)));
+  const globalEntries = $derived(Object.entries(pbGlobals));
+  const namedEntries = $derived(Object.entries(namedResults));
 
-  $: runtimeCount = overrideEntries.length + globalEntries.length + namedEntries.length;
-  $: hasRuntime = runtimeCount > 0;
+  const runtimeCount = $derived(
+    overrideEntries.length + globalEntries.length + namedEntries.length,
+  );
+  const hasRuntime = $derived(runtimeCount > 0);
 
-  $: searchQueryLower = searchQuery.trim().toLowerCase();
+  const searchQueryLower = $derived(searchQuery.trim().toLowerCase());
 
-  $: filteredFileVars = searchQueryLower
-    ? fileVariables.filter(v =>
-        v.key.toLowerCase().includes(searchQueryLower) ||
-        v.value.toLowerCase().includes(searchQueryLower)
-      )
-    : fileVariables;
-  $: filteredEnvEntries = (searchQueryLower
-    ? envEntries.filter(([k, v]) =>
-        k.toLowerCase().includes(searchQueryLower) ||
-        v.toLowerCase().includes(searchQueryLower)
-      )
-    : envEntries
-  ).slice().sort((a, b) => sourcePriority(a[0]) - sourcePriority(b[0]));
-  $: filteredOverrides = searchQueryLower
-    ? overrideEntries.filter(([k, v]) =>
-        k.toLowerCase().includes(searchQueryLower) ||
-        v.toLowerCase().includes(searchQueryLower)
-      )
-    : overrideEntries;
-  $: filteredGlobals = searchQueryLower
-    ? globalEntries.filter(([k, v]) =>
-        k.toLowerCase().includes(searchQueryLower) ||
-        v.toLowerCase().includes(searchQueryLower)
-      )
-    : globalEntries;
-  $: filteredNamed = searchQueryLower
-    ? namedEntries.filter(([name, result]) => {
-        const summary = `${result.request.method} ${result.response.status}`.toLowerCase();
-        return name.toLowerCase().includes(searchQueryLower) || summary.includes(searchQueryLower);
-      })
-    : namedEntries;
-  $: filteredRuntimeCount = filteredOverrides.length + filteredGlobals.length + filteredNamed.length;
+  const filteredFileVars = $derived(
+    searchQueryLower
+      ? fileVariables.filter(
+          (v) =>
+            v.key.toLowerCase().includes(searchQueryLower) ||
+            v.value.toLowerCase().includes(searchQueryLower),
+        )
+      : fileVariables,
+  );
+  const filteredEnvEntries = $derived(
+    (searchQueryLower
+      ? envEntries.filter(
+          ([k, v]) =>
+            k.toLowerCase().includes(searchQueryLower) ||
+            v.toLowerCase().includes(searchQueryLower),
+        )
+      : envEntries
+    )
+      .slice()
+      .sort((a, b) => sourcePriority(a[0]) - sourcePriority(b[0])),
+  );
+  const filteredOverrides = $derived(
+    searchQueryLower
+      ? overrideEntries.filter(
+          ([k, v]) =>
+            k.toLowerCase().includes(searchQueryLower) ||
+            v.toLowerCase().includes(searchQueryLower),
+        )
+      : overrideEntries,
+  );
+  const filteredGlobals = $derived(
+    searchQueryLower
+      ? globalEntries.filter(
+          ([k, v]) =>
+            k.toLowerCase().includes(searchQueryLower) ||
+            v.toLowerCase().includes(searchQueryLower),
+        )
+      : globalEntries,
+  );
+  const filteredNamed = $derived(
+    searchQueryLower
+      ? namedEntries.filter(([name, result]) => {
+          const summary = `${result.request.method} ${result.response.status}`.toLowerCase();
+          return (
+            name.toLowerCase().includes(searchQueryLower) || summary.includes(searchQueryLower)
+          );
+        })
+      : namedEntries,
+  );
+  const filteredRuntimeCount = $derived(
+    filteredOverrides.length + filteredGlobals.length + filteredNamed.length,
+  );
 
-  $: totalCount = fileVariables.length + envEntries.length + runtimeCount;
-  $: filteredTotal = filteredFileVars.length + filteredEnvEntries.length + filteredRuntimeCount;
+  const totalCount = $derived(fileVariables.length + envEntries.length + runtimeCount);
+  const filteredTotal = $derived(
+    filteredFileVars.length + filteredEnvEntries.length + filteredRuntimeCount,
+  );
 
   function masked(val: string): string {
     return '*'.repeat(Math.min(val.length, 12));
@@ -135,14 +199,16 @@
       await navigator.clipboard.writeText(`{{${key}}}`);
       copiedKey = key;
       if (copiedTimeout) clearTimeout(copiedTimeout);
-      copiedTimeout = setTimeout(() => { copiedKey = null; }, 1500);
+      copiedTimeout = setTimeout(() => {
+        copiedKey = null;
+      }, 1500);
     } catch {
       // Silent fail in sandboxed environments
     }
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') dispatch('close');
+    if (e.key === 'Escape') onClose?.();
   }
 
   function badgeText(filtered: number, total: number): string {
@@ -151,11 +217,18 @@
   }
 </script>
 
-<svelte:window on:keydown={visible ? handleKeydown : undefined} />
+<svelte:window onkeydown={visible ? handleKeydown : undefined} />
 
 {#if visible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="overlay" on:click|self={() => dispatch('close')} role="dialog" tabindex="-1">
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) onClose?.();
+    }}
+    role="dialog"
+    tabindex="-1"
+  >
     <div class="modal">
       <div class="modal-header">
         <span class="title-group">
@@ -164,25 +237,36 @@
             <span class="active-env-badge">{activeEnv}</span>
           {/if}
         </span>
-        <button class="btn-close" on:click={() => dispatch('close')}>&times;</button>
+        <button class="btn-close" onclick={() => onClose?.()}>&times;</button>
       </div>
 
       <div class="modal-body">
         <div class="search-bar">
-          <input
-            class="search-input"
-            bind:value={searchQuery}
-            placeholder="Filter variables..."
-          />
+          <input class="search-input" bind:value={searchQuery} placeholder="Filter variables..." />
         </div>
 
         <div class="sections">
           {#if totalCount === 0}
             <div class="empty-state">
               <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                <path d="M10 6C8.5 6 7.5 7 7.5 8.5v15c0 1.5 1 2.5 2.5 2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                <path d="M22 6c1.5 0 2.5 1 2.5 2.5v15c0 1.5-1 2.5-2.5 2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                <path d="M13 13h6M13 17h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path
+                  d="M10 6C8.5 6 7.5 7 7.5 8.5v15c0 1.5 1 2.5 2.5 2.5"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M22 6c1.5 0 2.5 1 2.5 2.5v15c0 1.5-1 2.5-2.5 2.5"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M13 13h6M13 17h4"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
               </svg>
               <p class="empty-title">No variables in scope</p>
               <p class="empty-hint">
@@ -199,14 +283,22 @@
             <!-- File Variables -->
             {#if fileVariables.length > 0}
               <section class="group">
-                <button class="group-header" on:click={() => fileExpanded = !fileExpanded}>
-                  <span class="chevron" class:open={fileExpanded}>
+                <button class="group-header" onclick={() => (fileExpanded = !fileExpanded)}>
+                  <span class={['chevron', { open: fileExpanded }]}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path
+                        d="M3 1.5l4 3.5-4 3.5"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
                     </svg>
                   </span>
                   <span class="group-label">File Variables</span>
-                  <span class="badge">{badgeText(filteredFileVars.length, fileVariables.length)}</span>
+                  <span class="badge"
+                    >{badgeText(filteredFileVars.length, fileVariables.length)}</span
+                  >
                 </button>
                 {#if fileExpanded}
                   <div class="group-body">
@@ -214,12 +306,17 @@
                       <p class="empty">No matches in file variables.</p>
                     {:else}
                       {#each filteredFileVars as v}
-                        <button class="row" class:copied={copiedKey === v.key} on:click={() => copyRef(v.key)}>
+                        <button
+                          class={['row', { copied: copiedKey === v.key }]}
+                          onclick={() => copyRef(v.key)}
+                        >
                           <span class="tag file">FILE</span>
                           <span class="key" title={v.key}>{v.key}</span>
                           <span class="sep">=</span>
                           <span class="val" title={v.value}>{truncate(v.value, 60)}</span>
-                          <span class="row-action">{copiedKey === v.key ? 'Copied' : 'Copy ref'}</span>
+                          <span class="row-action"
+                            >{copiedKey === v.key ? 'Copied' : 'Copy ref'}</span
+                          >
                         </button>
                       {/each}
                     {/if}
@@ -231,22 +328,33 @@
             <!-- Environment Variables -->
             {#if envEntries.length > 0}
               <section class="group">
-                <button class="group-header" on:click={() => envExpanded = !envExpanded}>
-                  <span class="chevron" class:open={envExpanded}>
+                <button class="group-header" onclick={() => (envExpanded = !envExpanded)}>
+                  <span class={['chevron', { open: envExpanded }]}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path
+                        d="M3 1.5l4 3.5-4 3.5"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
                     </svg>
                   </span>
                   <span class="group-label">Environment</span>
-                  <span class="badge">{badgeText(filteredEnvEntries.length, envEntries.length)}</span>
+                  <span class="badge"
+                    >{badgeText(filteredEnvEntries.length, envEntries.length)}</span
+                  >
                   {#if Object.keys(kvVariables).length > 0}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <span
                       class="kv-reveal-toggle"
                       role="button"
                       tabindex="0"
-                      on:click|stopPropagation={() => showKvSecrets = !showKvSecrets}
-                    >{showKvSecrets ? '[Hide secrets]' : '[Show secrets]'}</span>
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        showKvSecrets = !showKvSecrets;
+                      }}>{showKvSecrets ? '[Hide secrets]' : '[Show secrets]'}</span
+                    >
                   {/if}
                 </button>
                 {#if envExpanded}
@@ -263,19 +371,32 @@
                         {@const totalSources = envLayerCount + (kvAvailable ? 1 : 0)}
                         {@const hasCascade = totalSources > 1}
                         {@const cascadeCount = totalSources}
-                        {@const displayValue = isKv ? (kvLoaded ? (showKvSecrets ? value : masked(value)) : '(pending)') : value}
+                        {@const displayValue = isKv
+                          ? kvLoaded
+                            ? showKvSecrets
+                              ? value
+                              : masked(value)
+                            : '(pending)'
+                          : value}
                         <div class="env-row-wrapper">
-                          <button class="row" class:copied={copiedKey === key} on:click={() => copyRef(key)}>
+                          <button
+                            class={['row', { copied: copiedKey === key }]}
+                            onclick={() => copyRef(key)}
+                          >
                             {#if isKv}
                               <span class="tag kv">KV</span>
                             {:else if srcInfo}
-                              <span class="tag {sourceTagClass(srcInfo.source)}">{sourceTagLabel(srcInfo.source)}</span>
+                              <span class="tag {sourceTagClass(srcInfo.source)}"
+                                >{sourceTagLabel(srcInfo.source)}</span
+                              >
                             {:else}
                               <span class="tag env">ENV</span>
                             {/if}
                             <span class="key" title={key}>{key}</span>
                             <span class="sep">=</span>
-                            <span class="val" title={isKv && !showKvSecrets ? '' : value}>{truncate(displayValue, 60)}</span>
+                            <span class="val" title={isKv && !showKvSecrets ? '' : value}
+                              >{truncate(displayValue, 60)}</span
+                            >
                             {#if hasCascade}
                               <!-- svelte-ignore a11y_click_events_have_key_events -->
                               <span
@@ -283,25 +404,41 @@
                                 role="button"
                                 tabindex="0"
                                 title="Defined in {cascadeCount} layers"
-                                on:click|stopPropagation={() => toggleCascade(key)}
-                              >{cascadeCount} layers</span>
+                                onclick={(e) => {
+                                  e.stopPropagation();
+                                  toggleCascade(key);
+                                }}>{cascadeCount} layers</span
+                              >
                             {/if}
-                            <span class="row-action">{copiedKey === key ? 'Copied' : 'Copy ref'}</span>
+                            <span class="row-action"
+                              >{copiedKey === key ? 'Copied' : 'Copy ref'}</span
+                            >
                           </button>
                           {#if hasCascade && expandedCascadeKey === key}
                             <div class="cascade-detail">
                               {#if kvAvailable && !isKv}
                                 <div class="cascade-layer loser">
                                   <span class="tag tag-sm kv">KV</span>
-                                  <span class="cascade-value strikethrough">{truncate(showKvSecrets && kvLoaded ? kvVariables[key] : masked(kvLoaded ? kvVariables[key] : '?'), 50)}</span>
+                                  <span class="cascade-value strikethrough"
+                                    >{truncate(
+                                      showKvSecrets && kvLoaded
+                                        ? kvVariables[key]
+                                        : masked(kvLoaded ? kvVariables[key] : '?'),
+                                      50,
+                                    )}</span
+                                  >
                                 </div>
                               {/if}
                               {#if srcInfo}
                                 {#each [...srcInfo.cascade].reverse() as layer, i}
                                   {#if isKv || i !== 0}
                                     <div class="cascade-layer loser">
-                                      <span class="tag tag-sm {sourceTagClass(layer.source)}">{sourceTagLabel(layer.source)}</span>
-                                      <span class="cascade-value strikethrough">{truncate(layer.value, 50)}</span>
+                                      <span class="tag tag-sm {sourceTagClass(layer.source)}"
+                                        >{sourceTagLabel(layer.source)}</span
+                                      >
+                                      <span class="cascade-value strikethrough"
+                                        >{truncate(layer.value, 50)}</span
+                                      >
                                     </div>
                                   {/if}
                                 {/each}
@@ -319,10 +456,16 @@
             <!-- Runtime Variables -->
             {#if runtimeCount > 0}
               <section class="group">
-                <button class="group-header" on:click={() => runtimeExpanded = !runtimeExpanded}>
-                  <span class="chevron" class:open={runtimeExpanded}>
+                <button class="group-header" onclick={() => (runtimeExpanded = !runtimeExpanded)}>
+                  <span class={['chevron', { open: runtimeExpanded }]}>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path
+                        d="M3 1.5l4 3.5-4 3.5"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
                     </svg>
                   </span>
                   <span class="group-label">Runtime</span>
@@ -335,14 +478,21 @@
                     {:else}
                       {#if filteredOverrides.length > 0}
                         <div class="subgroup">
-                          <span class="subgroup-label">File scope <span class="scope-hint">- {activeFileName}</span></span>
+                          <span class="subgroup-label"
+                            >File scope <span class="scope-hint">- {activeFileName}</span></span
+                          >
                           {#each filteredOverrides as [key, value]}
-                            <button class="row" class:copied={copiedKey === key} on:click={() => copyRef(key)}>
+                            <button
+                              class={['row', { copied: copiedKey === key }]}
+                              onclick={() => copyRef(key)}
+                            >
                               <span class="tag set">SET</span>
                               <span class="key" title={key}>{key}</span>
                               <span class="sep">=</span>
                               <span class="val" title={value}>{truncate(value, 60)}</span>
-                              <span class="row-action">{copiedKey === key ? 'Copied' : 'Copy ref'}</span>
+                              <span class="row-action"
+                                >{copiedKey === key ? 'Copied' : 'Copy ref'}</span
+                              >
                             </button>
                           {/each}
                         </div>
@@ -351,12 +501,17 @@
                         <div class="subgroup">
                           <span class="subgroup-label">Workspace scope</span>
                           {#each filteredGlobals as [key, value]}
-                            <button class="row" class:copied={copiedKey === key} on:click={() => copyRef(key)}>
+                            <button
+                              class={['row', { copied: copiedKey === key }]}
+                              onclick={() => copyRef(key)}
+                            >
                               <span class="tag global">GLOBAL</span>
                               <span class="key" title={key}>{key}</span>
                               <span class="sep">=</span>
                               <span class="val" title={value}>{truncate(value, 60)}</span>
-                              <span class="row-action">{copiedKey === key ? 'Copied' : 'Copy ref'}</span>
+                              <span class="row-action"
+                                >{copiedKey === key ? 'Copied' : 'Copy ref'}</span
+                              >
                             </button>
                           {/each}
                         </div>
@@ -365,12 +520,19 @@
                         <div class="subgroup">
                           <span class="subgroup-label">Named responses</span>
                           {#each filteredNamed as [name, result]}
-                            <button class="row" class:copied={copiedKey === name} on:click={() => copyRef(name + '.response.body.$')}>
+                            <button
+                              class={['row', { copied: copiedKey === name }]}
+                              onclick={() => copyRef(name + '.response.body.$')}
+                            >
                               <span class="tag response">RESPONSE</span>
                               <span class="key" title={name}>{name}</span>
                               <span class="sep">=</span>
-                              <span class="val">{result.request.method} {result.response.status}</span>
-                              <span class="row-action">{copiedKey === name ? 'Copied' : 'Copy ref'}</span>
+                              <span class="val"
+                                >{result.request.method} {result.response.status}</span
+                              >
+                              <span class="row-action"
+                                >{copiedKey === name ? 'Copied' : 'Copy ref'}</span
+                              >
                             </button>
                           {/each}
                         </div>
@@ -386,7 +548,9 @@
 
       {#if hasRuntime}
         <div class="modal-footer">
-          <button class="btn-clear-runtime" on:click={() => dispatch('clearRuntime')}>Clear all runtime variables</button>
+          <button class="btn-clear-runtime" onclick={() => onClearRuntime?.()}
+            >Clear all runtime variables</button
+          >
         </div>
       {/if}
     </div>
@@ -443,8 +607,12 @@
     outline: none;
     box-sizing: border-box;
   }
-  .search-input:focus { border-color: var(--color-primary); }
-  .search-input::placeholder { color: var(--color-text-placeholder); }
+  .search-input:focus {
+    border-color: var(--color-primary);
+  }
+  .search-input::placeholder {
+    color: var(--color-text-placeholder);
+  }
 
   .sections {
     flex: 1;
@@ -456,7 +624,9 @@
   .group {
     border-bottom: 1px solid var(--color-bg-sidebar);
   }
-  .group:last-child { border-bottom: none; }
+  .group:last-child {
+    border-bottom: none;
+  }
 
   .group-header {
     display: flex;
@@ -473,14 +643,23 @@
     color: var(--color-text);
     transition: background var(--duration-fast);
   }
-  .group-header:hover { background: var(--gray-15); }
+  .group-header:hover {
+    background: var(--gray-15);
+  }
 
   .chevron {
-    display: flex; align-items: center; justify-content: center;
-    width: 14px; height: 14px; flex-shrink: 0;
-    color: var(--color-text-faint); transition: transform var(--duration-normal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--color-text-faint);
+    transition: transform var(--duration-normal);
   }
-  .chevron.open { transform: rotate(90deg); }
+  .chevron.open {
+    transform: rotate(90deg);
+  }
 
   .group-label {
     font-weight: var(--weight-semibold);
@@ -532,8 +711,12 @@
     transition: background var(--duration-fast);
     position: relative;
   }
-  .row:hover { background: var(--color-bg-subtle); }
-  .row.copied { background: #E8F5E9; }
+  .row:hover {
+    background: var(--color-bg-subtle);
+  }
+  .row.copied {
+    background: #e8f5e9;
+  }
 
   .tag {
     font-size: var(--text-2xs);
@@ -545,9 +728,18 @@
     min-width: 40px;
     text-align: center;
   }
-  .tag.file     { color: var(--color-info); background: color-mix(in srgb, var(--color-info) 6%, transparent); }
-  .tag.env      { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
-  .tag.kv       { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 6%, transparent); }
+  .tag.file {
+    color: var(--color-info);
+    background: color-mix(in srgb, var(--color-info) 6%, transparent);
+  }
+  .tag.env {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 6%, transparent);
+  }
+  .tag.kv {
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  }
 
   .kv-reveal-toggle {
     margin-left: auto;
@@ -555,14 +747,34 @@
     color: var(--color-text-faint);
     cursor: pointer;
   }
-  .kv-reveal-toggle:hover { color: var(--color-primary); }
-  .tag.source-shared { color: var(--teal-600); background: color-mix(in srgb, var(--teal-600) 6%, transparent); }
-  .tag.source-env    { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
-  .tag.source-user   { color: var(--purple-600); background: color-mix(in srgb, var(--purple-600) 6%, transparent); }
+  .kv-reveal-toggle:hover {
+    color: var(--color-primary);
+  }
+  .tag.source-shared {
+    color: var(--teal-600);
+    background: color-mix(in srgb, var(--teal-600) 6%, transparent);
+  }
+  .tag.source-env {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 6%, transparent);
+  }
+  .tag.source-user {
+    color: var(--purple-600);
+    background: color-mix(in srgb, var(--purple-600) 6%, transparent);
+  }
 
-  .tag.set      { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
-  .tag.global   { color: var(--color-accent-flow); background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent); }
-  .tag.response { color: var(--teal-600); background: color-mix(in srgb, var(--teal-600) 6%, transparent); }
+  .tag.set {
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+  .tag.global {
+    color: var(--color-accent-flow);
+    background: color-mix(in srgb, var(--color-accent-flow) 6%, transparent);
+  }
+  .tag.response {
+    color: var(--teal-600);
+    background: color-mix(in srgb, var(--teal-600) 6%, transparent);
+  }
 
   .tag-sm {
     font-size: 9px;
@@ -585,7 +797,10 @@
     border-radius: var(--radius-xs);
     background: var(--color-bg-sidebar);
   }
-  .cascade-toggle:hover { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+  .cascade-toggle:hover {
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
 
   .cascade-detail {
     margin-left: 48px;
@@ -604,14 +819,20 @@
     font-family: var(--font-mono);
     font-size: var(--text-sm);
   }
-  .cascade-layer.winner { color: var(--color-text); }
-  .cascade-layer.loser { opacity: 0.55; }
+  .cascade-layer.winner {
+    color: var(--color-text);
+  }
+  .cascade-layer.loser {
+    opacity: 0.55;
+  }
 
   .cascade-value {
     color: var(--color-text-secondary);
     word-break: break-all;
   }
-  .cascade-value.strikethrough { text-decoration: line-through; }
+  .cascade-value.strikethrough {
+    text-decoration: line-through;
+  }
 
   .key {
     color: var(--color-accent-flow);
@@ -654,7 +875,9 @@
     opacity: 0;
     transition: opacity var(--duration-fast);
   }
-  .row:hover .row-action { opacity: 1; }
+  .row:hover .row-action {
+    opacity: 1;
+  }
   .row.copied .row-action {
     opacity: 1;
     color: var(--color-success);
@@ -711,7 +934,10 @@
     text-align: center;
     gap: var(--space-1\.5);
   }
-  .empty-state svg { color: var(--color-border); margin-bottom: var(--space-1); }
+  .empty-state svg {
+    color: var(--color-border);
+    margin-bottom: var(--space-1);
+  }
   .empty-title {
     font-size: var(--text-md);
     font-weight: var(--weight-semibold);

@@ -1,26 +1,23 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { EnvironmentFile } from './types';
 import {
-  parseHttpFile,
-  serializeHttpFile,
-  substituteAll,
-  substituteVariables,
-  evaluatePbExpression,
-  parseScriptText,
-  executePbDirectives,
-  applyRequestMutations,
   parseEnvironmentFile,
   getEnvironmentNames,
   resolveEnvironmentVariables,
   resolveEnvironmentVariablesWithSource,
-  extractVariableRefs,
-  createEmptyRequest,
-  createFileNode,
-  buildWorkspaceTree,
-  getAllFileNodes,
-  createEmptyFileNode,
-} from './parser';
-import type { SubstitutionContext, RequestMutations } from './parser';
+} from './envFiles';
+import { parseHttpFile, extractVariableRefs, createEmptyRequest } from './parser';
+import {
+  evaluatePbExpression,
+  parseScriptText,
+  executePbDirectives,
+  applyRequestMutations,
+} from './pbScript';
+import { substituteAll, substituteVariables } from './substitution';
+import { buildWorkspaceTree, createEmptyFileNode } from './workspaceTree';
+import { getAllFileNodes } from './tree';
+import type { RequestMutations } from './pbScript';
+import type { SubstitutionContext } from './substitution';
 import type { HttpResponse, NamedRequestResult, PbDirective } from './types';
 
 // ─── Environment File Handling ──────────────────────────────────────────────
@@ -236,9 +233,13 @@ describe('resolveEnvironmentVariablesWithSource', () => {
 
 describe('substituteVariables', () => {
   it('substitutes file-level variables', () => {
-    const vars = [{ key: 'host', value: 'localhost' }, { key: 'port', value: '3000' }];
-    expect(substituteVariables('http://{{host}}:{{port}}/api', vars))
-      .toBe('http://localhost:3000/api');
+    const vars = [
+      { key: 'host', value: 'localhost' },
+      { key: 'port', value: '3000' },
+    ];
+    expect(substituteVariables('http://{{host}}:{{port}}/api', vars)).toBe(
+      'http://localhost:3000/api',
+    );
   });
 
   it('leaves unresolved variables intact', () => {
@@ -400,12 +401,9 @@ describe('parseScriptText', () => {
   });
 
   it('skips blank lines and pure comments', () => {
-    const text = [
-      '# This is a comment',
-      '',
-      'pb.set("key", "value")',
-      '// Another comment',
-    ].join('\n');
+    const text = ['# This is a comment', '', 'pb.set("key", "value")', '// Another comment'].join(
+      '\n',
+    );
     const result = parseScriptText(text);
     expect(result).toHaveLength(1);
   });
@@ -426,7 +424,7 @@ describe('evaluatePbExpression', () => {
   const mockRequest = {
     url: 'https://example.com/api',
     method: 'POST',
-    headers: { 'Authorization': 'Bearer xyz' },
+    headers: { Authorization: 'Bearer xyz' },
     body: '{"key":"value"}',
   };
 
@@ -506,8 +504,69 @@ describe('evaluatePbExpression', () => {
     expect(evaluatePbExpression('!true', ctx)).toBe(false);
   });
 
+  it('evaluates comparison combined with && (range check)', () => {
+    // status 200 is within [200, 300)
+    expect(evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', ctx)).toBe(
+      true,
+    );
+
+    const notOk = { ...ctx, response: { ...mockResponse, status: 404 } };
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', notOk),
+    ).toBe(false);
+
+    const noContent = { ...ctx, response: { ...mockResponse, status: 204 } };
+    expect(
+      evaluatePbExpression('pb.response.status >= 200 && pb.response.status < 300', noContent),
+    ).toBe(true);
+  });
+
+  it('evaluates comparison combined with || (created-or-ok check)', () => {
+    // status 200 satisfies the left branch
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', ctx),
+    ).toBe(true);
+
+    const created = { ...ctx, response: { ...mockResponse, status: 201 } };
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', created),
+    ).toBe(true);
+
+    const serverError = { ...ctx, response: { ...mockResponse, status: 500 } };
+    expect(
+      evaluatePbExpression('pb.response.status == 200 || pb.response.status == 201', serverError),
+    ).toBe(false);
+  });
+
+  it('respects && binding tighter than || in mixed expressions', () => {
+    // (false && X) || (true) => true; a naive first-operator split would mis-handle this
+    expect(
+      evaluatePbExpression(
+        'pb.response.status == 404 && pb.response.status == 200 || pb.response.status == 200',
+        ctx,
+      ),
+    ).toBe(true);
+  });
+
+  it('ignores comparison operators inside string literals', () => {
+    const eq = {
+      ...ctx,
+      response: { ...mockResponse, body: '{"msg":"a==b"}' },
+    };
+    expect(evaluatePbExpression('pb.response.body.$.msg == "a==b"', eq)).toBe(true);
+    expect(evaluatePbExpression('pb.response.body.$.msg == "a!=b"', eq)).toBe(false);
+  });
+
   it('resolves {{variable}} references in expressions', () => {
     expect(evaluatePbExpression('{{myVar}}', ctx)).toBe('hello');
+  });
+
+  it('ignores logical operators and literal-to-literal comparisons inside quotes', () => {
+    // token is "abc": comparison/contains operators inside the quoted RHS must not split the expression
+    expect(evaluatePbExpression('pb.response.body.$.token == "a==b"', ctx)).toBe(false);
+    expect(evaluatePbExpression('"a==b" == "a==b"', ctx)).toBe(true);
+    expect(evaluatePbExpression('pb.response.body.$.token contains "&&"', ctx)).toBe(false);
+    expect(evaluatePbExpression('"x&&y" contains "&&"', ctx)).toBe(true);
   });
 });
 
@@ -515,10 +574,12 @@ describe('evaluatePbExpression', () => {
 
 describe('executePbDirectives', () => {
   const mockResponse: HttpResponse = {
-    status: 200, statusText: 'OK',
+    status: 200,
+    statusText: 'OK',
     headers: { 'Content-Type': 'application/json' },
     body: '{"token":"secret123","user":"admin"}',
-    time: 50, size: 30,
+    time: 50,
+    size: 30,
   };
   const mockRequest = { url: 'https://example.com', method: 'POST', headers: {}, body: '{}' };
 
@@ -577,7 +638,7 @@ describe('applyRequestMutations', () => {
   const baseReq = {
     url: 'https://example.com',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer old' },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer old' },
     body: '{"key":"value"}',
   };
 
@@ -589,7 +650,7 @@ describe('applyRequestMutations', () => {
 
   it('applies header overrides (case-insensitive merge)', () => {
     const mutations: RequestMutations = {
-      headers: { 'authorization': 'Bearer new' },
+      headers: { authorization: 'Bearer new' },
       bodyPatches: [],
     };
     const result = applyRequestMutations(baseReq, mutations);
@@ -598,7 +659,11 @@ describe('applyRequestMutations', () => {
   });
 
   it('applies full body replacement', () => {
-    const mutations: RequestMutations = { headers: {}, bodyPatches: [], bodyFull: '{"new":"body"}' };
+    const mutations: RequestMutations = {
+      headers: {},
+      bodyPatches: [],
+      bodyFull: '{"new":"body"}',
+    };
     const result = applyRequestMutations(baseReq, mutations);
     expect(result.body).toBe('{"new":"body"}');
   });
@@ -617,6 +682,20 @@ describe('applyRequestMutations', () => {
     applyRequestMutations(baseReq, mutations);
     expect(baseReq.url).toBe('https://example.com');
   });
+
+  it('ignores body patches that target prototype-polluting keys', () => {
+    const mutations: RequestMutations = {
+      headers: {},
+      bodyPatches: [
+        { path: '__proto__.polluted', value: 'yes' },
+        { path: 'constructor.prototype.polluted2', value: 'yes' },
+      ],
+    };
+    applyRequestMutations(baseReq, mutations);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).polluted2).toBeUndefined();
+    expect((Object.prototype as Record<string, unknown>).polluted).toBeUndefined();
+  });
 });
 
 // ─── extractVariableRefs ────────────────────────────────────────────────────
@@ -625,7 +704,7 @@ describe('extractVariableRefs', () => {
   it('extracts variable references from file content', () => {
     const files = [{ content: 'GET {{baseUrl}}/users\nAuthorization: Bearer {{token}}' }];
     const result = extractVariableRefs(files, []);
-    expect(result.map(v => v.key)).toEqual(['baseUrl', 'token']);
+    expect(result.map((v) => v.key)).toEqual(['baseUrl', 'token']);
   });
 
   it('uses known variable values when available', () => {
@@ -644,19 +723,19 @@ describe('extractVariableRefs', () => {
   it('skips dynamic variables (starting with $)', () => {
     const files = [{ content: '{{$randomInt}} {{$timestamp}} {{normalVar}}' }];
     const result = extractVariableRefs(files, []);
-    expect(result.map(v => v.key)).toEqual(['normalVar']);
+    expect(result.map((v) => v.key)).toEqual(['normalVar']);
   });
 
   it('skips request variable references (containing dots)', () => {
     const files = [{ content: '{{login.response.body.$.token}} {{simpleVar}}' }];
     const result = extractVariableRefs(files, []);
-    expect(result.map(v => v.key)).toEqual(['simpleVar']);
+    expect(result.map((v) => v.key)).toEqual(['simpleVar']);
   });
 
   it('deduplicates and sorts results', () => {
     const files = [{ content: '{{z}} {{a}} {{z}} {{m}}' }];
     const result = extractVariableRefs(files, []);
-    expect(result.map(v => v.key)).toEqual(['a', 'm', 'z']);
+    expect(result.map((v) => v.key)).toEqual(['a', 'm', 'z']);
   });
 });
 
@@ -672,7 +751,8 @@ describe('parseHttpFile - file-level variables', () => {
   });
 
   it('variables can reference earlier variables', () => {
-    const content = '@host = localhost\n@port = 3000\n@baseUrl = http://{{host}}:{{port}}\nGET {{baseUrl}}/api\n';
+    const content =
+      '@host = localhost\n@port = 3000\n@baseUrl = http://{{host}}:{{port}}\nGET {{baseUrl}}/api\n';
     const result = parseHttpFile(content);
     expect(result.variables[2]).toEqual({ key: 'baseUrl', value: 'http://localhost:3000' });
   });
@@ -700,7 +780,8 @@ describe('parseHttpFile - multiple requests', () => {
   });
 
   it('parses headers correctly', () => {
-    const content = 'POST https://example.com\nContent-Type: application/json\nAuthorization: Bearer token\n';
+    const content =
+      'POST https://example.com\nContent-Type: application/json\nAuthorization: Bearer token\n';
     const result = parseHttpFile(content);
     expect(result.requests[0].headers).toHaveLength(2);
     expect(result.requests[0].headers[0].key).toBe('Content-Type');
@@ -730,7 +811,9 @@ describe('parseHttpFile - multiple requests', () => {
       '# @pb.set("result", pb.response.body.$.data)',
     ].join('\n');
     const result = parseHttpFile(content);
-    expect(result.requests[0].beforeSend).toContain('pb.set("request.url", "https://override.com")');
+    expect(result.requests[0].beforeSend).toContain(
+      'pb.set("request.url", "https://override.com")',
+    );
     expect(result.requests[0].afterReceive).toContain('pb.set("result", pb.response.body.$.data)');
   });
 });
@@ -740,7 +823,11 @@ describe('parseHttpFile - multiple requests', () => {
 describe('buildWorkspaceTree', () => {
   it('builds a flat tree from files in the root', () => {
     const files = [
-      { absolutePath: '/root/api.http', relativePath: 'api.http', content: 'GET https://example.com\n' },
+      {
+        absolutePath: '/root/api.http',
+        relativePath: 'api.http',
+        content: 'GET https://example.com\n',
+      },
     ];
     const tree = buildWorkspaceTree(files);
     expect(tree).toHaveLength(1);
@@ -750,8 +837,16 @@ describe('buildWorkspaceTree', () => {
 
   it('builds nested folder structure', () => {
     const files = [
-      { absolutePath: '/root/Users/auth.http', relativePath: 'Users/auth.http', content: 'GET https://example.com\n' },
-      { absolutePath: '/root/Users/profile.http', relativePath: 'Users/profile.http', content: 'GET https://example.com\n' },
+      {
+        absolutePath: '/root/Users/auth.http',
+        relativePath: 'Users/auth.http',
+        content: 'GET https://example.com\n',
+      },
+      {
+        absolutePath: '/root/Users/profile.http',
+        relativePath: 'Users/profile.http',
+        content: 'GET https://example.com\n',
+      },
     ];
     const tree = buildWorkspaceTree(files);
     expect(tree).toHaveLength(1);
@@ -759,13 +854,59 @@ describe('buildWorkspaceTree', () => {
     expect(tree[0].name).toBe('Users');
     expect((tree[0] as any).children).toHaveLength(2);
   });
+
+  it('excludes files inside dot-prefixed folders', () => {
+    const files = [
+      {
+        absolutePath: '/root/.flows/my.pb-flow.json',
+        relativePath: '.flows/my.pb-flow.json',
+        content: '{}',
+      },
+      {
+        absolutePath: '/root/api.http',
+        relativePath: 'api.http',
+        content: 'GET https://example.com\n',
+      },
+    ];
+    const tree = buildWorkspaceTree(files);
+    expect(tree).toHaveLength(1);
+    expect(tree[0].name).toBe('api.http');
+  });
+
+  it('excludes empty dot-prefixed folders', () => {
+    const emptyFolders = [{ relativePath: '.flows' }, { relativePath: '.git' }];
+    const tree = buildWorkspaceTree([], emptyFolders);
+    expect(tree).toHaveLength(0);
+  });
+
+  it('still shows regular flows/ folder without dot prefix', () => {
+    const files = [
+      {
+        absolutePath: '/root/flows/my.http',
+        relativePath: 'flows/my.http',
+        content: 'GET https://example.com\n',
+      },
+    ];
+    const tree = buildWorkspaceTree(files);
+    expect(tree).toHaveLength(1);
+    expect(tree[0].type).toBe('folder');
+    expect(tree[0].name).toBe('flows');
+  });
 });
 
 describe('getAllFileNodes', () => {
   it('collects all file nodes from nested tree', () => {
     const files = [
-      { absolutePath: '/root/a.http', relativePath: 'a.http', content: 'GET https://example.com\n' },
-      { absolutePath: '/root/sub/b.http', relativePath: 'sub/b.http', content: 'GET https://example.com\n' },
+      {
+        absolutePath: '/root/a.http',
+        relativePath: 'a.http',
+        content: 'GET https://example.com\n',
+      },
+      {
+        absolutePath: '/root/sub/b.http',
+        relativePath: 'sub/b.http',
+        content: 'GET https://example.com\n',
+      },
     ];
     const tree = buildWorkspaceTree(files);
     const allFiles = getAllFileNodes(tree);

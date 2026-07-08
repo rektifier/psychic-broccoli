@@ -1,6 +1,10 @@
 <script lang="ts">
-  export let label: string;
-  export let text: string;
+  interface Props {
+    label: string;
+    text: string;
+  }
+
+  let { label, text }: Props = $props();
 
   const id = `helptip-${Math.random().toString(36).slice(2, 8)}`;
   const anchorName = `--ht-${id}`;
@@ -13,7 +17,13 @@
     aria-label="Help: {label}"
     style="anchor-name: {anchorName}"
   >
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      aria-hidden="true"
+    >
       <circle cx="8" cy="8" r="6.5" />
       <line x1="8" y1="7" x2="8" y2="11" />
       <circle cx="8" cy="5.5" r="0.5" fill="currentColor" stroke="none" />

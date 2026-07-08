@@ -1,23 +1,44 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { HttpResponse, PbAssertionResult } from '../lib/types';
   import type { ResponseTab } from '../lib/stores';
 
-  export let response: HttpResponse | null = null;
-  export let loading: boolean = false;
-  export let sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null = null;
-  export let assertionResults: PbAssertionResult[] = [];
-  export let activeTab: ResponseTab = 'body';
+  interface Props {
+    response?: HttpResponse | null;
+    loading?: boolean;
+    sentRequest?: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      body: string;
+    } | null;
+    assertionResults?: PbAssertionResult[];
+    activeTab?: ResponseTab;
+    onTabChange?: (tab: ResponseTab) => void;
+  }
 
-  const dispatch = createEventDispatcher<{ tabChange: ResponseTab }>();
+  let {
+    response = null,
+    loading = false,
+    sentRequest = null,
+    assertionResults = [],
+    activeTab: activeTabProp = 'body',
+    onTabChange,
+  }: Props = $props();
+
+  // Writable derived: local tab switches take effect immediately and are
+  // overridden whenever the parent passes a new activeTab value.
+  let activeTab = $derived(activeTabProp);
 
   function setTab(tab: ResponseTab) {
     activeTab = tab;
-    dispatch('tabChange', tab);
+    onTabChange?.(tab);
   }
 
-  $: passedCount = assertionResults.filter(t => t.passed).length;
-  $: failedCount = assertionResults.filter(t => !t.passed).length;
+  const passedCount = $derived(assertionResults.filter((t) => t.passed).length);
+  const failedCount = $derived(assertionResults.filter((t) => !t.passed).length);
+  // Binary bodies arrive base64-encoded from the backend; show a notice
+  // instead of the (useless) base64 text.
+  const isBinaryBody = $derived(response?.bodyEncoding === 'base64');
 
   function getStatusClass(status: number): string {
     if (status >= 200 && status < 300) return 'status-success';
@@ -50,7 +71,12 @@
     }
   }
 
-  function formatRawRequest(req: { method: string; url: string; headers: Record<string, string>; body: string }): string {
+  function formatRawRequest(req: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: string;
+  }): string {
     let raw = `${req.method} ${req.url} HTTP/1.1\n`;
     for (const [key, value] of Object.entries(req.headers)) {
       raw += `${key}: ${value}\n`;
@@ -95,14 +121,19 @@
       <div class="meta-chips">
         <span class="chip">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
-            <path d="M6 3v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2" />
+            <path
+              d="M6 3v3.5l2.5 1.5"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
           </svg>
           {response.time} ms
         </span>
         <span class="chip">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 10V4l4-2 4 2v6l-4 2-4-2z" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M2 10V4l4-2 4 2v6l-4 2-4-2z" stroke="currentColor" stroke-width="1.2" />
           </svg>
           {formatSize(response.size)}
         </span>
@@ -111,41 +142,41 @@
 
     <!-- Response Tabs -->
     <div class="tabs">
-      <button
-        class="tab"
-        class:active={activeTab === 'body'}
-        on:click={() => setTab('body')}
-      >
+      <button class={['tab', { active: activeTab === 'body' }]} onclick={() => setTab('body')}>
         Body
-        {#if isJson(response.body)}
+        {#if !isBinaryBody && isJson(response.body)}
           <span class="tab-badge">JSON</span>
+        {:else if isBinaryBody}
+          <span class="tab-badge">Binary</span>
         {/if}
       </button>
       <button
-        class="tab"
-        class:active={activeTab === 'headers'}
-        on:click={() => setTab('headers')}
+        class={['tab', { active: activeTab === 'headers' }]}
+        onclick={() => setTab('headers')}
       >
         Headers
         <span class="tab-count">{Object.keys(response.headers).length}</span>
       </button>
       {#if sentRequest}
         <button
-          class="tab"
-          class:active={activeTab === 'request'}
-          on:click={() => setTab('request')}
+          class={['tab', { active: activeTab === 'request' }]}
+          onclick={() => setTab('request')}
         >
           Request
         </button>
       {/if}
       {#if assertionResults.length > 0}
         <button
-          class="tab"
-          class:active={activeTab === 'assertions'}
-          on:click={() => setTab('assertions')}
+          class={['tab', { active: activeTab === 'assertions' }]}
+          onclick={() => setTab('assertions')}
         >
           Assertions
-          <span class="tab-count assertion-count" class:all-pass={failedCount === 0} class:has-fail={failedCount > 0}>
+          <span
+            class={[
+              'tab-count assertion-count',
+              { 'all-pass': failedCount === 0, 'has-fail': failedCount > 0 },
+            ]}
+          >
             {passedCount}/{assertionResults.length}
           </span>
         </button>
@@ -155,7 +186,15 @@
     <!-- Content -->
     <div class="content">
       {#if activeTab === 'body'}
-        <pre class="body-output" class:json={isJson(response.body)}>{formatBody(response.body)}</pre>
+        {#if isBinaryBody}
+          <div class="binary-note">
+            Binary response body ({formatSize(response.size)}). Text preview is not available.
+          </div>
+        {:else}
+          <pre class={['body-output', { json: isJson(response.body) }]}>{formatBody(
+              response.body,
+            )}</pre>
+        {/if}
       {:else if activeTab === 'headers'}
         <div class="headers-table">
           {#each Object.entries(response.headers) as [key, value]}
@@ -173,7 +212,7 @@
       {:else if activeTab === 'assertions'}
         <div class="assertion-results">
           {#each assertionResults as result}
-            <div class="assertion-entry" class:pass={result.passed} class:fail={!result.passed}>
+            <div class={['assertion-entry', { pass: result.passed, fail: !result.passed }]}>
               <span class="assertion-icon">{result.passed ? '\u2713' : '\u2717'}</span>
               <span class="assertion-label">{result.label}</span>
             </div>
@@ -238,8 +277,14 @@
     animation-delay: 0.3s;
   }
   @keyframes pulse-out {
-    0% { transform: scale(0.5); opacity: 1; }
-    100% { transform: scale(1.4); opacity: 0; }
+    0% {
+      transform: scale(0.5);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1.4);
+      opacity: 0;
+    }
   }
   .loading-icon {
     font-size: var(--text-2xl);
@@ -247,8 +292,12 @@
     animation: pulse-glow 1s ease-in-out infinite alternate;
   }
   @keyframes pulse-glow {
-    0% { opacity: 0.5; }
-    100% { opacity: 1; }
+    0% {
+      opacity: 0.5;
+    }
+    100% {
+      opacity: 1;
+    }
   }
 
   /* Status Bar */
@@ -332,7 +381,9 @@
     transition: all var(--duration-normal);
     margin-bottom: -1px;
   }
-  .tab:hover { color: var(--color-text-secondary); }
+  .tab:hover {
+    color: var(--color-text-secondary);
+  }
   .tab.active {
     color: var(--color-text-heading);
     border-bottom-color: var(--color-primary);
@@ -413,9 +464,25 @@
     background: var(--color-bg-surface);
   }
 
+  .binary-note {
+    padding: var(--space-5);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--text-base);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-lg);
+  }
+
   /* Assertion Results */
-  .assertion-count.all-pass { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
-  .assertion-count.has-fail { background: color-mix(in srgb, var(--color-error) 12%, transparent); color: var(--color-error); }
+  .assertion-count.all-pass {
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    color: var(--color-success);
+  }
+  .assertion-count.has-fail {
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
+  }
 
   .assertion-results {
     display: flex;
@@ -439,8 +506,17 @@
     width: 18px;
     text-align: center;
   }
-  .assertion-entry.pass .assertion-icon { color: var(--color-success); }
-  .assertion-entry.fail .assertion-icon { color: var(--color-error); }
-  .assertion-entry.pass .assertion-label { color: var(--slate-600); }
-  .assertion-entry.fail .assertion-label { color: var(--color-error); font-weight: var(--weight-medium); }
+  .assertion-entry.pass .assertion-icon {
+    color: var(--color-success);
+  }
+  .assertion-entry.fail .assertion-icon {
+    color: var(--color-error);
+  }
+  .assertion-entry.pass .assertion-label {
+    color: var(--slate-600);
+  }
+  .assertion-entry.fail .assertion-label {
+    color: var(--color-error);
+    font-weight: var(--weight-medium);
+  }
 </style>

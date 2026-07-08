@@ -1,34 +1,38 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { TreeNode, FileNode, FlowStep } from '../lib/types';
-  import { getAllFileNodes } from '../lib/parser';
+  import { getAllFileNodes } from '../lib/tree';
   import { METHOD_COLORS } from '../lib/theme';
 
-  export let tree: TreeNode[] = [];
-  export let rootPath: string;
+  interface Props {
+    tree?: TreeNode[];
+    rootPath: string;
+    onPick?: (step: FlowStep) => void;
+    onClose?: () => void;
+  }
 
-  const dispatch = createEventDispatcher<{
-    pick: FlowStep;
-    close: void;
-  }>();
+  let { tree = [], rootPath, onPick, onClose }: Props = $props();
 
-  $: files = getAllFileNodes(tree);
+  const files = $derived(getAllFileNodes(tree));
 
-  let filter = '';
-  let displayMode: 'name' | 'url' = 'name';
+  let filter = $state('');
+  let displayMode: 'name' | 'url' = $state('name');
 
-  $: suffixMap = new Map(files.map(f => [f.path, computeUrlSuffixes(f.requests)]));
+  const suffixMap = $derived(new Map(files.map((f) => [f.path, computeUrlSuffixes(f.requests)])));
 
-  $: filteredFiles = filter.trim()
-    ? files.filter(f =>
-        f.name.toLowerCase().includes(filter.toLowerCase()) ||
-        f.requests.some(r =>
-          r.url.toLowerCase().includes(filter.toLowerCase()) ||
-          r.name.toLowerCase().includes(filter.toLowerCase()) ||
-          r.method.toLowerCase().includes(filter.toLowerCase())
+  const filteredFiles = $derived(
+    filter.trim()
+      ? files.filter(
+          (f) =>
+            f.name.toLowerCase().includes(filter.toLowerCase()) ||
+            f.requests.some(
+              (r) =>
+                r.url.toLowerCase().includes(filter.toLowerCase()) ||
+                r.name.toLowerCase().includes(filter.toLowerCase()) ||
+                r.method.toLowerCase().includes(filter.toLowerCase()),
+            ),
         )
-      )
-    : files;
+      : files,
+  );
 
   function pickRequest(file: FileNode, requestIndex: number) {
     const req = file.requests[requestIndex];
@@ -43,69 +47,93 @@
       label: `${req.method} ${req.url}`,
       continueOnFailure: false,
     };
-    dispatch('pick', step);
+    onPick?.(step);
   }
-
 
   /** Compute unique URL suffixes for requests in a file, stripping common prefix segments. */
   function computeUrlSuffixes(requests: { url: string }[]): string[] {
     if (requests.length === 0) return [];
     if (requests.length === 1) return [requests[0].url];
-    const split = requests.map(r => r.url.split('/'));
-    const minLen = Math.min(...split.map(s => s.length));
+    const split = requests.map((r) => r.url.split('/'));
+    const minLen = Math.min(...split.map((s) => s.length));
     let common = 0;
     for (let i = 0; i < minLen; i++) {
-      if (split.every(s => s[i] === split[0][i])) common = i + 1;
+      if (split.every((s) => s[i] === split[0][i])) common = i + 1;
       else break;
     }
-    if (common === 0) return requests.map(r => r.url);
-    return split.map(s => {
+    if (common === 0) return requests.map((r) => r.url);
+    return split.map((s) => {
       const unique = s.slice(common);
       return '/' + unique.join('/');
     });
   }
 
   function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) dispatch('close');
+    if (e.target === e.currentTarget) onClose?.();
   }
 
-  let expandedFiles: Set<string> = new Set();
+  let expandedFiles: Set<string> = $state(new Set());
 
   function toggleFile(path: string) {
-    if (expandedFiles.has(path)) {
-      expandedFiles.delete(path);
+    const next = new Set(expandedFiles);
+    if (next.has(path)) {
+      next.delete(path);
     } else {
-      expandedFiles.add(path);
+      next.add(path);
     }
-    expandedFiles = expandedFiles;
+    expandedFiles = next;
   }
 
-  let filterInputEl: HTMLInputElement;
-  $: if (filterInputEl) filterInputEl.focus();
+  let filterInputEl: HTMLInputElement | null = $state(null);
+  // Focus the filter input as soon as the picker mounts.
+  $effect(() => {
+    filterInputEl?.focus();
+  });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="picker-backdrop" on:click={handleBackdropClick} on:keydown={(e) => { if (e.key === 'Escape') dispatch('close'); }}>
+<div
+  class="picker-backdrop"
+  onclick={handleBackdropClick}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') onClose?.();
+  }}
+>
   <div class="picker-panel">
     <div class="picker-header">
       <span class="picker-title">Add step</span>
       <button
         class="picker-display-toggle"
-        on:click={() => displayMode = displayMode === 'name' ? 'url' : 'name'}
+        onclick={() => (displayMode = displayMode === 'name' ? 'url' : 'name')}
         title={displayMode === 'name' ? 'Show URL paths' : 'Show request names'}
       >
         {#if displayMode === 'name'}
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path
+              d="M2 4h12M2 8h8M2 12h10"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
           </svg>
         {:else}
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M5 3l6 0M3 7h10M7 11h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <path d="M1.5 3h1M1.5 7h1M1.5 11h1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path
+              d="M5 3l6 0M3 7h10M7 11h6"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+            <path
+              d="M1.5 3h1M1.5 7h1M1.5 11h1"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
           </svg>
         {/if}
       </button>
-      <button class="picker-close" on:click={() => dispatch('close')}>&times;</button>
+      <button class="picker-close" onclick={() => onClose?.()}>&times;</button>
     </div>
     <div class="picker-filter">
       <input
@@ -114,7 +142,9 @@
         class="picker-filter-input"
         placeholder="Filter by file, URL, or method..."
         spellcheck="false"
-        on:keydown={(e) => { if (e.key === 'Escape') dispatch('close'); }}
+        onkeydown={(e) => {
+          if (e.key === 'Escape') onClose?.();
+        }}
       />
     </div>
     <div class="picker-list">
@@ -122,23 +152,51 @@
         {@const expanded = expandedFiles.has(file.path)}
         <div class="picker-file">
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="picker-file-header" on:click={() => toggleFile(file.path)} on:keydown={(e) => { if (e.key === 'Enter') toggleFile(file.path); }}>
-            <span class="picker-chevron" class:open={expanded}>
+          <div
+            class="picker-file-header"
+            onclick={() => toggleFile(file.path)}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') toggleFile(file.path);
+            }}
+          >
+            <span class={['picker-chevron', { open: expanded }]}>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path
+                  d="M3 1.5l4 3.5-4 3.5"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </span>
             <svg class="picker-file-icon" width="12" height="12" viewBox="0 0 16 16" fill="none">
-              <path d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-width="1.2"/>
-              <path d="M9 2v4h4" stroke="currentColor" stroke-width="1.2"/>
+              <path
+                d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z"
+                fill="currentColor"
+                fill-opacity="0.09"
+                stroke="currentColor"
+                stroke-width="1.2"
+              />
+              <path d="M9 2v4h4" stroke="currentColor" stroke-width="1.2" />
             </svg>
             <span class="picker-file-name">{file.name.replace(/\.(http|rest)$/, '')}</span>
           </div>
           {#if expanded}
             {#each file.requests as req, i (req.id)}
-              <button class="picker-request" on:click={() => pickRequest(file, i)} title={displayMode === 'name' ? req.url : req.name}>
-                <span class="picker-method" style="color: {METHOD_COLORS[req.method] || '#888'}">{req.method}</span>
-                <span class="picker-url">{displayMode === 'url' ? (suffixMap.get(file.path)?.[i] ?? req.url) : req.name}</span>
+              <button
+                class="picker-request"
+                onclick={() => pickRequest(file, i)}
+                title={displayMode === 'name' ? req.url : req.name}
+              >
+                <span class="picker-method" style="color: {METHOD_COLORS[req.method] || '#888'}"
+                  >{req.method}</span
+                >
+                <span class="picker-url"
+                  >{displayMode === 'url'
+                    ? (suffixMap.get(file.path)?.[i] ?? req.url)
+                    : req.name}</span
+                >
                 {#if req.varName}
                   <span class="picker-varname">{req.varName}</span>
                 {/if}
@@ -187,7 +245,8 @@
     color: var(--color-text-heading);
   }
   .picker-display-toggle {
-    width: 28px; height: 28px;
+    width: 28px;
+    height: 28px;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     background: transparent;
@@ -206,7 +265,8 @@
     background: var(--color-bg-sidebar);
   }
   .picker-close {
-    width: 24px; height: 24px;
+    width: 24px;
+    height: 24px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
