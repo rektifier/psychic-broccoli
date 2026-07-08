@@ -74,9 +74,10 @@
   import { errorMessage } from './lib/errors';
   import type { HttpRequest, RequestLocation, EnvironmentFile, KeyVaultState } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
-  import { saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
-  import { openFolderByPath, safeJoinPath } from './lib/workspaceIO';
+  import { saveFlowRunRecord, clearFlowRunHistory } from './lib/flowIO';
+  import { openFolderByPath } from './lib/workspaceIO';
   import { importCollectionContent, applyImportedVariables } from './lib/importIO';
+  import { createFlow, duplicateFlow, saveFlow, deleteFlow } from './lib/flowOps';
   import {
     createFile,
     createFolder,
@@ -738,33 +739,6 @@
     openFlowTab(path, flow.name);
   }
 
-  async function handleCreateFlow(e: CustomEvent<string>) {
-    const name = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { createEmptyFlow, writeFlowFile } = await import('./lib/flowIO');
-    const flow = createEmptyFlow(name);
-    const safeName =
-      name
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '') || 'unnamed';
-    const flowsDir = await join(rootPath, FLOWS_DIR);
-    try {
-      await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true });
-    } catch {
-      /* exists */
-    }
-    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
-    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
-
-    await writeFlowFile(absolutePath, flow);
-    flows.update((f) => ({ ...f, [relativePath]: flow }));
-    openFlowTab(relativePath, flow.name);
-  }
-
   let flowAbortController: AbortController | null = null;
   let lastFlowRunRecords: Record<string, FlowRunRecord> = {};
   let runningFlowPath: string | null = null;
@@ -863,78 +837,9 @@
     flowAbortController?.abort();
   }
 
-  async function handleSaveFlow(
-    e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>,
-  ) {
-    const { flowPath, flow } = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { writeFlowFile } = await import('./lib/flowIO');
-    const absolutePath = await safeJoinPath(rootPath, flowPath);
-    await writeFlowFile(absolutePath, flow);
-    flows.update((f) => ({ ...f, [flowPath]: flow }));
-
-    // Update tab label if the name changed
-    flowTabs.update((ts) =>
-      ts.map((t) => (t.flowPath === flowPath ? { ...t, label: flow.name } : t)),
-    );
-  }
-
-  async function handleDuplicateFlow(e: CustomEvent<string>) {
-    const sourcePath = e.detail;
-    const sourceFlow = $flows[sourcePath];
-    if (!sourceFlow) return;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { writeFlowFile } = await import('./lib/flowIO');
-    const newName = `${sourceFlow.name} (copy)`;
-    const newFlow = {
-      ...sourceFlow,
-      name: newName,
-      steps: sourceFlow.steps.map((s) => ({ ...s, id: crypto.randomUUID() })),
-    };
-    const safeName =
-      newName
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '') || 'unnamed';
-    const flowsDir = await join(rootPath, FLOWS_DIR);
-    try {
-      await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true });
-    } catch {
-      /* exists */
-    }
-    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
-    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
-
-    await writeFlowFile(absolutePath, newFlow);
-    flows.update((f) => ({ ...f, [relativePath]: newFlow }));
-    openFlowTab(relativePath, newFlow.name);
-  }
-
   async function handleDeleteFlow(e: CustomEvent<string>) {
-    const path = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      const absolutePath = await safeJoinPath(rootPath, path);
-      await remove(absolutePath);
-    } catch {
-      // Silently ignore - flow file may not exist on disk
-    }
-
-    flows.update((f) => {
-      const updated = { ...f };
-      delete updated[path];
-      return updated;
-    });
-    delete flowUIState[path];
-    closeFlowTab(path);
+    delete flowUIState[e.detail];
+    await deleteFlow(e.detail);
   }
 </script>
 
@@ -1053,8 +958,8 @@
         on:openSettings={() => (showSettings = true)}
         on:nameRequest={handleNameRequest}
         on:openFlow={handleOpenFlow}
-        on:createFlow={handleCreateFlow}
-        on:duplicateFlow={handleDuplicateFlow}
+        on:createFlow={(e) => createFlow(e.detail)}
+        on:duplicateFlow={(e) => duplicateFlow(e.detail)}
         on:deleteFlow={handleDeleteFlow}
       />
     </div>
@@ -1119,7 +1024,7 @@
               flowUIState[$activeFlowTabPath] = e.detail;
               flowUIState = flowUIState;
             }}
-            on:save={handleSaveFlow}
+            on:save={(e) => saveFlow(e.detail.flowPath, e.detail.flow)}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
             on:clearHistory={() => {
