@@ -1,236 +1,802 @@
 {
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
-
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
-
     "fs:default",
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
-        { "path": "$HOME/**" },
-        { "path": "$RESOURCE/**" }
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$RESOURCE/**"
+        }
       ],
       "deny": [
-        { "path": "$HOME/.ssh/**" },
-        { "path": "$HOME/.gnupg/**" },
-        { "path": "$HOME/.aws/**" },
-        { "path": "$HOME/.kube/**" },
-        { "path": "$HOME/.docker/**" },
-        { "path": "$HOME/.azure/**" },
-        { "path": "$HOME/.config/gh/**" },
-        { "path": "$HOME/.config/gcloud/**" },
-        { "path": "$HOME/.config/git/**" },
-        { "path": "$HOME/.mozilla/**" },
-        { "path": "$HOME/.netrc" },
-        { "path": "$HOME/.npmrc" },
-        { "path": "$HOME/.pypirc" },
-        { "path": "$HOME/.git-credentials" },
-        { "path": "$HOME/.gitconfig" },
-        { "path": "$HOME/.bashrc" },
-        { "path": "$HOME/.bash_profile" },
-        { "path": "$HOME/.bash_history" },
-        { "path": "$HOME/.profile" },
-        { "path": "$HOME/.zshrc" },
-        { "path": "$HOME/.zprofile" },
-        { "path": "$HOME/.zsh_history" },
-        { "path": "$HOME/Library/Keychains/**" },
-        { "path": "$HOME/Library/Cookies/**" },
-        { "path": "$HOME/Library/Application Support/Google/**" },
-        { "path": "$HOME/Library/Application Support/Firefox/**" },
-        { "path": "$HOME/Library/Application Support/Microsoft Edge/**" },
-        { "path": "$HOME/Library/Messages/**" },
-        { "path": "$HOME/Library/Mail/**" },
-        { "path": "$HOME/AppData/Local/Google/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Edge/**" },
-        { "path": "$HOME/AppData/Roaming/Mozilla/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Protect/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Vault/**" }
+        {
+          "path": "$HOME/.ssh/**"
+        },
+        {
+          "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "$HOME/.aws/**"
+        },
+        {
+          "path": "$HOME/.kube/**"
+        },
+        {
+          "path": "$HOME/.docker/**"
+        },
+        {
+          "path": "$HOME/.azure/**"
+        },
+        {
+          "path": "$HOME/.config/gh/**"
+        },
+        {
+          "path": "$HOME/.config/gcloud/**"
+        },
+        {
+          "path": "$HOME/.config/git/**"
+        },
+        {
+          "path": "$HOME/.config/autostart/**"
+        },
+        {
+          "path": "$HOME/.config/systemd/user/**"
+        },
+        {
+          "path": "$HOME/.mozilla/**"
+        },
+        {
+          "path": "$HOME/.netrc"
+        },
+        {
+          "path": "$HOME/.npmrc"
+        },
+        {
+          "path": "$HOME/.pypirc"
+        },
+        {
+          "path": "$HOME/.git-credentials"
+        },
+        {
+          "path": "$HOME/.gitconfig"
+        },
+        {
+          "path": "$HOME/.bashrc"
+        },
+        {
+          "path": "$HOME/.bash_profile"
+        },
+        {
+          "path": "$HOME/.bash_history"
+        },
+        {
+          "path": "$HOME/.profile"
+        },
+        {
+          "path": "$HOME/.zshrc"
+        },
+        {
+          "path": "$HOME/.zprofile"
+        },
+        {
+          "path": "$HOME/.zsh_history"
+        },
+        {
+          "path": "$HOME/Library/Keychains/**"
+        },
+        {
+          "path": "$HOME/Library/Cookies/**"
+        },
+        {
+          "path": "$HOME/Library/LaunchAgents/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Google/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Firefox/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Microsoft Edge/**"
+        },
+        {
+          "path": "$HOME/Library/Messages/**"
+        },
+        {
+          "path": "$HOME/Library/Mail/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Google/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Edge/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Mozilla/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Protect/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Vault/**"
+        }
       ]
     },
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [
-        { "path": "$HOME/**" }
+        {
+          "path": "$HOME/**"
+        }
       ],
       "deny": [
-        { "path": "$HOME/.ssh/**" },
-        { "path": "$HOME/.gnupg/**" },
-        { "path": "$HOME/.aws/**" },
-        { "path": "$HOME/.kube/**" },
-        { "path": "$HOME/.docker/**" },
-        { "path": "$HOME/.azure/**" },
-        { "path": "$HOME/.config/gh/**" },
-        { "path": "$HOME/.config/gcloud/**" },
-        { "path": "$HOME/.config/git/**" },
-        { "path": "$HOME/.mozilla/**" },
-        { "path": "$HOME/.netrc" },
-        { "path": "$HOME/.npmrc" },
-        { "path": "$HOME/.pypirc" },
-        { "path": "$HOME/.git-credentials" },
-        { "path": "$HOME/.gitconfig" },
-        { "path": "$HOME/.bashrc" },
-        { "path": "$HOME/.bash_profile" },
-        { "path": "$HOME/.bash_history" },
-        { "path": "$HOME/.profile" },
-        { "path": "$HOME/.zshrc" },
-        { "path": "$HOME/.zprofile" },
-        { "path": "$HOME/.zsh_history" },
-        { "path": "$HOME/Library/Keychains/**" },
-        { "path": "$HOME/Library/Cookies/**" },
-        { "path": "$HOME/Library/LaunchAgents/**" },
-        { "path": "$HOME/Library/Application Support/Google/**" },
-        { "path": "$HOME/Library/Application Support/Firefox/**" },
-        { "path": "$HOME/Library/Application Support/Microsoft Edge/**" },
-        { "path": "$HOME/Library/Messages/**" },
-        { "path": "$HOME/Library/Mail/**" },
-        { "path": "$HOME/AppData/Local/Google/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Edge/**" },
-        { "path": "$HOME/AppData/Roaming/Mozilla/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Protect/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Vault/**" }
+        {
+          "path": "$HOME/.ssh/**"
+        },
+        {
+          "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "$HOME/.aws/**"
+        },
+        {
+          "path": "$HOME/.kube/**"
+        },
+        {
+          "path": "$HOME/.docker/**"
+        },
+        {
+          "path": "$HOME/.azure/**"
+        },
+        {
+          "path": "$HOME/.config/gh/**"
+        },
+        {
+          "path": "$HOME/.config/gcloud/**"
+        },
+        {
+          "path": "$HOME/.config/git/**"
+        },
+        {
+          "path": "$HOME/.config/autostart/**"
+        },
+        {
+          "path": "$HOME/.config/systemd/user/**"
+        },
+        {
+          "path": "$HOME/.mozilla/**"
+        },
+        {
+          "path": "$HOME/.netrc"
+        },
+        {
+          "path": "$HOME/.npmrc"
+        },
+        {
+          "path": "$HOME/.pypirc"
+        },
+        {
+          "path": "$HOME/.git-credentials"
+        },
+        {
+          "path": "$HOME/.gitconfig"
+        },
+        {
+          "path": "$HOME/.bashrc"
+        },
+        {
+          "path": "$HOME/.bash_profile"
+        },
+        {
+          "path": "$HOME/.bash_history"
+        },
+        {
+          "path": "$HOME/.profile"
+        },
+        {
+          "path": "$HOME/.zshrc"
+        },
+        {
+          "path": "$HOME/.zprofile"
+        },
+        {
+          "path": "$HOME/.zsh_history"
+        },
+        {
+          "path": "$HOME/Library/Keychains/**"
+        },
+        {
+          "path": "$HOME/Library/Cookies/**"
+        },
+        {
+          "path": "$HOME/Library/LaunchAgents/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Google/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Firefox/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Microsoft Edge/**"
+        },
+        {
+          "path": "$HOME/Library/Messages/**"
+        },
+        {
+          "path": "$HOME/Library/Mail/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Google/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Edge/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Mozilla/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Protect/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Vault/**"
+        }
       ]
     },
     {
       "identifier": "fs:allow-read-dir",
       "allow": [
-        { "path": "$HOME/**" },
-        { "path": "$RESOURCE/**" }
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$RESOURCE/**"
+        }
       ],
       "deny": [
-        { "path": "$HOME/.ssh/**" },
-        { "path": "$HOME/.gnupg/**" },
-        { "path": "$HOME/.aws/**" },
-        { "path": "$HOME/.kube/**" },
-        { "path": "$HOME/.docker/**" },
-        { "path": "$HOME/.azure/**" },
-        { "path": "$HOME/.config/gh/**" },
-        { "path": "$HOME/.config/gcloud/**" },
-        { "path": "$HOME/.config/git/**" },
-        { "path": "$HOME/.mozilla/**" },
-        { "path": "$HOME/Library/Keychains/**" },
-        { "path": "$HOME/Library/Cookies/**" },
-        { "path": "$HOME/Library/Application Support/Google/**" },
-        { "path": "$HOME/Library/Application Support/Firefox/**" },
-        { "path": "$HOME/Library/Application Support/Microsoft Edge/**" },
-        { "path": "$HOME/Library/Messages/**" },
-        { "path": "$HOME/Library/Mail/**" },
-        { "path": "$HOME/AppData/Local/Google/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Edge/**" },
-        { "path": "$HOME/AppData/Roaming/Mozilla/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Protect/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Vault/**" }
+        {
+          "path": "$HOME/.ssh/**"
+        },
+        {
+          "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "$HOME/.aws/**"
+        },
+        {
+          "path": "$HOME/.kube/**"
+        },
+        {
+          "path": "$HOME/.docker/**"
+        },
+        {
+          "path": "$HOME/.azure/**"
+        },
+        {
+          "path": "$HOME/.config/gh/**"
+        },
+        {
+          "path": "$HOME/.config/gcloud/**"
+        },
+        {
+          "path": "$HOME/.config/git/**"
+        },
+        {
+          "path": "$HOME/.config/autostart/**"
+        },
+        {
+          "path": "$HOME/.config/systemd/user/**"
+        },
+        {
+          "path": "$HOME/.mozilla/**"
+        },
+        {
+          "path": "$HOME/.netrc"
+        },
+        {
+          "path": "$HOME/.npmrc"
+        },
+        {
+          "path": "$HOME/.pypirc"
+        },
+        {
+          "path": "$HOME/.git-credentials"
+        },
+        {
+          "path": "$HOME/.gitconfig"
+        },
+        {
+          "path": "$HOME/.bashrc"
+        },
+        {
+          "path": "$HOME/.bash_profile"
+        },
+        {
+          "path": "$HOME/.bash_history"
+        },
+        {
+          "path": "$HOME/.profile"
+        },
+        {
+          "path": "$HOME/.zshrc"
+        },
+        {
+          "path": "$HOME/.zprofile"
+        },
+        {
+          "path": "$HOME/.zsh_history"
+        },
+        {
+          "path": "$HOME/Library/Keychains/**"
+        },
+        {
+          "path": "$HOME/Library/Cookies/**"
+        },
+        {
+          "path": "$HOME/Library/LaunchAgents/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Google/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Firefox/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Microsoft Edge/**"
+        },
+        {
+          "path": "$HOME/Library/Messages/**"
+        },
+        {
+          "path": "$HOME/Library/Mail/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Google/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Edge/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Mozilla/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Protect/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Vault/**"
+        }
       ]
     },
     {
       "identifier": "fs:allow-mkdir",
       "allow": [
-        { "path": "$HOME/**" }
+        {
+          "path": "$HOME/**"
+        }
       ],
       "deny": [
-        { "path": "$HOME/.ssh/**" },
-        { "path": "$HOME/.gnupg/**" },
-        { "path": "$HOME/.aws/**" },
-        { "path": "$HOME/.kube/**" },
-        { "path": "$HOME/.docker/**" },
-        { "path": "$HOME/.azure/**" },
-        { "path": "$HOME/.config/gh/**" },
-        { "path": "$HOME/.config/gcloud/**" },
-        { "path": "$HOME/.config/git/**" },
-        { "path": "$HOME/.mozilla/**" },
-        { "path": "$HOME/Library/LaunchAgents/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**" }
+        {
+          "path": "$HOME/.ssh/**"
+        },
+        {
+          "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "$HOME/.aws/**"
+        },
+        {
+          "path": "$HOME/.kube/**"
+        },
+        {
+          "path": "$HOME/.docker/**"
+        },
+        {
+          "path": "$HOME/.azure/**"
+        },
+        {
+          "path": "$HOME/.config/gh/**"
+        },
+        {
+          "path": "$HOME/.config/gcloud/**"
+        },
+        {
+          "path": "$HOME/.config/git/**"
+        },
+        {
+          "path": "$HOME/.config/autostart/**"
+        },
+        {
+          "path": "$HOME/.config/systemd/user/**"
+        },
+        {
+          "path": "$HOME/.mozilla/**"
+        },
+        {
+          "path": "$HOME/.netrc"
+        },
+        {
+          "path": "$HOME/.npmrc"
+        },
+        {
+          "path": "$HOME/.pypirc"
+        },
+        {
+          "path": "$HOME/.git-credentials"
+        },
+        {
+          "path": "$HOME/.gitconfig"
+        },
+        {
+          "path": "$HOME/.bashrc"
+        },
+        {
+          "path": "$HOME/.bash_profile"
+        },
+        {
+          "path": "$HOME/.bash_history"
+        },
+        {
+          "path": "$HOME/.profile"
+        },
+        {
+          "path": "$HOME/.zshrc"
+        },
+        {
+          "path": "$HOME/.zprofile"
+        },
+        {
+          "path": "$HOME/.zsh_history"
+        },
+        {
+          "path": "$HOME/Library/Keychains/**"
+        },
+        {
+          "path": "$HOME/Library/Cookies/**"
+        },
+        {
+          "path": "$HOME/Library/LaunchAgents/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Google/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Firefox/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Microsoft Edge/**"
+        },
+        {
+          "path": "$HOME/Library/Messages/**"
+        },
+        {
+          "path": "$HOME/Library/Mail/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Google/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Edge/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Mozilla/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Protect/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Vault/**"
+        }
       ]
     },
     {
       "identifier": "fs:allow-remove",
       "allow": [
-        { "path": "$HOME/**" }
+        {
+          "path": "$HOME/**"
+        }
       ],
       "deny": [
-        { "path": "$HOME/.ssh/**" },
-        { "path": "$HOME/.gnupg/**" },
-        { "path": "$HOME/.aws/**" },
-        { "path": "$HOME/.kube/**" },
-        { "path": "$HOME/.docker/**" },
-        { "path": "$HOME/.azure/**" },
-        { "path": "$HOME/.config/gh/**" },
-        { "path": "$HOME/.config/gcloud/**" },
-        { "path": "$HOME/.config/git/**" },
-        { "path": "$HOME/.mozilla/**" },
-        { "path": "$HOME/.netrc" },
-        { "path": "$HOME/.npmrc" },
-        { "path": "$HOME/.git-credentials" },
-        { "path": "$HOME/.gitconfig" },
-        { "path": "$HOME/.bashrc" },
-        { "path": "$HOME/.bash_profile" },
-        { "path": "$HOME/.profile" },
-        { "path": "$HOME/.zshrc" },
-        { "path": "$HOME/.zprofile" },
-        { "path": "$HOME/Library/Keychains/**" },
-        { "path": "$HOME/Library/LaunchAgents/**" },
-        { "path": "$HOME/AppData/Local/Google/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Edge/**" },
-        { "path": "$HOME/AppData/Roaming/Mozilla/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Protect/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Vault/**" }
+        {
+          "path": "$HOME/.ssh/**"
+        },
+        {
+          "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "$HOME/.aws/**"
+        },
+        {
+          "path": "$HOME/.kube/**"
+        },
+        {
+          "path": "$HOME/.docker/**"
+        },
+        {
+          "path": "$HOME/.azure/**"
+        },
+        {
+          "path": "$HOME/.config/gh/**"
+        },
+        {
+          "path": "$HOME/.config/gcloud/**"
+        },
+        {
+          "path": "$HOME/.config/git/**"
+        },
+        {
+          "path": "$HOME/.config/autostart/**"
+        },
+        {
+          "path": "$HOME/.config/systemd/user/**"
+        },
+        {
+          "path": "$HOME/.mozilla/**"
+        },
+        {
+          "path": "$HOME/.netrc"
+        },
+        {
+          "path": "$HOME/.npmrc"
+        },
+        {
+          "path": "$HOME/.pypirc"
+        },
+        {
+          "path": "$HOME/.git-credentials"
+        },
+        {
+          "path": "$HOME/.gitconfig"
+        },
+        {
+          "path": "$HOME/.bashrc"
+        },
+        {
+          "path": "$HOME/.bash_profile"
+        },
+        {
+          "path": "$HOME/.bash_history"
+        },
+        {
+          "path": "$HOME/.profile"
+        },
+        {
+          "path": "$HOME/.zshrc"
+        },
+        {
+          "path": "$HOME/.zprofile"
+        },
+        {
+          "path": "$HOME/.zsh_history"
+        },
+        {
+          "path": "$HOME/Library/Keychains/**"
+        },
+        {
+          "path": "$HOME/Library/Cookies/**"
+        },
+        {
+          "path": "$HOME/Library/LaunchAgents/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Google/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Firefox/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Microsoft Edge/**"
+        },
+        {
+          "path": "$HOME/Library/Messages/**"
+        },
+        {
+          "path": "$HOME/Library/Mail/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Google/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Edge/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Mozilla/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Protect/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Vault/**"
+        }
       ]
     },
     {
       "identifier": "fs:allow-rename",
       "allow": [
-        { "path": "$HOME/**" }
+        {
+          "path": "$HOME/**"
+        }
       ],
       "deny": [
-        { "path": "$HOME/.ssh/**" },
-        { "path": "$HOME/.gnupg/**" },
-        { "path": "$HOME/.aws/**" },
-        { "path": "$HOME/.kube/**" },
-        { "path": "$HOME/.docker/**" },
-        { "path": "$HOME/.azure/**" },
-        { "path": "$HOME/.config/gh/**" },
-        { "path": "$HOME/.config/gcloud/**" },
-        { "path": "$HOME/.config/git/**" },
-        { "path": "$HOME/.mozilla/**" },
-        { "path": "$HOME/.netrc" },
-        { "path": "$HOME/.npmrc" },
-        { "path": "$HOME/.git-credentials" },
-        { "path": "$HOME/.gitconfig" },
-        { "path": "$HOME/.bashrc" },
-        { "path": "$HOME/.bash_profile" },
-        { "path": "$HOME/.profile" },
-        { "path": "$HOME/.zshrc" },
-        { "path": "$HOME/.zprofile" },
-        { "path": "$HOME/Library/Keychains/**" },
-        { "path": "$HOME/Library/LaunchAgents/**" },
-        { "path": "$HOME/AppData/Local/Google/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Edge/**" },
-        { "path": "$HOME/AppData/Roaming/Mozilla/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Protect/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**" },
-        { "path": "$HOME/AppData/Local/Microsoft/Vault/**" }
+        {
+          "path": "$HOME/.ssh/**"
+        },
+        {
+          "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "$HOME/.aws/**"
+        },
+        {
+          "path": "$HOME/.kube/**"
+        },
+        {
+          "path": "$HOME/.docker/**"
+        },
+        {
+          "path": "$HOME/.azure/**"
+        },
+        {
+          "path": "$HOME/.config/gh/**"
+        },
+        {
+          "path": "$HOME/.config/gcloud/**"
+        },
+        {
+          "path": "$HOME/.config/git/**"
+        },
+        {
+          "path": "$HOME/.config/autostart/**"
+        },
+        {
+          "path": "$HOME/.config/systemd/user/**"
+        },
+        {
+          "path": "$HOME/.mozilla/**"
+        },
+        {
+          "path": "$HOME/.netrc"
+        },
+        {
+          "path": "$HOME/.npmrc"
+        },
+        {
+          "path": "$HOME/.pypirc"
+        },
+        {
+          "path": "$HOME/.git-credentials"
+        },
+        {
+          "path": "$HOME/.gitconfig"
+        },
+        {
+          "path": "$HOME/.bashrc"
+        },
+        {
+          "path": "$HOME/.bash_profile"
+        },
+        {
+          "path": "$HOME/.bash_history"
+        },
+        {
+          "path": "$HOME/.profile"
+        },
+        {
+          "path": "$HOME/.zshrc"
+        },
+        {
+          "path": "$HOME/.zprofile"
+        },
+        {
+          "path": "$HOME/.zsh_history"
+        },
+        {
+          "path": "$HOME/Library/Keychains/**"
+        },
+        {
+          "path": "$HOME/Library/Cookies/**"
+        },
+        {
+          "path": "$HOME/Library/LaunchAgents/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Google/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Firefox/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Microsoft Edge/**"
+        },
+        {
+          "path": "$HOME/Library/Messages/**"
+        },
+        {
+          "path": "$HOME/Library/Mail/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Google/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Edge/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Mozilla/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Protect/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Roaming/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$HOME/AppData/Local/Microsoft/Vault/**"
+        }
       ]
     },
-
     "http:default",
-
     "window-state:default"
   ]
 }

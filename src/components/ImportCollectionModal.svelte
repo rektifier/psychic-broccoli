@@ -5,6 +5,7 @@
   import { readTextFile } from '@tauri-apps/plugin-fs';
   import { basename } from '@tauri-apps/api/path';
   import { detectImportFormat, formatLabel, type ImportFormat } from '../lib/detect';
+  import type { HttpInvokeResult } from '../lib/requestExec';
 
   export let visible: boolean = false;
 
@@ -162,7 +163,7 @@
     urlError = '';
 
     try {
-      const res: { status: number; status_text: string; headers: Record<string, string>; body: string } =
+      const res: HttpInvokeResult =
         await invoke('http_request', {
           payload: {
             method: 'GET',
@@ -174,6 +175,11 @@
 
       if (res.status >= 400) {
         urlError = `Server returned ${res.status} ${res.status_text}`;
+        return;
+      }
+
+      if (res.body_encoding === 'base64') {
+        urlError = 'URL returned binary content, not a text spec';
         return;
       }
 
