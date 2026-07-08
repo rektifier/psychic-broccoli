@@ -140,9 +140,9 @@
   let showImportEnvModal = false;
   let pendingImportVars: import('./lib/types').Variable[] = [];
 
-  async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
+  async function handleImportEnvConfirm(target: string) {
     showImportEnvModal = false;
-    await applyImportedVariables(e.detail.target, pendingImportVars);
+    await applyImportedVariables(target, pendingImportVars);
     pendingImportVars = [];
   }
 
@@ -748,8 +748,8 @@
   variables={pendingImportVars}
   existingEnvironments={$availableEnvironments}
   hasEnvFile={$envFile !== null}
-  on:confirm={handleImportEnvConfirm}
-  on:skip={handleImportEnvSkip}
+  onConfirm={handleImportEnvConfirm}
+  onSkip={handleImportEnvSkip}
 />
 <ImportCollectionModal
   visible={showImportCollectionModal}
