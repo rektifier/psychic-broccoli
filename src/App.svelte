@@ -67,12 +67,16 @@
     activeFlow,
     favorites,
   } from './lib/stores';
-  import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
+  import {
+    refreshKeyVaultSecrets,
+    resetKeyVaultCache,
+    refreshKeyVaultForEnv,
+  } from './lib/keyvaultCache';
   import { serializeHttpFile, substituteAll } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { getAllFileNodes, findFile } from './lib/tree';
   import { errorMessage } from './lib/errors';
-  import type { HttpRequest, RequestLocation, EnvironmentFile, KeyVaultState } from './lib/types';
+  import type { HttpRequest, RequestLocation, EnvironmentFile } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import { saveFlowRunRecord, clearFlowRunHistory } from './lib/flowIO';
   import { openFolderByPath } from './lib/workspaceIO';
@@ -229,72 +233,8 @@
   }
 
   // ─── Key Vault ───
-
-  let lastKvEnv: string | null = null;
-  let kvFetchSeq = 0;
-  /** Per-environment KV cache - persists across env switches, cleared on folder change. */
-  let kvCache: Record<string, KeyVaultState> = {};
-  const idleKv: KeyVaultState = { status: 'idle', variables: {}, error: null, cacheKey: null };
-
-  async function refreshKeyVaultSecrets(forEnv?: string) {
-    const env = forEnv ?? $activeEnvironment;
-    if (!env) {
-      keyVaultState.set(idleKv);
-      return;
-    }
-
-    const config = extractKeyVaultConfig(env, $envFile, $userEnvFile);
-    if (!config) {
-      // No KV config for this env - restore idle but keep cache for other envs
-      keyVaultState.set(idleKv);
-      return;
-    }
-
-    const newCacheKey = kvCacheKey(env, config);
-
-    // Check per-env cache first
-    const cached = kvCache[newCacheKey];
-    if (cached && cached.status === 'loaded') {
-      keyVaultState.set(cached);
-      return;
-    }
-
-    // Only clear conflict preferences when switching environments
-    if (lastKvEnv !== env) {
-      varSourcePrefs.set({});
-    }
-    lastKvEnv = env;
-
-    const seq = ++kvFetchSeq;
-    keyVaultState.set({ status: 'loading', variables: {}, error: null, cacheKey: newCacheKey });
-
-    try {
-      const vars = await fetchKeyVaultSecrets(config);
-      if (kvFetchSeq === seq) {
-        const state: KeyVaultState = {
-          status: 'loaded',
-          variables: vars,
-          error: null,
-          cacheKey: newCacheKey,
-        };
-        kvCache[newCacheKey] = state;
-        kvCache = kvCache;
-        keyVaultState.set(state);
-      }
-    } catch (err: unknown) {
-      if (kvFetchSeq === seq) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const state: KeyVaultState = {
-          status: 'error',
-          variables: {},
-          error: msg,
-          cacheKey: newCacheKey,
-        };
-        keyVaultState.set(state);
-        addToast(`Key Vault error: ${msg}`, 'error');
-      }
-    }
-  }
+  // Cache and fetch live in src/lib/keyvaultCache.ts; App.svelte only owns
+  // the environment-change subscription.
 
   const unsubKv = activeEnvironment.subscribe(() => {
     refreshKeyVaultSecrets();
@@ -387,14 +327,12 @@
   })();
 
   // ─── Open Folder (scan for .http files) ───
-  // Scanning and opening live in src/lib/workspaceIO.ts; App.svelte supplies
-  // the Key Vault hooks because the per-environment KV cache is UI state here.
+  // Scanning and opening live in src/lib/workspaceIO.ts; the Key Vault hooks
+  // reset and refill the per-environment secret cache in lib/keyvaultCache.ts.
 
   function openWorkspaceFolder(rootPath: string) {
     return openFolderByPath(rootPath, {
-      resetCache: () => {
-        kvCache = {};
-      },
+      resetCache: resetKeyVaultCache,
       refresh: () => {
         refreshKeyVaultSecrets();
       },
@@ -999,15 +937,7 @@
               on:sourcePref={(e) => {
                 varSourcePrefs.update((p) => ({ ...p, [e.detail.key]: e.detail.source }));
               }}
-              on:refreshKv={(e) => {
-                // Invalidate cache for this env so fresh secrets are fetched
-                for (const key of Object.keys(kvCache)) {
-                  if (key.startsWith(e.detail + '::')) delete kvCache[key];
-                }
-                kvCache = kvCache;
-                keyVaultState.update((s) => ({ ...s, cacheKey: null }));
-                refreshKeyVaultSecrets(e.detail);
-              }}
+              on:refreshKv={(e) => refreshKeyVaultForEnv(e.detail)}
             />
           </div>
         {:else if $activeFlowTabPath && $activeFlow}
