@@ -564,11 +564,11 @@
 
   // Not $state: only read inside handlers, never by the template.
   let flowAbortController: AbortController | null = null;
-  let lastFlowRunRecords: Record<string, FlowRunRecord> = $state({});
+  const lastFlowRunRecords: Record<string, FlowRunRecord> = $state({});
   let runningFlowPath: string | null = $state(null);
 
   /** Persisted UI state for flow editors, keyed by flow path. */
-  let flowUIState: Record<
+  const flowUIState: Record<
     string,
     {
       expandedStepId: string | null;
@@ -724,14 +724,14 @@
   onCancel={cancelAddFavorite}
 />
 
-<svelte:window on:dragover|preventDefault={() => {}} on:drop|preventDefault={() => {}} />
+<svelte:window ondragover={(e) => e.preventDefault()} ondrop={(e) => e.preventDefault()} />
 
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
     {#if mcpRunning}
       <button
         class="mcp-pill"
-        on:click={() => (showSettings = true)}
+        onclick={() => (showSettings = true)}
         title="MCP server running on port {mcpPort}"
       >
         <span class="mcp-dot"></span>
@@ -740,7 +740,7 @@
     {/if}
   </div>
 
-  <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
+  <div class={['layout', { 'sidebar-dragging': sidebarDragging }]} bind:this={layoutEl}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
       <TreeSidebar
         selected={$selectedLocation}
@@ -762,7 +762,7 @@
       />
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
+    <div class="sidebar-divider" onmousedown={onSidebarDividerDown} role="separator"></div>
 
     <div class="main-area">
       <TabBar
@@ -780,7 +780,7 @@
           closeFlowTab(flowPath);
         }}
       />
-      <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
+      <div class={['main-panels', { dragging }]} bind:this={mainPanelsEl}>
         {#if showEnvEditor}
           <div class="env-editor-pane">
             <EnvironmentEditor
@@ -845,7 +845,7 @@
             />
           </div>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
+          <div class="divider" onmousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
             <ResponseViewer
               response={$currentResponse}
