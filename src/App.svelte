@@ -807,14 +807,14 @@
             lastRunRecord={lastFlowRunRecords[$activeFlowTabPath] ?? null}
             runHistory={$flowRunHistory.filter((r) => r.flowFilePath === $activeFlowTabPath)}
             uiState={flowUIState[$activeFlowTabPath] ?? null}
-            on:uiStateChange={(e) => {
-              flowUIState[$activeFlowTabPath] = e.detail;
+            onUiStateChange={(state) => {
+              flowUIState[$activeFlowTabPath] = state;
               flowUIState = flowUIState;
             }}
-            on:save={(e) => saveFlow(e.detail.flowPath, e.detail.flow)}
-            on:run={handleRunFlow}
-            on:abort={handleAbortFlow}
-            on:clearHistory={() => {
+            onSave={(detail) => saveFlow(detail.flowPath, detail.flow)}
+            onRun={handleRunFlow}
+            onAbort={handleAbortFlow}
+            onClearHistory={() => {
               flowRunHistory.set(
                 $flowRunHistory.filter((r) => r.flowFilePath !== $activeFlowTabPath),
               );
