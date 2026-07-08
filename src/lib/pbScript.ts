@@ -292,6 +292,22 @@ export function parseScriptText(text: string): PbDirective[] {
   return directives;
 }
 
+/**
+ * Serialize directives into the one-per-line editor text format used by the
+ * flow step override panel: `expr | label` for asserts, `pb.set(...)` /
+ * `pb.global(...)` calls for the rest. Inverse of the panel's line parser.
+ */
+export function directivesToText(directives: PbDirective[]): string {
+  return directives
+    .map((d) => {
+      if (d.type === 'assert') return d.label ? `${d.expr} | ${d.label}` : d.expr;
+      if (d.type === 'set') return `pb.set("${d.key}", ${d.expr})`;
+      if (d.type === 'global') return `pb.global("${d.key}", ${d.expr})`;
+      return '';
+    })
+    .join('\n');
+}
+
 // ─── Pb Directive Executor ──────────────────────────────────────────────────
 
 export interface RequestMutations {

@@ -1,36 +1,38 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { TreeNode, FileNode, FlowStep } from '../lib/types';
   import { getAllFileNodes } from '../lib/tree';
   import { METHOD_COLORS } from '../lib/theme';
 
-  export let tree: TreeNode[] = [];
-  export let rootPath: string;
+  interface Props {
+    tree?: TreeNode[];
+    rootPath: string;
+    onPick?: (step: FlowStep) => void;
+    onClose?: () => void;
+  }
 
-  const dispatch = createEventDispatcher<{
-    pick: FlowStep;
-    close: void;
-  }>();
+  let { tree = [], rootPath, onPick, onClose }: Props = $props();
 
-  $: files = getAllFileNodes(tree);
+  const files = $derived(getAllFileNodes(tree));
 
-  let filter = '';
-  let displayMode: 'name' | 'url' = 'name';
+  let filter = $state('');
+  let displayMode: 'name' | 'url' = $state('name');
 
-  $: suffixMap = new Map(files.map((f) => [f.path, computeUrlSuffixes(f.requests)]));
+  const suffixMap = $derived(new Map(files.map((f) => [f.path, computeUrlSuffixes(f.requests)])));
 
-  $: filteredFiles = filter.trim()
-    ? files.filter(
-        (f) =>
-          f.name.toLowerCase().includes(filter.toLowerCase()) ||
-          f.requests.some(
-            (r) =>
-              r.url.toLowerCase().includes(filter.toLowerCase()) ||
-              r.name.toLowerCase().includes(filter.toLowerCase()) ||
-              r.method.toLowerCase().includes(filter.toLowerCase()),
-          ),
-      )
-    : files;
+  const filteredFiles = $derived(
+    filter.trim()
+      ? files.filter(
+          (f) =>
+            f.name.toLowerCase().includes(filter.toLowerCase()) ||
+            f.requests.some(
+              (r) =>
+                r.url.toLowerCase().includes(filter.toLowerCase()) ||
+                r.name.toLowerCase().includes(filter.toLowerCase()) ||
+                r.method.toLowerCase().includes(filter.toLowerCase()),
+            ),
+        )
+      : files,
+  );
 
   function pickRequest(file: FileNode, requestIndex: number) {
     const req = file.requests[requestIndex];
@@ -45,7 +47,7 @@
       label: `${req.method} ${req.url}`,
       continueOnFailure: false,
     };
-    dispatch('pick', step);
+    onPick?.(step);
   }
 
   /** Compute unique URL suffixes for requests in a file, stripping common prefix segments. */
@@ -67,30 +69,34 @@
   }
 
   function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) dispatch('close');
+    if (e.target === e.currentTarget) onClose?.();
   }
 
-  let expandedFiles: Set<string> = new Set();
+  let expandedFiles: Set<string> = $state(new Set());
 
   function toggleFile(path: string) {
-    if (expandedFiles.has(path)) {
-      expandedFiles.delete(path);
+    const next = new Set(expandedFiles);
+    if (next.has(path)) {
+      next.delete(path);
     } else {
-      expandedFiles.add(path);
+      next.add(path);
     }
-    expandedFiles = expandedFiles;
+    expandedFiles = next;
   }
 
-  let filterInputEl: HTMLInputElement;
-  $: if (filterInputEl) filterInputEl.focus();
+  let filterInputEl: HTMLInputElement | null = $state(null);
+  // Focus the filter input as soon as the picker mounts.
+  $effect(() => {
+    filterInputEl?.focus();
+  });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="picker-backdrop"
-  on:click={handleBackdropClick}
-  on:keydown={(e) => {
-    if (e.key === 'Escape') dispatch('close');
+  onclick={handleBackdropClick}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') onClose?.();
   }}
 >
   <div class="picker-panel">
@@ -98,7 +104,7 @@
       <span class="picker-title">Add step</span>
       <button
         class="picker-display-toggle"
-        on:click={() => (displayMode = displayMode === 'name' ? 'url' : 'name')}
+        onclick={() => (displayMode = displayMode === 'name' ? 'url' : 'name')}
         title={displayMode === 'name' ? 'Show URL paths' : 'Show request names'}
       >
         {#if displayMode === 'name'}
@@ -127,7 +133,7 @@
           </svg>
         {/if}
       </button>
-      <button class="picker-close" on:click={() => dispatch('close')}>&times;</button>
+      <button class="picker-close" onclick={() => onClose?.()}>&times;</button>
     </div>
     <div class="picker-filter">
       <input
@@ -136,8 +142,8 @@
         class="picker-filter-input"
         placeholder="Filter by file, URL, or method..."
         spellcheck="false"
-        on:keydown={(e) => {
-          if (e.key === 'Escape') dispatch('close');
+        onkeydown={(e) => {
+          if (e.key === 'Escape') onClose?.();
         }}
       />
     </div>
@@ -148,12 +154,12 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="picker-file-header"
-            on:click={() => toggleFile(file.path)}
-            on:keydown={(e) => {
+            onclick={() => toggleFile(file.path)}
+            onkeydown={(e) => {
               if (e.key === 'Enter') toggleFile(file.path);
             }}
           >
-            <span class="picker-chevron" class:open={expanded}>
+            <span class={['picker-chevron', { open: expanded }]}>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path
                   d="M3 1.5l4 3.5-4 3.5"
@@ -180,7 +186,7 @@
             {#each file.requests as req, i (req.id)}
               <button
                 class="picker-request"
-                on:click={() => pickRequest(file, i)}
+                onclick={() => pickRequest(file, i)}
                 title={displayMode === 'name' ? req.url : req.name}
               >
                 <span class="picker-method" style="color: {METHOD_COLORS[req.method] || '#888'}"

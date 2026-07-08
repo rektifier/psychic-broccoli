@@ -5,10 +5,12 @@
 // still need the target-environment modal (empty when nothing is pending).
 
 import { get } from 'svelte/store';
+import { invoke } from '@tauri-apps/api/core';
 import { writeTextFile, mkdir } from '@tauri-apps/plugin-fs';
 import { join, basename, dirname } from '@tauri-apps/api/path';
 import { workspace, envFile, activeEnvironment, addToast } from './stores';
 import { errorMessage } from './errors';
+import type { HttpInvokeResult } from './requestExec';
 import { ensureSharedEnvironment } from './envFiles';
 import { buildWorkspaceTree } from './workspaceTree';
 import { scanForHttpFiles, safeJoinPath } from './workspaceIO';
@@ -17,6 +19,32 @@ import { importInsomniaExport } from './insomnia';
 import { importOpenApiSpec } from './openapi';
 import type { ImportFormat } from './detect';
 import type { ImportResult, EnvironmentFile, Variable } from './types';
+
+/**
+ * Fetch a collection/spec over HTTP (via the Tauri http_request proxy) and
+ * return its text body. Throws an Error with a user-facing message on HTTP
+ * error statuses or binary responses.
+ */
+export async function fetchSpecFromUrl(url: string): Promise<string> {
+  const res: HttpInvokeResult = await invoke('http_request', {
+    payload: {
+      method: 'GET',
+      url,
+      headers: { Accept: 'application/json, application/yaml, text/yaml, */*' },
+      body: null,
+    },
+  });
+
+  if (res.status >= 400) {
+    throw new Error(`Server returned ${res.status} ${res.status_text}`);
+  }
+
+  if (res.body_encoding === 'base64') {
+    throw new Error('URL returned binary content, not a text spec');
+  }
+
+  return res.body;
+}
 
 export async function writeImportedFiles(result: ImportResult): Promise<number> {
   const rootPath = get(workspace).rootPath!;

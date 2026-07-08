@@ -38,11 +38,8 @@
     keyVaultState,
     varSourcePrefs,
     updateRequestInTree,
-    addRequestToFile,
-    deleteRequestFromFile,
     editingFilePath,
     editingFolderPath,
-    toggleFolder,
     markFileSaved,
     addToast,
     tabs,
@@ -55,12 +52,10 @@
     currentSentRequest,
     setTabBottomTab,
     setTabResponseTab,
-    flows,
     flowRunHistory,
     flowRunState,
     flowTabs,
     activeFlowTabPath,
-    openFlowTab,
     closeFlowTab,
     activateFlowTab,
     activeFlowPath,
@@ -81,18 +76,8 @@
   import { saveFlowRunRecord, clearFlowRunHistory } from './lib/flowIO';
   import { openFolderByPath } from './lib/workspaceIO';
   import { importCollectionContent, applyImportedVariables } from './lib/importIO';
-  import { createFlow, duplicateFlow, saveFlow, deleteFlow } from './lib/flowOps';
-  import { runAllRequests, nameRequest } from './lib/requestOps';
-  import {
-    createFile,
-    createFolder,
-    renameFile,
-    renameFolder,
-    duplicateFile,
-    deleteFile,
-    deleteFolder,
-    cancelRename,
-  } from './lib/fileOps';
+  import { saveFlow, deleteFlow } from './lib/flowOps';
+  import { runAllRequests } from './lib/requestOps';
   import { runFlow } from './lib/flowRunner';
   import { executeHttpRequest } from './lib/requestExec';
   import { startMcpBridge } from './lib/mcpBridge';
@@ -106,22 +91,20 @@
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
 
-  let showEnvEditor = false;
-  let showVarInspector = false;
+  let showEnvEditor = $state(false);
+  let showVarInspector = $state(false);
 
-  let showHelp = false;
+  let showHelp = $state(false);
 
   // ─── Theme / Settings ───
-  let currentTheme: ThemeId = 'default';
-  let showSettings = false;
+  let currentTheme: ThemeId = $state('default');
+  let showSettings = $state(false);
   loadTheme().then((t) => (currentTheme = t));
   loadFavorites().then((f) => favorites.set(f));
 
   // ─── MCP status (titlebar pill) ───
-  // Plain legacy `let` (not $state) so App.svelte stays in legacy mode and
-  // the `$:` reactive statements elsewhere in this file keep working.
-  let mcpRunning = false;
-  let mcpPort = 3742;
+  let mcpRunning = $state(false);
+  let mcpPort = $state(3742);
 
   async function refreshMcpStatus() {
     try {
@@ -134,15 +117,15 @@
   }
 
   // ─── Import Collection Modal ───
-  let showImportCollectionModal = false;
+  let showImportCollectionModal = $state(false);
 
   // ─── Import Environment Modal ───
-  let showImportEnvModal = false;
-  let pendingImportVars: import('./lib/types').Variable[] = [];
+  let showImportEnvModal = $state(false);
+  let pendingImportVars: import('./lib/types').Variable[] = $state([]);
 
-  async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
+  async function handleImportEnvConfirm(target: string) {
     showImportEnvModal = false;
-    await applyImportedVariables(e.detail.target, pendingImportVars);
+    await applyImportedVariables(target, pendingImportVars);
     pendingImportVars = [];
   }
 
@@ -180,9 +163,9 @@
 
   // ─── Resizable Panes ───
 
-  let editorWidthPercent = loadLayoutNumber(LAYOUT_KEY_EDITOR_PCT, 50);
-  let dragging = false;
-  let mainPanelsEl: HTMLDivElement;
+  let editorWidthPercent = $state(loadLayoutNumber(LAYOUT_KEY_EDITOR_PCT, 50));
+  let dragging = $state(false);
+  let mainPanelsEl: HTMLDivElement | undefined = $state();
 
   function onDividerDown(e: MouseEvent) {
     e.preventDefault();
@@ -208,9 +191,9 @@
 
   // ─── Resizable Sidebar ───
 
-  let sidebarWidth = loadLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, 260);
-  let sidebarDragging = false;
-  let layoutEl: HTMLDivElement;
+  let sidebarWidth = $state(loadLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, 260));
+  let sidebarDragging = $state(false);
+  let layoutEl: HTMLDivElement | undefined = $state();
 
   function onSidebarDividerDown(e: MouseEvent) {
     e.preventDefault();
@@ -269,19 +252,24 @@
     };
   }
 
-  // Clear stale named results and response when environment changes
+  // Clear stale named results and response when environment changes.
+  // lastEnv is intentionally a plain (untracked) variable: the effect must
+  // re-run only when $activeEnvironment changes, and the first run (which
+  // sees lastEnv === null) records the initial environment without clearing.
   let lastEnv: string | null = null;
-  $: if ($activeEnvironment !== lastEnv) {
-    if (lastEnv !== null) {
-      namedResults.set({});
-      currentResponse.set(null);
-      currentSentRequest.set(null);
+  $effect(() => {
+    if ($activeEnvironment !== lastEnv) {
+      if (lastEnv !== null) {
+        namedResults.set({});
+        currentResponse.set(null);
+        currentSentRequest.set(null);
+      }
+      lastEnv = $activeEnvironment;
     }
-    lastEnv = $activeEnvironment;
-  }
+  });
 
   // Active tab's section tab (Body/Assertions) for pinned tabs
-  $: activeBottomTab = (() => {
+  let activeBottomTab: BottomTab = $derived.by(() => {
     const key =
       $tabs.length > 0 && $selectedLocation
         ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
@@ -289,16 +277,16 @@
     if (!key) return 'body' as BottomTab;
     const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
     return tab?.bottomTab ?? ('body' as BottomTab);
-  })();
+  });
 
-  function handleBottomTabChange(e: CustomEvent<BottomTab>) {
+  function handleBottomTabChange(tab: BottomTab) {
     if ($selectedLocation) {
-      setTabBottomTab($selectedLocation, e.detail);
+      setTabBottomTab($selectedLocation, tab);
     }
   }
 
   // Active response tab (Body/Headers/Request/Assertions) for pinned tabs
-  $: activeResponseTab = (() => {
+  let activeResponseTab: ResponseTab = $derived.by(() => {
     const key =
       $tabs.length > 0 && $selectedLocation
         ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
@@ -306,16 +294,16 @@
     if (!key) return 'body' as ResponseTab;
     const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
     return tab?.responseTab ?? ('body' as ResponseTab);
-  })();
+  });
 
-  function handleResponseTabChange(e: CustomEvent<ResponseTab>) {
+  function handleResponseTabChange(tab: ResponseTab) {
     if ($selectedLocation) {
-      setTabResponseTab($selectedLocation, e.detail);
+      setTabResponseTab($selectedLocation, tab);
     }
   }
 
   // Reactive resolved URL - all store dependencies are explicit so Svelte tracks them
-  $: computedResolvedUrl = (() => {
+  let computedResolvedUrl = $derived.by(() => {
     if (!$activeRequest || !$activeRequest.url.includes('{{')) return '';
     const resolved = substituteAll($activeRequest.url, {
       fileVariables: $activeFileVariables,
@@ -325,7 +313,7 @@
     });
     // Only show if substitution actually changed something
     return resolved !== $activeRequest.url ? resolved : '';
-  })();
+  });
 
   // ─── Open Folder (scan for .http files) ───
   // Scanning and opening live in src/lib/workspaceIO.ts; the Key Vault hooks
@@ -352,9 +340,9 @@
 
   // ─── Favorites ───
 
-  let showAddFavoriteModal = false;
-  let pendingFavoritePath = '';
-  let pendingFavoriteName = '';
+  let showAddFavoriteModal = $state(false);
+  let pendingFavoritePath = $state('');
+  let pendingFavoriteName = $state('');
 
   /**
    * Toggle the currently open workspace folder in/out of the favorites list.
@@ -401,13 +389,6 @@
     });
   }
 
-  /**
-   * Name shown for the open folder: the favorite's custom name when the open
-   * folder is favorited, otherwise the folder basename.
-   */
-  $: rootDisplayName =
-    $favorites.find((f) => f.path === $workspace.rootPath)?.name ?? $workspace.rootName;
-
   /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
   async function openFavorite(path: string) {
     try {
@@ -437,14 +418,14 @@
     }
   }
 
-  async function handleImportFile(e: CustomEvent<{ content: string; format: ImportFormat }>) {
+  async function handleImportFile(content: string, format: ImportFormat) {
     showImportCollectionModal = false;
-    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, e.detail.format));
+    showEnvModalIfNeeded(await importCollectionContent(content, format));
   }
 
-  async function handleImportUrl(e: CustomEvent<{ content: string }>) {
+  async function handleImportUrl(content: string) {
     showImportCollectionModal = false;
-    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, 'openapi'));
+    showEnvModalIfNeeded(await importCollectionContent(content, 'openapi'));
   }
 
   // ─── Save File ───
@@ -533,7 +514,7 @@
 
   // ─── Event Handlers ───
 
-  function handleSelect(e: CustomEvent<RequestLocation>) {
+  function handleSelect(loc: RequestLocation) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
@@ -541,7 +522,6 @@
     // Deactivate any flow tab when selecting a request
     activeFlowTabPath.set(null);
     activeFlowPath.set(null);
-    const loc = e.detail;
     const hasTab = $tabs.some(
       (t) => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex,
     );
@@ -552,14 +532,12 @@
     }
   }
 
-  function handlePinRequest(
-    e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>,
-  ) {
+  function handlePinRequest(detail: { filePath: string; requestIndex: number; label: string }) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
     }
-    pinTab({ filePath: e.detail.filePath, requestIndex: e.detail.requestIndex }, e.detail.label);
+    pinTab({ filePath: detail.filePath, requestIndex: detail.requestIndex }, detail.label);
   }
 
   function handleTabActivate(location: RequestLocation) {
@@ -577,45 +555,27 @@
     closeTab(location);
   }
 
-  function handleUpdateRequest(e: CustomEvent<HttpRequest>) {
+  function handleUpdateRequest(updated: HttpRequest) {
     if (!$selectedLocation) return;
-    updateRequestInTree($selectedLocation.filePath, $selectedLocation.requestIndex, e.detail);
-  }
-
-  function handleAddRequest(e: CustomEvent<string>) {
-    addRequestToFile(e.detail);
-  }
-
-  function handleDeleteRequest(e: CustomEvent<{ filePath: string; requestIndex: number }>) {
-    deleteRequestFromFile(e.detail.filePath, e.detail.requestIndex);
-  }
-
-  function handleToggleFolder(e: CustomEvent<string>) {
-    toggleFolder(e.detail);
+    updateRequestInTree($selectedLocation.filePath, $selectedLocation.requestIndex, updated);
   }
 
   // ─── Flow Handlers ───
 
-  function handleOpenFlow(e: CustomEvent<string>) {
-    const path = e.detail;
-    const flow = $flows[path];
-    if (!flow) return;
-    openFlowTab(path, flow.name);
-  }
-
+  // Not $state: only read inside handlers, never by the template.
   let flowAbortController: AbortController | null = null;
-  let lastFlowRunRecords: Record<string, FlowRunRecord> = {};
-  let runningFlowPath: string | null = null;
+  const lastFlowRunRecords: Record<string, FlowRunRecord> = $state({});
+  let runningFlowPath: string | null = $state(null);
 
   /** Persisted UI state for flow editors, keyed by flow path. */
-  let flowUIState: Record<
+  const flowUIState: Record<
     string,
     {
       expandedStepId: string | null;
       collapsedKeys: Record<string, boolean>;
       activeOverrideTabs: Record<string, string>;
     }
-  > = {};
+  > = $state({});
 
   async function handleRunFlow() {
     const flow = $activeFlow;
@@ -675,7 +635,6 @@
 
     record.flowFilePath = flowPathVal;
     lastFlowRunRecords[flowPathVal] = record;
-    lastFlowRunRecords = lastFlowRunRecords; // trigger reactivity
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
     runningFlowPath = null;
 
@@ -701,14 +660,14 @@
     flowAbortController?.abort();
   }
 
-  async function handleDeleteFlow(e: CustomEvent<string>) {
-    delete flowUIState[e.detail];
-    await deleteFlow(e.detail);
+  async function handleDeleteFlow(path: string) {
+    delete flowUIState[path];
+    await deleteFlow(path);
   }
 </script>
 
 <ToastContainer />
-<HelpModal visible={showHelp} on:close={() => (showHelp = false)} />
+<HelpModal visible={showHelp} onClose={() => (showHelp = false)} />
 <SettingsModal
   visible={showSettings}
   {currentTheme}
@@ -736,8 +695,8 @@
   namedResults={$namedResults}
   activeEnv={$activeEnvironment}
   activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
-  on:close={() => (showVarInspector = false)}
-  on:clearRuntime={() => {
+  onClose={() => (showVarInspector = false)}
+  onClearRuntime={() => {
     pbFileOverrides.set({});
     pbGlobals.set({});
     namedResults.set({});
@@ -748,14 +707,14 @@
   variables={pendingImportVars}
   existingEnvironments={$availableEnvironments}
   hasEnvFile={$envFile !== null}
-  on:confirm={handleImportEnvConfirm}
-  on:skip={handleImportEnvSkip}
+  onConfirm={handleImportEnvConfirm}
+  onSkip={handleImportEnvSkip}
 />
 <ImportCollectionModal
   visible={showImportCollectionModal}
-  on:importFile={handleImportFile}
-  on:importUrl={handleImportUrl}
-  on:cancel={() => (showImportCollectionModal = false)}
+  onImportFile={handleImportFile}
+  onImportUrl={handleImportUrl}
+  onCancel={() => (showImportCollectionModal = false)}
 />
 <AddFavoriteModal
   visible={showAddFavoriteModal}
@@ -765,14 +724,14 @@
   onCancel={cancelAddFavorite}
 />
 
-<svelte:window on:dragover|preventDefault={() => {}} on:drop|preventDefault={() => {}} />
+<svelte:window ondragover={(e) => e.preventDefault()} ondrop={(e) => e.preventDefault()} />
 
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
     {#if mcpRunning}
       <button
         class="mcp-pill"
-        on:click={() => (showSettings = true)}
+        onclick={() => (showSettings = true)}
         title="MCP server running on port {mcpPort}"
       >
         <span class="mcp-dot"></span>
@@ -781,55 +740,29 @@
     {/if}
   </div>
 
-  <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
+  <div class={['layout', { 'sidebar-dragging': sidebarDragging }]} bind:this={layoutEl}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
       <TreeSidebar
-        tree={$workspace.tree}
         selected={$selectedLocation}
-        rootName={rootDisplayName}
-        hasWorkspace={!!$workspace.rootPath}
-        rootPath={$workspace.rootPath}
-        favorites={$favorites}
         editingFilePath={$editingFilePath}
         editingFolderPath={$editingFolderPath}
-        environments={$availableEnvironments}
-        activeEnv={$activeEnvironment}
-        flows={$flows}
-        activeFlowPath={$activeFlowTabPath}
-        on:openFolder={openFolder}
-        on:openGettingStarted={openGettingStarted}
-        on:toggleFavorite={toggleFavorite}
-        on:openFavorite={(e) => openFavorite(e.detail)}
-        on:removeFavorite={(e) => removeFavorite(e.detail)}
-        on:importCollection={() => (showImportCollectionModal = true)}
-        on:select={handleSelect}
-        on:pinRequest={handlePinRequest}
-        on:toggleFolder={handleToggleFolder}
-        on:addRequest={handleAddRequest}
-        on:deleteRequest={handleDeleteRequest}
-        on:deleteFile={(e) => deleteFile(e.detail)}
-        on:deleteFolder={(e) => deleteFolder(e.detail)}
-        on:createFile={(e) => createFile(e.detail)}
-        on:createFolder={(e) => createFolder(e.detail)}
-        on:renameFile={(e) => renameFile(e.detail.oldPath, e.detail.newName)}
-        on:renameFolder={(e) => renameFolder(e.detail.oldPath, e.detail.newName)}
-        on:duplicateFile={(e) => duplicateFile(e.detail)}
-        on:cancelRename={cancelRename}
-        on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-        on:editEnv={() => (showEnvEditor = true)}
-        on:openVarInspector={() => (showVarInspector = true)}
-        on:openHelp={() => (showHelp = true)}
-        on:openSettings={() => (showSettings = true)}
-        on:nameRequest={(e) =>
-          nameRequest(e.detail.filePath, e.detail.requestIndex, e.detail.varName)}
-        on:openFlow={handleOpenFlow}
-        on:createFlow={(e) => createFlow(e.detail)}
-        on:duplicateFlow={(e) => duplicateFlow(e.detail)}
-        on:deleteFlow={handleDeleteFlow}
+        onOpenFolder={openFolder}
+        onOpenGettingStarted={openGettingStarted}
+        onToggleFavorite={toggleFavorite}
+        onOpenFavorite={openFavorite}
+        onRemoveFavorite={removeFavorite}
+        onImportCollection={() => (showImportCollectionModal = true)}
+        onSelect={handleSelect}
+        onPinRequest={handlePinRequest}
+        onEditEnv={() => (showEnvEditor = true)}
+        onOpenVarInspector={() => (showVarInspector = true)}
+        onOpenHelp={() => (showHelp = true)}
+        onOpenSettings={() => (showSettings = true)}
+        onDeleteFlow={handleDeleteFlow}
       />
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
+    <div class="sidebar-divider" onmousedown={onSidebarDividerDown} role="separator"></div>
 
     <div class="main-area">
       <TabBar
@@ -847,7 +780,7 @@
           closeFlowTab(flowPath);
         }}
       />
-      <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
+      <div class={['main-panels', { dragging }]} bind:this={mainPanelsEl}>
         {#if showEnvEditor}
           <div class="env-editor-pane">
             <EnvironmentEditor
@@ -855,16 +788,16 @@
               userEnvFile={$userEnvFile}
               activeEnv={$activeEnvironment ?? '$shared'}
               kvState={$keyVaultState}
-              on:update={(e) => {
-                envFile.set(e.detail);
-                saveEnvFile(e.detail);
+              onUpdate={(updated) => {
+                envFile.set(updated);
+                saveEnvFile(updated);
               }}
-              on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-              on:close={() => (showEnvEditor = false)}
-              on:sourcePref={(e) => {
-                varSourcePrefs.update((p) => ({ ...p, [e.detail.key]: e.detail.source }));
+              onChangeEnv={(env) => activeEnvironment.set(env)}
+              onClose={() => (showEnvEditor = false)}
+              onSourcePref={(key, source) => {
+                varSourcePrefs.update((p) => ({ ...p, [key]: source }));
               }}
-              on:refreshKv={(e) => refreshKeyVaultForEnv(e.detail)}
+              onRefreshKv={(env) => refreshKeyVaultForEnv(env)}
             />
           </div>
         {:else if $activeFlowTabPath && $activeFlow}
@@ -877,19 +810,17 @@
             lastRunRecord={lastFlowRunRecords[$activeFlowTabPath] ?? null}
             runHistory={$flowRunHistory.filter((r) => r.flowFilePath === $activeFlowTabPath)}
             uiState={flowUIState[$activeFlowTabPath] ?? null}
-            on:uiStateChange={(e) => {
-              flowUIState[$activeFlowTabPath] = e.detail;
-              flowUIState = flowUIState;
+            onUiStateChange={(state) => {
+              flowUIState[$activeFlowTabPath] = state;
             }}
-            on:save={(e) => saveFlow(e.detail.flowPath, e.detail.flow)}
-            on:run={handleRunFlow}
-            on:abort={handleAbortFlow}
-            on:clearHistory={() => {
+            onSave={(detail) => saveFlow(detail.flowPath, detail.flow)}
+            onRun={handleRunFlow}
+            onAbort={handleAbortFlow}
+            onClearHistory={() => {
               flowRunHistory.set(
                 $flowRunHistory.filter((r) => r.flowFilePath !== $activeFlowTabPath),
               );
               delete lastFlowRunRecords[$activeFlowTabPath];
-              lastFlowRunRecords = lastFlowRunRecords;
               if ($workspace.rootPath && $activeFlow) {
                 clearFlowRunHistory($workspace.rootPath, $activeFlow.name);
               }
@@ -906,15 +837,15 @@
               envVariables={$resolvedEnvVars}
               namedResults={$namedResults}
               bottomTab={activeBottomTab}
-              on:update={handleUpdateRequest}
-              on:send={(e) => sendRequest(e.detail)}
-              on:save={saveActiveFile}
-              on:runAll={(e) => runAllRequests(e.detail, sendRequest)}
-              on:bottomTabChange={handleBottomTabChange}
+              onUpdate={handleUpdateRequest}
+              onSend={sendRequest}
+              onSave={saveActiveFile}
+              onRunAll={(deps) => runAllRequests(deps, sendRequest)}
+              onBottomTabChange={handleBottomTabChange}
             />
           </div>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
+          <div class="divider" onmousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
             <ResponseViewer
               response={$currentResponse}
@@ -922,7 +853,7 @@
               sentRequest={$currentSentRequest}
               assertionResults={$pbAssertionResults}
               activeTab={activeResponseTab}
-              on:tabChange={handleResponseTabChange}
+              onTabChange={handleResponseTabChange}
             />
           </div>
         {:else}

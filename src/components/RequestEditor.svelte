@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { untrack } from 'svelte';
   import type {
     HttpRequest,
     HttpMethod,
@@ -12,39 +12,62 @@
   import DependencyBar from './DependencyBar.svelte';
   import VariablePicker from './VariablePicker.svelte';
 
-  export let request: HttpRequest;
-  export let loading: boolean = false;
-  export let resolvedUrl: string = '';
-  export let dirty: boolean = false;
-  export let fileVariables: Variable[] = [];
-  export let envVariables: Record<string, string> = {};
-  export let namedResults: Record<string, NamedRequestResult> = {};
+  type BottomTab = 'body' | 'assertions' | 'before-send' | 'after-receive';
 
-  const dispatch = createEventDispatcher();
+  interface Props {
+    request: HttpRequest;
+    loading?: boolean;
+    resolvedUrl?: string;
+    dirty?: boolean;
+    fileVariables?: Variable[];
+    envVariables?: Record<string, string>;
+    namedResults?: Record<string, NamedRequestResult>;
+    bottomTab?: BottomTab;
+    onUpdate?: (request: HttpRequest) => void;
+    onSend?: (request: HttpRequest) => void;
+    onSave?: () => void;
+    onRunAll?: (dependencies: string[]) => void;
+    onBottomTabChange?: (tab: BottomTab) => void;
+  }
+
+  let {
+    request,
+    loading = false,
+    resolvedUrl = '',
+    dirty = false,
+    fileVariables = [],
+    envVariables = {},
+    namedResults = {},
+    bottomTab = $bindable('body'),
+    onUpdate,
+    onSend,
+    onSave,
+    onRunAll,
+    onBottomTabChange,
+  }: Props = $props();
 
   function autoGrow(el: HTMLTextAreaElement) {
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }
 
-  // Svelte action: keeps the name textarea sized to its content. Re-measures
-  // when the bound value changes (switching requests) and when the available
+  // Attachment: keeps the name textarea sized to its content. Re-runs when
+  // the value changes (switching requests) and re-measures when the available
   // width changes (resizing the editor pane), so wrapping grows/shrinks the row.
-  function autosize(node: HTMLTextAreaElement, _value: string) {
-    const grow = () => autoGrow(node);
-    let lastWidth = 0;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0].contentRect.width;
-      if (w !== lastWidth) {
-        lastWidth = w;
-        grow();
-      }
-    });
-    ro.observe(node);
-    requestAnimationFrame(grow);
-    return {
-      update: grow,
-      destroy: () => ro.disconnect(),
+  function autosize(_value: string) {
+    return (node: HTMLTextAreaElement) => {
+      const grow = () => autoGrow(node);
+      let lastWidth = 0;
+      const ro = new ResizeObserver((entries) => {
+        const w = entries[0].contentRect.width;
+        if (w !== lastWidth) {
+          lastWidth = w;
+          grow();
+        }
+      });
+      ro.observe(node);
+      requestAnimationFrame(grow);
+      return () => ro.disconnect();
     };
   }
 
@@ -60,10 +83,8 @@
     'CONNECT',
   ];
 
-  export let bottomTab: 'body' | 'assertions' | 'before-send' | 'after-receive' = 'body';
-
-  let headersOpen = true;
-  let showPicker = false;
+  let headersOpen = $state(true);
+  let showPicker = $state(false);
   let pickerTarget:
     | 'url'
     | 'headerKey'
@@ -85,11 +106,11 @@
   }
 
   function update(changes: Partial<HttpRequest>) {
-    dispatch('update', { ...request, ...changes });
+    onUpdate?.({ ...request, ...changes });
   }
 
   function send() {
-    dispatch('send', request);
+    onSend?.(request);
   }
 
   function addHeader() {
@@ -150,9 +171,9 @@
     'X-Forwarded-Proto',
   ];
 
-  let headerSuggestIndex: number = -1;
-  let headerSuggestItems: string[] = [];
-  let headerSuggestSelected: number = -1;
+  let headerSuggestIndex: number = $state(-1);
+  let headerSuggestItems: string[] = $state([]);
+  let headerSuggestSelected: number = $state(-1);
 
   function onHeaderKeyFocus(index: number) {
     headerSuggestIndex = index;
@@ -209,8 +230,10 @@
   }
 
   // ── Assertion directive helpers ──
-  $: assertionDirectives = (request.directives ?? []).filter(
-    (d): d is { type: 'assert'; expr: string; label: string } => d.type === 'assert',
+  const assertionDirectives = $derived(
+    (request.directives ?? []).filter(
+      (d): d is { type: 'assert'; expr: string; label: string } => d.type === 'assert',
+    ),
   );
 
   function countScriptLines(text: string | undefined): number {
@@ -221,11 +244,8 @@
     }).length;
   }
 
-  $: beforeSendCount = countScriptLines(request.beforeSend);
-  $: afterReceiveCount = countScriptLines(request.afterReceive);
-
-  let assertionsTextInternal = '';
-  let lastRequestId = '';
+  const beforeSendCount = $derived(countScriptLines(request.beforeSend));
+  const afterReceiveCount = $derived(countScriptLines(request.afterReceive));
 
   function directivesToText(directives: PbDirective[]): string {
     return directives
@@ -234,14 +254,15 @@
       .join('\n');
   }
 
-  // Only sync from directives when switching to a different request
-  $: {
-    const id = `${request.name}::${request.method}::${request.url}`;
-    if (id !== lastRequestId) {
-      lastRequestId = id;
-      assertionsTextInternal = directivesToText(request.directives ?? []);
-    }
-  }
+  const requestId = $derived(`${request.name}::${request.method}::${request.url}`);
+
+  // Writable derived: only resyncs from directives when switching to a
+  // different request (tracked via requestId); local edits made through the
+  // assertions textarea are assigned directly and win until the next switch.
+  let assertionsTextInternal = $derived.by(() => {
+    void requestId;
+    return untrack(() => directivesToText(request.directives ?? []));
+  });
 
   function onAssertionsTextInput(e: Event) {
     const text = (e.target as HTMLTextAreaElement).value;
@@ -265,11 +286,9 @@
   }
 
   // Combine all request text for dependency scanning
-  $: requestText = [
-    request.url,
-    ...request.headers.map((h) => `${h.key}: ${h.value}`),
-    request.body,
-  ].join('\n');
+  const requestText = $derived(
+    [request.url, ...request.headers.map((h) => `${h.key}: ${h.value}`), request.body].join('\n'),
+  );
 
   function openPicker(
     target: 'url' | 'body' | 'assertions' | 'before-send' | 'after-receive' | 'headerValue',
@@ -283,8 +302,7 @@
     showPicker = true;
   }
 
-  function handlePickerInsert(e: CustomEvent<string>) {
-    const value = e.detail;
+  function handlePickerInsert(value: string) {
     showPicker = false;
     if (pickerTarget === 'url') {
       update({ url: insertAtCursor(request.url, value) });
@@ -326,24 +344,24 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="editor" on:keydown={handleKeydown}>
+<div class="editor" onkeydown={handleKeydown}>
   <!-- Request Name -->
   <div class="name-row">
     <textarea
       class="name-input"
       rows="1"
       value={request.name}
-      on:input={(e) => {
+      oninput={(e) => {
         update({ name: e.currentTarget.value });
         autoGrow(e.currentTarget);
       }}
-      on:keydown={(e) => {
+      onkeydown={(e) => {
         if (e.key === 'Enter') e.preventDefault();
       }}
       placeholder="Request name"
-      use:autosize={request.name}></textarea>
+      {@attach autosize(request.name)}></textarea>
     {#if dirty}
-      <button class="btn-save-file" on:click={() => dispatch('save')}>
+      <button class="btn-save-file" onclick={() => onSave?.()}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
           <path
             d="M12 14H4a1 1 0 01-1-1V3a1 1 0 011-1h6l3 3v8a1 1 0 01-1 1z"
@@ -364,7 +382,7 @@
         class="method-select"
         value={request.method}
         style="color: {METHOD_COLORS[request.method]}"
-        on:change={(e) => update({ method: e.currentTarget.value as HttpMethod })}
+        onchange={(e) => update({ method: e.currentTarget.value as HttpMethod })}
       >
         {#each methods as method}
           <option value={method} style="color: {METHOD_COLORS[method]}">{method}</option>
@@ -385,15 +403,15 @@
       class="url-input"
       type="text"
       value={request.url}
-      on:input={(e) => update({ url: e.currentTarget.value })}
+      oninput={(e) => update({ url: e.currentTarget.value })}
       placeholder="https://api.example.com/endpoint"
       spellcheck="false"
     />
 
     <button
       class="btn-insert-url"
-      on:mousedown|preventDefault
-      on:click={() => openPicker('url')}
+      onmousedown={(e) => e.preventDefault()}
+      onclick={() => openPicker('url')}
       title="Insert variable"
     >
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -406,7 +424,7 @@
       </svg>
     </button>
 
-    <button class="btn-send" on:click={send} disabled={loading} class:loading>
+    <button class={['btn-send', { loading }]} onclick={send} disabled={loading}>
       {#if loading}
         <span class="spinner"></span>
       {:else}
@@ -432,12 +450,12 @@
   {/if}
 
   <!-- Dependency bar -->
-  <DependencyBar {requestText} {namedResults} on:runAll />
+  <DependencyBar {requestText} {namedResults} {onRunAll} />
 
   <!-- Headers (collapsible) -->
   <div class="section">
-    <button class="section-toggle" on:click={() => (headersOpen = !headersOpen)}>
-      <span class="chevron" class:open={headersOpen}>
+    <button class="section-toggle" onclick={() => (headersOpen = !headersOpen)}>
+      <span class={['chevron', { open: headersOpen }]}>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path
             d="M3 1.5l4 3.5-4 3.5"
@@ -461,17 +479,17 @@
               type="checkbox"
               class="header-toggle"
               checked={header.enabled}
-              on:change={(e) => updateHeader(i, { enabled: e.currentTarget.checked })}
+              onchange={(e) => updateHeader(i, { enabled: e.currentTarget.checked })}
             />
             <div class="header-key-wrapper">
               <input
                 class="header-key"
                 type="text"
                 value={header.key}
-                on:input={(e) => onHeaderKeyInput(i, e.currentTarget.value)}
-                on:focus={() => onHeaderKeyFocus(i)}
-                on:blur={onHeaderKeyBlur}
-                on:keydown={(e) => onHeaderKeyKeydown(e, i)}
+                oninput={(e) => onHeaderKeyInput(i, e.currentTarget.value)}
+                onfocus={() => onHeaderKeyFocus(i)}
+                onblur={onHeaderKeyBlur}
+                onkeydown={(e) => onHeaderKeyKeydown(e, i)}
                 placeholder="Header name"
                 spellcheck="false"
                 autocomplete="off"
@@ -480,9 +498,11 @@
                 <div class="header-suggest">
                   {#each headerSuggestItems as item, si}
                     <button
-                      class="suggest-item"
-                      class:selected={si === headerSuggestSelected}
-                      on:mousedown|preventDefault={() => selectSuggestion(i, item)}>{item}</button
+                      class={['suggest-item', { selected: si === headerSuggestSelected }]}
+                      onmousedown={(e) => {
+                        e.preventDefault();
+                        selectSuggestion(i, item);
+                      }}>{item}</button
                     >
                   {/each}
                 </div>
@@ -492,14 +512,14 @@
               class="header-value"
               type="text"
               value={header.value}
-              on:input={(e) => updateHeader(i, { value: e.currentTarget.value })}
+              oninput={(e) => updateHeader(i, { value: e.currentTarget.value })}
               placeholder="Value"
               spellcheck="false"
             />
             <button
               class="btn-insert"
-              on:mousedown|preventDefault
-              on:click={() => openPicker('headerValue', i)}
+              onmousedown={(e) => e.preventDefault()}
+              onclick={() => openPicker('headerValue', i)}
               title="Insert variable"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -511,10 +531,10 @@
                 />
               </svg>
             </button>
-            <button class="btn-remove" on:click={() => removeHeader(i)}>×</button>
+            <button class="btn-remove" onclick={() => removeHeader(i)}>×</button>
           </div>
         {/each}
-        <button class="btn-add-header" on:click={addHeader}>+ Add Header</button>
+        <button class="btn-add-header" onclick={addHeader}>+ Add Header</button>
       </div>
     {/if}
   </div>
@@ -523,21 +543,19 @@
   <div class="bottom-panel">
     <div class="bottom-tabs">
       <button
-        class="bottom-tab"
-        class:active={bottomTab === 'body'}
-        on:click={() => {
+        class={['bottom-tab', { active: bottomTab === 'body' }]}
+        onclick={() => {
           bottomTab = 'body';
-          dispatch('bottomTabChange', bottomTab);
+          onBottomTabChange?.(bottomTab);
         }}
       >
         Body
       </button>
       <button
-        class="bottom-tab"
-        class:active={bottomTab === 'assertions'}
-        on:click={() => {
+        class={['bottom-tab', { active: bottomTab === 'assertions' }]}
+        onclick={() => {
           bottomTab = 'assertions';
-          dispatch('bottomTabChange', bottomTab);
+          onBottomTabChange?.(bottomTab);
         }}
       >
         Assertions
@@ -546,11 +564,10 @@
         {/if}
       </button>
       <button
-        class="bottom-tab"
-        class:active={bottomTab === 'before-send'}
-        on:click={() => {
+        class={['bottom-tab', { active: bottomTab === 'before-send' }]}
+        onclick={() => {
           bottomTab = 'before-send';
-          dispatch('bottomTabChange', bottomTab);
+          onBottomTabChange?.(bottomTab);
         }}
       >
         Before Send
@@ -559,11 +576,10 @@
         {/if}
       </button>
       <button
-        class="bottom-tab"
-        class:active={bottomTab === 'after-receive'}
-        on:click={() => {
+        class={['bottom-tab', { active: bottomTab === 'after-receive' }]}
+        onclick={() => {
           bottomTab = 'after-receive';
-          dispatch('bottomTabChange', bottomTab);
+          onBottomTabChange?.(bottomTab);
         }}
       >
         After Receive
@@ -574,8 +590,8 @@
       <div class="bottom-tab-actions">
         <button
           class="btn-insert"
-          on:mousedown|preventDefault
-          on:click={() => openPicker(bottomTab)}
+          onmousedown={(e) => e.preventDefault()}
+          onclick={() => openPicker(bottomTab)}
           title="Insert variable"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -594,28 +610,28 @@
         <textarea
           class="body-editor"
           value={request.body}
-          on:input={(e) => update({ body: e.currentTarget.value })}
+          oninput={(e) => update({ body: e.currentTarget.value })}
           placeholder={'{"key": "value"}'}
           spellcheck="false"></textarea>
       {:else if bottomTab === 'assertions'}
         <textarea
           class="body-editor"
           value={assertionsTextInternal}
-          on:input={onAssertionsTextInput}
+          oninput={onAssertionsTextInput}
           placeholder={'# One assertion per line:\n# pb.response.status == 200 | Should return 200\n# pb.response.body.$.name != null | Name should exist'}
           spellcheck="false"></textarea>
       {:else if bottomTab === 'before-send'}
         <textarea
           class="body-editor"
           value={request.beforeSend ?? ''}
-          on:input={(e) => update({ beforeSend: e.currentTarget.value })}
+          oninput={(e) => update({ beforeSend: e.currentTarget.value })}
           placeholder={'# Scripts to run before sending the request\npb.set(pb.request.header.X-Custom, "value")\npb.set(pb.request.body.$.field, "value")'}
           spellcheck="false"></textarea>
       {:else if bottomTab === 'after-receive'}
         <textarea
           class="body-editor"
           value={request.afterReceive ?? ''}
-          on:input={(e) => update({ afterReceive: e.currentTarget.value })}
+          oninput={(e) => update({ afterReceive: e.currentTarget.value })}
           placeholder={'# Scripts to run after receiving the response\npb.set("token", pb.response.body.$.token)\npb.global("sessionId", pb.response.body.$.id)'}
           spellcheck="false"></textarea>
       {/if}
@@ -633,8 +649,8 @@
   {fileVariables}
   {envVariables}
   {namedResults}
-  on:insert={handlePickerInsert}
-  on:close={() => (showPicker = false)}
+  onInsert={handlePickerInsert}
+  onClose={() => (showPicker = false)}
 />
 
 <style>
