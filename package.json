@@ -20,12 +20,12 @@
     "@tauri-apps/plugin-fs": "~2.5.1",
     "@tauri-apps/plugin-http": "~2.5.9",
     "@tauri-apps/plugin-opener": "^2",
-    "js-yaml": "^5.0.0"
+    "js-yaml": "^5.2.1"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2",
-    "svelte": "^5.56.3",
+    "svelte": "^5.56.4",
     "svelte-check": "^4.6.0",
     "typescript": "~6.0.3",
     "vite": "^6.4.2",
