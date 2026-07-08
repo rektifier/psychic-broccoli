@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::time::Duration;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use futures_util::StreamExt;
@@ -26,6 +27,40 @@ struct HttpResponsePayload {
     status_text: String,
     headers: HashMap<String, String>,
     body: String,
+    /// "utf8" when `body` is the response text as-is, "base64" when the raw
+    /// bytes were not valid UTF-8 and `body` holds their base64 encoding.
+    body_encoding: String,
+    /// Byte length of the raw response body (before any base64 encoding).
+    size: usize,
+}
+
+/// Collect response headers into the map the frontend expects, joining
+/// repeated headers (e.g. multiple Set-Cookie) with ", " so no value is
+/// silently dropped.
+fn collect_headers(map: &reqwest::header::HeaderMap) -> HashMap<String, String> {
+    let mut headers: HashMap<String, String> = HashMap::new();
+    for (key, value) in map {
+        if let Ok(v) = value.to_str() {
+            headers
+                .entry(key.to_string())
+                .and_modify(|existing| {
+                    existing.push_str(", ");
+                    existing.push_str(v);
+                })
+                .or_insert_with(|| v.to_string());
+        }
+    }
+    headers
+}
+
+/// Encode a response body for the JSON bridge: valid UTF-8 passes through
+/// unchanged; binary bodies (images, gzip, protobuf) are base64-encoded so
+/// the bytes survive instead of being mangled by lossy conversion.
+fn encode_body(bytes: Vec<u8>) -> (String, &'static str) {
+    match String::from_utf8(bytes) {
+        Ok(text) => (text, "utf8"),
+        Err(err) => (BASE64_STANDARD.encode(err.as_bytes()), "base64"),
+    }
 }
 
 /// Check whether an IP address should be blocked even in a developer HTTP client.
@@ -199,12 +234,7 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
     let status = res.status().as_u16();
     let status_text = res.status().canonical_reason().unwrap_or("").to_string();
 
-    let mut headers = HashMap::new();
-    for (key, value) in res.headers() {
-        if let Ok(v) = value.to_str() {
-            headers.insert(key.to_string(), v.to_string());
-        }
-    }
+    let headers = collect_headers(res.headers());
 
     // Stream the response body with a size limit to prevent OOM from
     // malicious or unexpectedly large responses.
@@ -223,13 +253,16 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
             ));
         }
     }
-    let body = String::from_utf8_lossy(&body_bytes).to_string();
+    let size = body_bytes.len();
+    let (body, body_encoding) = encode_body(body_bytes);
 
     Ok(HttpResponsePayload {
         status,
         status_text,
         headers,
         body,
+        body_encoding: body_encoding.to_string(),
+        size,
     })
 }
 
@@ -543,6 +576,32 @@ mod tests {
     #[test]
     fn check_resolved_addrs_rejects_empty() {
         assert!(check_resolved_addrs(&[]).is_err());
+    }
+
+    #[test]
+    fn collect_headers_joins_duplicates() {
+        let mut map = reqwest::header::HeaderMap::new();
+        map.append("set-cookie", "a=1".parse().unwrap());
+        map.append("set-cookie", "b=2".parse().unwrap());
+        map.insert("content-type", "text/plain".parse().unwrap());
+        let headers = collect_headers(&map);
+        assert_eq!(headers.get("set-cookie").unwrap(), "a=1, b=2");
+        assert_eq!(headers.get("content-type").unwrap(), "text/plain");
+    }
+
+    #[test]
+    fn encode_body_passes_utf8_through() {
+        let (body, encoding) = encode_body("hello åäö".as_bytes().to_vec());
+        assert_eq!(body, "hello åäö");
+        assert_eq!(encoding, "utf8");
+    }
+
+    #[test]
+    fn encode_body_base64_encodes_binary() {
+        let bytes = vec![0xff, 0xd8, 0xff, 0xe0, 0x00];
+        let (body, encoding) = encode_body(bytes.clone());
+        assert_eq!(encoding, "base64");
+        assert_eq!(BASE64_STANDARD.decode(&body).unwrap(), bytes);
     }
 
     #[tokio::test]

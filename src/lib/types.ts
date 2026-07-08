@@ -36,6 +36,9 @@ export interface HttpResponse {
   statusText: string;
   headers: Record<string, string>;
   body: string;
+  /** "utf8" (default) when `body` is response text; "base64" when the raw
+   *  bytes were not valid UTF-8 and `body` holds their base64 encoding. */
+  bodyEncoding?: 'utf8' | 'base64';
   time: number;
   size: number;
 }
