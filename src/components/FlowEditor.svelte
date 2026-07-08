@@ -1195,7 +1195,7 @@
         runRecord={lastRunRecord}
         history={runHistory}
         flowFilePath={flowPath}
-        on:clearHistory={() => dispatch('clearHistory')}
+        onClearHistory={() => dispatch('clearHistory')}
       />
     </div>
   {/if}
