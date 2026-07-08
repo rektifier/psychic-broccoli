@@ -708,7 +708,7 @@
 </script>
 
 <ToastContainer />
-<HelpModal visible={showHelp} on:close={() => (showHelp = false)} />
+<HelpModal visible={showHelp} onClose={() => (showHelp = false)} />
 <SettingsModal
   visible={showSettings}
   {currentTheme}
