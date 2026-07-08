@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseHttpFile, substituteAll, serializeHttpFile } from './parser';
-import type { SubstitutionContext } from './parser';
+import { parseHttpFile, serializeHttpFile } from './parser';
+import { substituteAll } from './substitution';
+import type { SubstitutionContext } from './substitution';
 import type { NamedRequestResult } from './types';
 
 // ─── @name directive parsing ────────────────────────────────────────────────

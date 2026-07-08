@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeHttpRequest } from './requestExec';
 import type { HttpInvokeResult } from './requestExec';
-import type { SubstitutionContext } from './parser';
+import type { SubstitutionContext } from './substitution';
 import type { HttpRequest } from './types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));

@@ -19,7 +19,8 @@ import {
   editingFilePath,
   editingFolderPath,
 } from './stores';
-import { serializeHttpFile, createFileNode, createEmptyFileNode } from './parser';
+import { serializeHttpFile } from './parser';
+import { createFileNode, createEmptyFileNode } from './workspaceTree';
 import { findFile, findFolder, collectFilePaths } from './tree';
 import { errorMessage } from './errors';
 import { generateFolderName } from './folderCreate';

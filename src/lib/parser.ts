@@ -2,31 +2,6 @@ import type { HttpRequest, HttpMethod, HttpHeader, Variable, PbDirective } from 
 import { SIMPLE_VAR_RE } from './substitution';
 import { PB_DIRECTIVE_RE, PB_SECTION_RE, BARE_PB_RE, parsePbDirective } from './pbScript';
 
-// ─── Temporary re-exports ───────────────────────────────────────────────────
-// parser.ts was split into focused modules (substitution.ts, pbScript.ts,
-// envFiles.ts, workspaceTree.ts). These re-exports keep existing
-// `from './parser'` imports working; a follow-up updates the importers and
-// drops them.
-
-export { substituteAll, substituteVariables } from './substitution';
-export type { SubstitutionContext } from './substitution';
-export {
-  evaluatePbExpression,
-  parseScriptText,
-  executePbDirectives,
-  applyRequestMutations,
-} from './pbScript';
-export type { RequestMutations, PbExecutionResult } from './pbScript';
-export {
-  parseEnvironmentFile,
-  ensureSharedEnvironment,
-  getEnvironmentNames,
-  resolveEnvironmentVariables,
-  resolveEnvironmentVariablesWithSource,
-} from './envFiles';
-export { createFileNode, buildWorkspaceTree, createEmptyFileNode } from './workspaceTree';
-export type { DiscoveredFile, DiscoveredFolder } from './workspaceTree';
-
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const METHODS: HttpMethod[] = [

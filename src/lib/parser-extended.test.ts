@@ -1,24 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import type { EnvironmentFile } from './types';
 import {
-  parseHttpFile,
-  substituteAll,
-  substituteVariables,
-  evaluatePbExpression,
-  parseScriptText,
-  executePbDirectives,
-  applyRequestMutations,
   parseEnvironmentFile,
   getEnvironmentNames,
   resolveEnvironmentVariables,
   resolveEnvironmentVariablesWithSource,
-  extractVariableRefs,
-  createEmptyRequest,
-  buildWorkspaceTree,
-  createEmptyFileNode,
-} from './parser';
+} from './envFiles';
+import { parseHttpFile, extractVariableRefs, createEmptyRequest } from './parser';
+import {
+  evaluatePbExpression,
+  parseScriptText,
+  executePbDirectives,
+  applyRequestMutations,
+} from './pbScript';
+import { substituteAll, substituteVariables } from './substitution';
+import { buildWorkspaceTree, createEmptyFileNode } from './workspaceTree';
 import { getAllFileNodes } from './tree';
-import type { SubstitutionContext, RequestMutations } from './parser';
+import type { RequestMutations } from './pbScript';
+import type { SubstitutionContext } from './substitution';
 import type { HttpResponse, NamedRequestResult, PbDirective } from './types';
 
 // ─── Environment File Handling ──────────────────────────────────────────────

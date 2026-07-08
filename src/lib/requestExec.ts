@@ -1,11 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
-import {
-  substituteAll,
-  executePbDirectives,
-  parseScriptText,
-  applyRequestMutations,
-} from './parser';
-import type { SubstitutionContext } from './parser';
+import { executePbDirectives, parseScriptText, applyRequestMutations } from './pbScript';
+import { substituteAll } from './substitution';
+import type { SubstitutionContext } from './substitution';
 import type { HttpRequest, HttpResponse, PbAssertionResult, NamedRequestResult } from './types';
 
 // ─── Shared request execution pipeline ───────────────────────────────────────

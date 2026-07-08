@@ -1,6 +1,6 @@
 import { getAllFileNodes } from './tree';
 import { errorMessage } from './errors';
-import type { SubstitutionContext } from './parser';
+import type { SubstitutionContext } from './substitution';
 import { executeHttpRequest } from './requestExec';
 import type {
   FlowDefinition,
