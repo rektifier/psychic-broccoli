@@ -90,7 +90,12 @@ describe('executeHttpRequest', () => {
     mockResponse();
     const request = makeRequest({
       directives: [
-        { type: 'assert', expr: 'pb.response.status == 500', label: 'disabled assert', enabled: false },
+        {
+          type: 'assert',
+          expr: 'pb.response.status == 500',
+          label: 'disabled assert',
+          enabled: false,
+        },
         { type: 'set', key: 'userId', expr: 'pb.response.body.$.id', enabled: false },
       ],
     });
@@ -131,7 +136,7 @@ describe('executeHttpRequest', () => {
     expect(ctx.namedResults).toEqual({});
   });
 
-  it('lets directives reference the request\'s own alias', async () => {
+  it("lets directives reference the request's own alias", async () => {
     mockResponse();
     const request = makeRequest({
       directives: [

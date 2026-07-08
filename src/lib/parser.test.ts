@@ -62,36 +62,44 @@ describe('@name directive parsing', () => {
 
 describe('request variable reference resolution', () => {
   const mockNamedResults: Record<string, NamedRequestResult> = {
-    'loginRequest': {
+    loginRequest: {
       request: { method: 'POST', url: 'https://example.com/login', headers: {}, body: '{}' },
       response: {
-        status: 200, statusText: 'OK',
+        status: 200,
+        statusText: 'OK',
         headers: { 'Content-Type': 'application/json' },
         body: '{"token":"abc123","user":{"id":42,"name":"Test"}}',
-        time: 100, size: 50,
+        time: 100,
+        size: 50,
       },
     },
     'bankID-NO': {
       request: { method: 'POST', url: 'https://example.com/auth', headers: {}, body: '{}' },
       response: {
-        status: 200, statusText: 'OK',
+        status: 200,
+        statusText: 'OK',
         headers: { 'Set-Cookie': 'session=xyz' },
         body: '{"id":"sess-123","status":"pending"}',
-        time: 200, size: 35,
+        time: 200,
+        size: 35,
       },
     },
     'my-long-name': {
       request: { method: 'GET', url: 'https://example.com/data', headers: {}, body: '' },
       response: {
-        status: 200, statusText: 'OK',
+        status: 200,
+        statusText: 'OK',
         headers: {},
         body: '{"value":99}',
-        time: 50, size: 12,
+        time: 50,
+        size: 12,
       },
     },
   };
 
-  function makeCtx(namedResults: Record<string, NamedRequestResult> = mockNamedResults): SubstitutionContext {
+  function makeCtx(
+    namedResults: Record<string, NamedRequestResult> = mockNamedResults,
+  ): SubstitutionContext {
     return {
       fileVariables: [],
       environmentVariables: {},
@@ -208,11 +216,19 @@ describe('end-to-end: chained requests with hyphenated @name', () => {
     // Simulate resolving the second request URL after first request completes
     const namedResults: Record<string, NamedRequestResult> = {
       'bankID-NO': {
-        request: { method: 'POST', url: 'https://example.com/auth/session', headers: {}, body: '{}' },
+        request: {
+          method: 'POST',
+          url: 'https://example.com/auth/session',
+          headers: {},
+          body: '{}',
+        },
         response: {
-          status: 200, statusText: 'OK', headers: {},
+          status: 200,
+          statusText: 'OK',
+          headers: {},
           body: '{"id":"sess-456"}',
-          time: 100, size: 20,
+          time: 100,
+          size: 20,
         },
       },
     };

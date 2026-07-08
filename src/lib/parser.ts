@@ -1,17 +1,33 @@
 import type {
-  HttpRequest, HttpMethod, HttpHeader, Variable,
-  EnvironmentFile, EnvironmentVariables, ProviderVariable,
-  NamedRequestResult, PbDirective, PbAssertionResult,
+  HttpRequest,
+  HttpMethod,
+  HttpHeader,
+  Variable,
+  EnvironmentFile,
+  EnvironmentVariables,
+  NamedRequestResult,
+  PbDirective,
+  PbAssertionResult,
   HttpResponse,
-  TreeNode, FileNode, FolderNode,
-  VarSourceLayer, ResolvedVarWithCascade,
+  TreeNode,
+  FileNode,
+  FolderNode,
+  VarSourceLayer,
+  ResolvedVarWithCascade,
 } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const METHODS: HttpMethod[] = [
-  'GET', 'POST', 'PUT', 'PATCH', 'DELETE',
-  'HEAD', 'OPTIONS', 'TRACE', 'CONNECT',
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+  'TRACE',
+  'CONNECT',
 ];
 
 const METHOD_PATTERN = METHODS.join('|');
@@ -19,9 +35,7 @@ const METHOD_PATTERN = METHODS.join('|');
 // ─── Regex Patterns ─────────────────────────────────────────────────────────
 
 /** Request line: METHOD URL [HTTP/version] */
-const REQUEST_LINE_RE = new RegExp(
-  `^(${METHOD_PATTERN})\\s+(.+?)(?:\\s+HTTP\\/[\\d.]+)?\\s*$`
-);
+const REQUEST_LINE_RE = new RegExp(`^(${METHOD_PATTERN})\\s+(.+?)(?:\\s+HTTP\\/[\\d.]+)?\\s*$`);
 
 /** Header: Key: Value */
 const HEADER_RE = /^([A-Za-z0-9\-_]+)\s*:\s*(.+)$/;
@@ -251,7 +265,7 @@ export function parseHttpFile(content: string): ParseResult {
  */
 function resolveVariableReferences(value: string, definedVars: Variable[]): string {
   return value.replace(SIMPLE_VAR_RE, (match, name) => {
-    const found = definedVars.find(v => v.key === name);
+    const found = definedVars.find((v) => v.key === name);
     return found ? found.value : match;
   });
 }
@@ -339,7 +353,8 @@ export function serializeHttpFile(requests: HttpRequest[], variables: Variable[]
 
     // After-receive scripts
     if (req.afterReceive?.trim()) {
-      if ((!req.directives || req.directives.length === 0) && !req.beforeSend?.trim()) parts.push('');
+      if ((!req.directives || req.directives.length === 0) && !req.beforeSend?.trim())
+        parts.push('');
       parts.push('# @pb.afterReceive');
       for (const line of req.afterReceive.split('\n')) {
         const trimmed = line.trim();
@@ -408,7 +423,7 @@ export function substituteAll(input: string, ctx: SubstitutionContext): string {
         return ctx.dotenvVariables?.[dotenvKey] ?? `{{${name}}}`;
       }
 
-      const fileVar = ctx.fileVariables.find(v => v.key === name);
+      const fileVar = ctx.fileVariables.find((v) => v.key === name);
       // Skip self-referencing file vars (e.g. @baseUrl = {{baseUrl}}) so
       // the lookup falls through to environment variables.
       // Also skip empty file vars when an env variable exists, so that
@@ -470,7 +485,8 @@ export function substituteVariables(input: string, variables: Variable[]): strin
 function resolveDynamicVariable(funcName: string, args?: string): string {
   switch (funcName) {
     case 'randomInt': {
-      let min = 0, max = 1000;
+      let min = 0,
+        max = 1000;
       if (args) {
         const parts = args.split(/\s+/);
         if (parts.length >= 2) {
@@ -564,14 +580,30 @@ function applyOffset(date: Date, offsetStr: string | undefined): Date {
   const result = new Date(date);
 
   switch (unit) {
-    case 'ms': result.setMilliseconds(result.getMilliseconds() + amount); break;
-    case 's':  result.setSeconds(result.getSeconds() + amount); break;
-    case 'm':  result.setMinutes(result.getMinutes() + amount); break;
-    case 'h':  result.setHours(result.getHours() + amount); break;
-    case 'd':  result.setDate(result.getDate() + amount); break;
-    case 'w':  result.setDate(result.getDate() + amount * 7); break;
-    case 'M':  result.setMonth(result.getMonth() + amount); break;
-    case 'y':  result.setFullYear(result.getFullYear() + amount); break;
+    case 'ms':
+      result.setMilliseconds(result.getMilliseconds() + amount);
+      break;
+    case 's':
+      result.setSeconds(result.getSeconds() + amount);
+      break;
+    case 'm':
+      result.setMinutes(result.getMinutes() + amount);
+      break;
+    case 'h':
+      result.setHours(result.getHours() + amount);
+      break;
+    case 'd':
+      result.setDate(result.getDate() + amount);
+      break;
+    case 'w':
+      result.setDate(result.getDate() + amount * 7);
+      break;
+    case 'M':
+      result.setMonth(result.getMonth() + amount);
+      break;
+    case 'y':
+      result.setFullYear(result.getFullYear() + amount);
+      break;
   }
 
   return result;
@@ -579,21 +611,23 @@ function applyOffset(date: Date, offsetStr: string | undefined): Date {
 
 /** Simple custom date format (dd, MM, yyyy, HH, mm, ss). */
 function applyCustomFormat(date: Date, format: string, local: boolean): string {
-  const d = local ? {
-    dd: String(date.getDate()).padStart(2, '0'),
-    MM: String(date.getMonth() + 1).padStart(2, '0'),
-    yyyy: String(date.getFullYear()),
-    HH: String(date.getHours()).padStart(2, '0'),
-    mm: String(date.getMinutes()).padStart(2, '0'),
-    ss: String(date.getSeconds()).padStart(2, '0'),
-  } : {
-    dd: String(date.getUTCDate()).padStart(2, '0'),
-    MM: String(date.getUTCMonth() + 1).padStart(2, '0'),
-    yyyy: String(date.getUTCFullYear()),
-    HH: String(date.getUTCHours()).padStart(2, '0'),
-    mm: String(date.getUTCMinutes()).padStart(2, '0'),
-    ss: String(date.getUTCSeconds()).padStart(2, '0'),
-  };
+  const d = local
+    ? {
+        dd: String(date.getDate()).padStart(2, '0'),
+        MM: String(date.getMonth() + 1).padStart(2, '0'),
+        yyyy: String(date.getFullYear()),
+        HH: String(date.getHours()).padStart(2, '0'),
+        mm: String(date.getMinutes()).padStart(2, '0'),
+        ss: String(date.getSeconds()).padStart(2, '0'),
+      }
+    : {
+        dd: String(date.getUTCDate()).padStart(2, '0'),
+        MM: String(date.getUTCMonth() + 1).padStart(2, '0'),
+        yyyy: String(date.getUTCFullYear()),
+        HH: String(date.getUTCHours()).padStart(2, '0'),
+        mm: String(date.getUTCMinutes()).padStart(2, '0'),
+        ss: String(date.getUTCSeconds()).padStart(2, '0'),
+      };
 
   return format
     .replace('yyyy', d.yyyy)
@@ -638,10 +672,8 @@ function resolveRequestVariable(
     // Case-insensitive header lookup
     const headerName = path.toLowerCase();
     if (reqOrRes === 'response') {
-      const entry = Object.entries(source.headers).find(
-        ([k]) => k.toLowerCase() === headerName
-      );
-      return entry ? entry[1] as string : '';
+      const entry = Object.entries(source.headers).find(([k]) => k.toLowerCase() === headerName);
+      return entry ? (entry[1] as string) : '';
     }
     return '';
   }
@@ -711,7 +743,7 @@ function parsePbDirective(action: string, argsRaw: string): PbDirective | null {
     const m = args.match(/^(["'])(.+?)\1\s*,\s*(.+)$/);
     if (m) return { type: action, key: m[2], expr: m[3].trim() };
     // Unquoted key: pb.set(pb.request.body.$.country, "NO")
-    const u = args.match(/^([\w.$\-]+)\s*,\s*(.+)$/);
+    const u = args.match(/^([\w.$-]+)\s*,\s*(.+)$/);
     if (u) {
       let key = u[1];
       // Normalize: strip leading "pb." so pb.request.* becomes request.*
@@ -781,9 +813,12 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
   // Resolve {{variable}} references inline before evaluation
   let trimmed = expr.trim();
   // Dynamic variables: {{$randomInt}}, {{$datetime}}, {{$timestamp}}, etc.
-  trimmed = trimmed.replace(DYNAMIC_VAR_RE, (_match, funcName: string, args: string | undefined) => {
-    return resolveDynamicVariable(funcName, args?.trim());
-  });
+  trimmed = trimmed.replace(
+    DYNAMIC_VAR_RE,
+    (_match, funcName: string, args: string | undefined) => {
+      return resolveDynamicVariable(funcName, args?.trim());
+    },
+  );
   // Named request refs: {{name.response.body.$.path}}, {{name.response.headers.X}}
   trimmed = trimmed.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
     return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
@@ -799,17 +834,31 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
   // Operator scanning is quote-aware so operators inside string literals are ignored.
   const orIdx = indexOfOutsideQuotes(trimmed, '||');
   if (orIdx !== -1) {
-    return evaluatePbExpression(trimmed.slice(0, orIdx), ctx) ||
-           evaluatePbExpression(trimmed.slice(orIdx + 2), ctx);
+    return (
+      evaluatePbExpression(trimmed.slice(0, orIdx), ctx) ||
+      evaluatePbExpression(trimmed.slice(orIdx + 2), ctx)
+    );
   }
   const andIdx = indexOfOutsideQuotes(trimmed, '&&');
   if (andIdx !== -1) {
-    return evaluatePbExpression(trimmed.slice(0, andIdx), ctx) &&
-           evaluatePbExpression(trimmed.slice(andIdx + 2), ctx);
+    return (
+      evaluatePbExpression(trimmed.slice(0, andIdx), ctx) &&
+      evaluatePbExpression(trimmed.slice(andIdx + 2), ctx)
+    );
   }
 
   // ── Comparison operators ──
-  const compOps = ['==', '!=', '>=', '<=', '>', '<', ' contains ', ' startsWith ', ' endsWith '] as const;
+  const compOps = [
+    '==',
+    '!=',
+    '>=',
+    '<=',
+    '>',
+    '<',
+    ' contains ',
+    ' startsWith ',
+    ' endsWith ',
+  ] as const;
   for (const op of compOps) {
     const idx = indexOfOutsideQuotes(trimmed, op);
     if (idx !== -1) {
@@ -818,15 +867,24 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
       const leftStr = String(left);
       const rightStr = String(right);
       switch (op.trim()) {
-        case '==': return left == right || leftStr === rightStr;
-        case '!=': return left != right && leftStr !== rightStr;
-        case '>':  return Number(left) > Number(right);
-        case '<':  return Number(left) < Number(right);
-        case '>=': return Number(left) >= Number(right);
-        case '<=': return Number(left) <= Number(right);
-        case 'contains': return leftStr.includes(rightStr);
-        case 'startsWith': return leftStr.startsWith(rightStr);
-        case 'endsWith': return leftStr.endsWith(rightStr);
+        case '==':
+          return left == right || leftStr === rightStr;
+        case '!=':
+          return left != right && leftStr !== rightStr;
+        case '>':
+          return Number(left) > Number(right);
+        case '<':
+          return Number(left) < Number(right);
+        case '>=':
+          return Number(left) >= Number(right);
+        case '<=':
+          return Number(left) <= Number(right);
+        case 'contains':
+          return leftStr.includes(rightStr);
+        case 'startsWith':
+          return leftStr.startsWith(rightStr);
+        case 'endsWith':
+          return leftStr.endsWith(rightStr);
       }
     }
   }
@@ -841,8 +899,10 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
   if (trimmed === 'true') return true;
   if (trimmed === 'false') return false;
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
     return trimmed.slice(1, -1);
   }
 
@@ -861,7 +921,7 @@ export function evaluatePbExpression(expr: string, ctx: PbEvalContext): unknown 
     if (path.startsWith('headers.')) {
       const hdrName = path.slice('headers.'.length);
       const entry = Object.entries(ctx.request.headers).find(
-        ([k]) => k.toLowerCase() === hdrName.toLowerCase()
+        ([k]) => k.toLowerCase() === hdrName.toLowerCase(),
       );
       return entry ? entry[1] : null;
     }
@@ -888,9 +948,7 @@ function resolvePbResponsePath(path: string, response: HttpResponse): unknown {
 
   if (path.startsWith('headers.')) {
     const hdrName = path.slice('headers.'.length).toLowerCase();
-    const entry = Object.entries(response.headers).find(
-      ([k]) => k.toLowerCase() === hdrName
-    );
+    const entry = Object.entries(response.headers).find(([k]) => k.toLowerCase() === hdrName);
     return entry ? entry[1] : null;
   }
 
@@ -920,7 +978,8 @@ export function parseScriptText(text: string): PbDirective[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
     // Skip pure comments that aren't directives
-    if ((trimmed.startsWith('#') || trimmed.startsWith('//')) && !trimmed.match(PB_DIRECTIVE_RE)) continue;
+    if ((trimmed.startsWith('#') || trimmed.startsWith('//')) && !trimmed.match(PB_DIRECTIVE_RE))
+      continue;
     // Try comment-prefixed syntax first: # @pb.set(...) or // @pb.set(...)
     const cm = trimmed.match(PB_DIRECTIVE_RE);
     if (cm) {
@@ -966,7 +1025,9 @@ export function executePbDirectives(
 ): PbExecutionResult {
   const ctx: PbEvalContext = { response, request, variables, namedResults };
   const result: PbExecutionResult = {
-    assertionResults: [], setVars: {}, globalVars: {},
+    assertionResults: [],
+    setVars: {},
+    globalVars: {},
     requestMutations: { headers: {}, bodyPatches: [] },
   };
 
@@ -1011,9 +1072,12 @@ export function executePbDirectives(
           const resolved = evaluatePbExpression(expr, ctx);
           return resolved == null ? '' : String(resolved);
         });
-        label = label.replace(DYNAMIC_VAR_RE, (_match, funcName: string, args: string | undefined) => {
-          return resolveDynamicVariable(funcName, args?.trim());
-        });
+        label = label.replace(
+          DYNAMIC_VAR_RE,
+          (_match, funcName: string, args: string | undefined) => {
+            return resolveDynamicVariable(funcName, args?.trim());
+          },
+        );
         label = label.replace(REQUEST_VAR_RE, (_match, reqName, reqOrRes, bodyOrHeaders, path) => {
           return resolveRequestVariable(reqName, reqOrRes, bodyOrHeaders, path, ctx.namedResults);
         });
@@ -1046,7 +1110,7 @@ export function applyRequestMutations(
   if (Object.keys(mutations.headers).length > 0) {
     headers = { ...headers };
     for (const [name, value] of Object.entries(mutations.headers)) {
-      const existingKey = Object.keys(headers).find(k => k.toLowerCase() === name.toLowerCase());
+      const existingKey = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
       if (existingKey) delete headers[existingKey];
       headers[name] = value;
     }
@@ -1060,7 +1124,7 @@ export function applyRequestMutations(
   // JSON body patches (applied after full replacement if both exist)
   if (mutations.bodyPatches.length > 0) {
     try {
-      let parsed = body ? JSON.parse(body) : {};
+      const parsed = body ? JSON.parse(body) : {};
       for (const patch of mutations.bodyPatches) {
         setByPath(parsed, patch.path, patch.value);
       }
@@ -1128,7 +1192,7 @@ export function ensureSharedEnvironment(envFile: EnvironmentFile): EnvironmentFi
  */
 export function getEnvironmentNames(envFile: EnvironmentFile | null): string[] {
   if (!envFile) return [];
-  return Object.keys(envFile).filter(k => k !== '$shared');
+  return Object.keys(envFile).filter((k) => k !== '$shared');
 }
 
 /**
@@ -1296,7 +1360,11 @@ export function createFileNode(absolutePath: string, fileName: string, content: 
  * Input:  [ { relativePath: "Customers/auth.http", ... }, ... ]
  * Output: FolderNode("Customers") → FileNode("auth.http") → requests
  */
-export function buildWorkspaceTree(files: DiscoveredFile[], emptyFolders: DiscoveredFolder[] = [], rootDir = ''): TreeNode[] {
+export function buildWorkspaceTree(
+  files: DiscoveredFile[],
+  emptyFolders: DiscoveredFolder[] = [],
+  rootDir = '',
+): TreeNode[] {
   const root: TreeNode[] = [];
 
   // Build an absolute path from the root and a relative folder path.
@@ -1316,7 +1384,7 @@ export function buildWorkspaceTree(files: DiscoveredFile[], emptyFolders: Discov
       currentRelPath += (currentRelPath ? '/' : '') + folderName;
 
       let folder = currentLevel.find(
-        (n): n is FolderNode => n.type === 'folder' && n.name === folderName
+        (n): n is FolderNode => n.type === 'folder' && n.name === folderName,
       );
 
       if (!folder) {
@@ -1336,7 +1404,7 @@ export function buildWorkspaceTree(files: DiscoveredFile[], emptyFolders: Discov
 
   // Pre-create all discovered empty/empty-subtree folder paths so they appear in the tree
   const sortedFolders = [...emptyFolders]
-    .filter(f => !f.relativePath.startsWith('.'))
+    .filter((f) => !f.relativePath.startsWith('.'))
     .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
   for (const folder of sortedFolders) {
     ensureFolder(folder.relativePath);
@@ -1344,7 +1412,7 @@ export function buildWorkspaceTree(files: DiscoveredFile[], emptyFolders: Discov
 
   // Sort files so folder structure is stable
   const sorted = [...files]
-    .filter(f => !f.relativePath.startsWith('.'))
+    .filter((f) => !f.relativePath.startsWith('.'))
     .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
   for (const file of sorted) {
@@ -1359,7 +1427,7 @@ export function buildWorkspaceTree(files: DiscoveredFile[], emptyFolders: Discov
       currentRelPath += (currentRelPath ? '/' : '') + folderName;
 
       let folder = currentLevel.find(
-        (n): n is FolderNode => n.type === 'folder' && n.name === folderName
+        (n): n is FolderNode => n.type === 'folder' && n.name === folderName,
       );
 
       if (!folder) {
@@ -1424,7 +1492,7 @@ export function extractVariableRefs(
   files: { content: string }[],
   knownVars: Variable[],
 ): Variable[] {
-  const knownMap = new Map(knownVars.map(v => [v.key, v.value]));
+  const knownMap = new Map(knownVars.map((v) => [v.key, v.value]));
   const found = new Set<string>();
   const re = /\{\{([^${}][^{}]*?)\}\}/g;
 
@@ -1439,8 +1507,10 @@ export function extractVariableRefs(
     }
   }
 
-  return Array.from(found).sort().map(name => ({
-    key: name,
-    value: knownMap.get(name) ?? '',
-  }));
+  return Array.from(found)
+    .sort()
+    .map((name) => ({
+      key: name,
+      value: knownMap.get(name) ?? '',
+    }));
 }

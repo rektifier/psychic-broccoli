@@ -59,7 +59,7 @@
         {/if}
       </span>
     {/each}
-    {#if dependencies.some(d => !namedResults[d])}
+    {#if dependencies.some((d) => !namedResults[d])}
       <button class="btn-run-all" on:click={runAll}>Run all</button>
     {/if}
   </div>
@@ -104,20 +104,32 @@
     height: 6px;
     border-radius: 50%;
   }
-  .sent .dep-dot { background: var(--color-success); }
-  .unsent .dep-dot { background: var(--color-warning); }
+  .sent .dep-dot {
+    background: var(--color-success);
+  }
+  .unsent .dep-dot {
+    background: var(--color-warning);
+  }
 
   .dep-name {
     font-weight: var(--weight-medium);
   }
-  .sent .dep-name { color: var(--color-success); }
-  .unsent .dep-name { color: var(--color-warning); }
+  .sent .dep-name {
+    color: var(--color-success);
+  }
+  .unsent .dep-name {
+    color: var(--color-warning);
+  }
 
   .dep-status {
     opacity: 0.6;
   }
-  .sent .dep-status { color: var(--color-success); }
-  .unsent .dep-status { color: var(--color-warning); }
+  .sent .dep-status {
+    color: var(--color-success);
+  }
+  .unsent .dep-status {
+    color: var(--color-warning);
+  }
 
   .btn-run-all {
     margin-left: auto;

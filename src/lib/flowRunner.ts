@@ -2,10 +2,15 @@ import { getAllFileNodes } from './parser';
 import type { SubstitutionContext } from './parser';
 import { executeHttpRequest } from './requestExec';
 import type {
-  FlowDefinition, FlowStep, FlowStepResult, FlowStepStatus,
-  FlowRunRecord, FlowRunStatus,
-  HttpRequest, HttpResponse, TreeNode, FileNode, Variable,
-  NamedRequestResult, PbAssertionResult,
+  FlowDefinition,
+  FlowStep,
+  FlowStepResult,
+  FlowRunRecord,
+  FlowRunStatus,
+  HttpRequest,
+  TreeNode,
+  FileNode,
+  NamedRequestResult,
 } from './types';
 
 // ─── Callbacks ───────────────────────────────────────────────────────────────
@@ -66,7 +71,10 @@ export async function runFlow(
 
     const baseRequest = resolveRequest(file, step);
     if (!baseRequest) {
-      const result = makeErrorResult(step.id, `Request not found at index ${step.requestIndex} in ${step.filePath}`);
+      const result = makeErrorResult(
+        step.id,
+        `Request not found at index ${step.requestIndex} in ${step.filePath}`,
+      );
       stepResults.push(result);
       callbacks.onStepComplete(step.id, result);
       if (!step.continueOnFailure) {
@@ -78,15 +86,23 @@ export async function runFlow(
     }
 
     // Apply per-step overrides (without modifying the original request)
-    const request = step.overrides ? {
-      ...baseRequest,
-      ...(step.overrides.url !== undefined ? { url: step.overrides.url } : {}),
-      ...(step.overrides.headers !== undefined ? { headers: step.overrides.headers } : {}),
-      ...(step.overrides.body !== undefined ? { body: step.overrides.body } : {}),
-      ...(step.overrides.directives !== undefined ? { directives: step.overrides.directives } : {}),
-      ...(step.overrides.beforeSend !== undefined ? { beforeSend: step.overrides.beforeSend } : {}),
-      ...(step.overrides.afterReceive !== undefined ? { afterReceive: step.overrides.afterReceive } : {}),
-    } : baseRequest;
+    const request = step.overrides
+      ? {
+          ...baseRequest,
+          ...(step.overrides.url !== undefined ? { url: step.overrides.url } : {}),
+          ...(step.overrides.headers !== undefined ? { headers: step.overrides.headers } : {}),
+          ...(step.overrides.body !== undefined ? { body: step.overrides.body } : {}),
+          ...(step.overrides.directives !== undefined
+            ? { directives: step.overrides.directives }
+            : {}),
+          ...(step.overrides.beforeSend !== undefined
+            ? { beforeSend: step.overrides.beforeSend }
+            : {}),
+          ...(step.overrides.afterReceive !== undefined
+            ? { afterReceive: step.overrides.afterReceive }
+            : {}),
+        }
+      : baseRequest;
 
     // Build substitution context with flow-local state
     // Override file variables with flow-local runtime values so that
@@ -94,8 +110,8 @@ export async function runFlow(
     // precedence over empty or stale file-level defaults.
     const localVars = { ...localEnvOverrides, ...localGlobals };
     const ctx: SubstitutionContext = {
-      fileVariables: file.variables.map(v =>
-        v.key in localVars ? { ...v, value: localVars[v.key] } : v
+      fileVariables: file.variables.map((v) =>
+        v.key in localVars ? { ...v, value: localVars[v.key] } : v,
       ),
       environmentVariables: { ...environmentVariables, ...localEnvOverrides, ...localGlobals },
       namedResults: localNamedResults,
@@ -104,7 +120,15 @@ export async function runFlow(
 
     // Post-normalization invariant (flowAlias.ts): step.varName is always set
     // and supersedes the underlying request's `# @name`.
-    const stepResult = await executeStep(step.id, request, ctx, localNamedResults, localEnvOverrides, localGlobals, step.varName);
+    const stepResult = await executeStep(
+      step.id,
+      request,
+      ctx,
+      localNamedResults,
+      localEnvOverrides,
+      localGlobals,
+      step.varName,
+    );
     stepResults.push(stepResult);
     callbacks.onStepComplete(step.id, stepResult);
 
@@ -173,7 +197,8 @@ async function executeStep(
     const { response, sentRequest, assertionResults } = result;
 
     // Determine pass/fail
-    const allAssertionsPassed = assertionResults.length === 0 || assertionResults.every(a => a.passed);
+    const allAssertionsPassed =
+      assertionResults.length === 0 || assertionResults.every((a) => a.passed);
     const httpOk = response.status >= 200 && response.status < 400;
     const passed = httpOk && allAssertionsPassed;
 
@@ -218,7 +243,7 @@ function resolveRequest(file: FileNode, step: FlowStep): HttpRequest | null {
   }
   // Fallback: by varName
   if (step.varName) {
-    return file.requests.find(r => r.varName === step.varName) ?? null;
+    return file.requests.find((r) => r.varName === step.varName) ?? null;
   }
   return null;
 }
@@ -247,15 +272,21 @@ function makeErrorResult(stepId: string, error: string): FlowStepResult {
   };
 }
 
-function markRemainingSkipped(steps: FlowStep[], results: FlowStepResult[], afterStepId: string): void {
-  const idx = steps.findIndex(s => s.id === afterStepId);
+function markRemainingSkipped(
+  steps: FlowStep[],
+  results: FlowStepResult[],
+  afterStepId: string,
+): void {
+  const idx = steps.findIndex((s) => s.id === afterStepId);
   for (let i = idx + 1; i < steps.length; i++) {
     results.push(makeSkippedResult(steps[i].id));
   }
 }
 
 function computeSummary(results: FlowStepResult[]): FlowRunRecord['summary'] {
-  let passed = 0, failed = 0, skipped = 0;
+  let passed = 0,
+    failed = 0,
+    skipped = 0;
   for (const r of results) {
     if (r.status === 'passed') passed++;
     else if (r.status === 'failed') failed++;

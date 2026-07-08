@@ -17,7 +17,9 @@ describe('importOpenApiSpec - OpenAPI 3.x', () => {
     expect(result.collectionName).toBe('Test API');
     expect(result.files).toHaveLength(1);
     expect(result.files[0].content).toContain('GET {{baseUrl}}/users');
-    expect(result.variables.find(v => v.key === 'baseUrl')?.value).toBe('https://api.example.com');
+    expect(result.variables.find((v) => v.key === 'baseUrl')?.value).toBe(
+      'https://api.example.com',
+    );
   });
 
   it('imports POST endpoint with JSON request body', () => {
@@ -64,9 +66,9 @@ describe('importOpenApiSpec - OpenAPI 3.x', () => {
     });
     const result = importOpenApiSpec(spec);
     expect(result.files).toHaveLength(2);
-    const filePaths = result.files.map(f => f.relativePath);
-    expect(filePaths.some(p => p.includes('Users'))).toBe(true);
-    expect(filePaths.some(p => p.includes('Posts'))).toBe(true);
+    const filePaths = result.files.map((f) => f.relativePath);
+    expect(filePaths.some((p) => p.includes('Users'))).toBe(true);
+    expect(filePaths.some((p) => p.includes('Posts'))).toBe(true);
   });
 
   it('converts path params {param} to {{param}}', () => {
@@ -101,7 +103,12 @@ describe('importOpenApiSpec - OpenAPI 3.x', () => {
             tags: ['Search'],
             parameters: [
               { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
-              { name: 'limit', in: 'query', required: true, schema: { type: 'integer', default: 10 } },
+              {
+                name: 'limit',
+                in: 'query',
+                required: true,
+                schema: { type: 'integer', default: 10 },
+              },
             ],
           },
         },
@@ -127,24 +134,28 @@ describe('importOpenApiSpec - OpenAPI 3.x', () => {
     });
     const result = importOpenApiSpec(spec);
     expect(result.files[0].content).toContain('Authorization: Bearer {{bearerToken}}');
-    expect(result.variables.find(v => v.key === 'bearerToken')).toBeDefined();
+    expect(result.variables.find((v) => v.key === 'bearerToken')).toBeDefined();
   });
 
   it('resolves server URL variables', () => {
     const spec = JSON.stringify({
       openapi: '3.0.0',
       info: { title: 'API', version: '1.0' },
-      servers: [{
-        url: 'https://{environment}.example.com/api/{version}',
-        variables: {
-          environment: { default: 'staging' },
-          version: { default: 'v1' },
+      servers: [
+        {
+          url: 'https://{environment}.example.com/api/{version}',
+          variables: {
+            environment: { default: 'staging' },
+            version: { default: 'v1' },
+          },
         },
-      }],
+      ],
       paths: { '/test': { get: { summary: 'Test' } } },
     });
     const result = importOpenApiSpec(spec);
-    expect(result.variables.find(v => v.key === 'baseUrl')?.value).toBe('https://staging.example.com/api/v1');
+    expect(result.variables.find((v) => v.key === 'baseUrl')?.value).toBe(
+      'https://staging.example.com/api/v1',
+    );
   });
 
   it('uses operationId as varName', () => {
@@ -176,7 +187,9 @@ describe('importOpenApiSpec - Swagger 2.0', () => {
     });
     const result = importOpenApiSpec(spec);
     expect(result.collectionName).toBe('Legacy API');
-    expect(result.variables.find(v => v.key === 'baseUrl')?.value).toBe('https://api.example.com/v1');
+    expect(result.variables.find((v) => v.key === 'baseUrl')?.value).toBe(
+      'https://api.example.com/v1',
+    );
     expect(result.files[0].content).toContain('GET {{baseUrl}}/users');
   });
 
@@ -190,16 +203,18 @@ describe('importOpenApiSpec - Swagger 2.0', () => {
           post: {
             summary: 'Create User',
             tags: ['Users'],
-            parameters: [{
-              name: 'body',
-              in: 'body',
-              schema: {
-                type: 'object',
-                properties: {
-                  name: { type: 'string' },
+            parameters: [
+              {
+                name: 'body',
+                in: 'body',
+                schema: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                  },
                 },
               },
-            }],
+            ],
           },
         },
       },

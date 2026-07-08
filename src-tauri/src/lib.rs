@@ -1,11 +1,11 @@
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::time::Duration;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-use serde::{Deserialize, Serialize};
 use tauri::Manager;
-use futures_util::StreamExt;
 
 mod mcp;
 
@@ -81,7 +81,7 @@ fn is_blocked_ip(ip: &IpAddr) -> bool {
                 return is_blocked_ip(&IpAddr::V4(v4));
             }
             v6.is_unspecified()                       // ::
-            || (v6.segments()[0] == 0xfe80)           // fe80::/10 link-local
+            || (v6.segments()[0] == 0xfe80) // fe80::/10 link-local
         }
     }
 }
@@ -115,9 +115,8 @@ impl reqwest::dns::Resolve for BlocklistDnsResolver {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
-                .await?
-                .collect();
+            let addrs: Vec<SocketAddr> =
+                tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
             check_resolved_addrs(&addrs)?;
             Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
         })
@@ -128,15 +127,15 @@ impl reqwest::dns::Resolve for BlocklistDnsResolver {
 /// Returns the validated (host, resolved IPs) pair so the caller can pin the
 /// DNS resolution and prevent TOCTOU attacks.
 async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String> {
-    let parsed = url::Url::parse(url_str)
-        .map_err(|_| "Invalid URL format".to_string())?;
+    let parsed = url::Url::parse(url_str).map_err(|_| "Invalid URL format".to_string())?;
 
     match parsed.scheme() {
         "http" | "https" => {}
         _ => return Err("Only http:// and https:// URLs are allowed".to_string()),
     }
 
-    let host = parsed.host_str()
+    let host = parsed
+        .host_str()
         .ok_or_else(|| "URL must contain a host".to_string())?
         .to_string();
     let port = parsed.port_or_known_default().unwrap_or(80);
@@ -152,7 +151,8 @@ async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String
 
     // Resolve hostname and check all resulting IPs
     let addr = format!("{}:{}", host, port);
-    let resolved: Vec<SocketAddr> = tokio::net::lookup_host(&addr).await
+    let resolved: Vec<SocketAddr> = tokio::net::lookup_host(&addr)
+        .await
         .map_err(|_| "Failed to resolve host".to_string())?
         .collect();
 
@@ -201,10 +201,13 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
 
     builder = builder.resolve_to_addrs(&host, &resolved_addrs);
 
-    let client = builder.build()
+    let client = builder
+        .build()
         .map_err(|_| "Failed to initialize HTTP client".to_string())?;
 
-    let method = payload.method.parse::<reqwest::Method>()
+    let method = payload
+        .method
+        .parse::<reqwest::Method>()
         .map_err(|e| format!("Invalid method: {}", e))?;
 
     let mut req = client.request(method, &payload.url);
@@ -236,7 +239,8 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
 
     // Stream the response body with a size limit to prevent OOM from
     // malicious or unexpectedly large responses.
-    let capacity = res.content_length()
+    let capacity = res
+        .content_length()
         .map(|len| len.min(MAX_RESPONSE_BYTES as u64) as usize)
         .unwrap_or(0);
     let mut body_bytes = Vec::with_capacity(capacity);
@@ -280,18 +284,20 @@ mod keyvault_cmd {
     }
 
     fn validate_vault_url(url_str: &str) -> Result<(), String> {
-        let parsed = url::Url::parse(url_str)
-            .map_err(|e| format!("Invalid vault URL: {}", e))?;
+        let parsed = url::Url::parse(url_str).map_err(|e| format!("Invalid vault URL: {}", e))?;
         if parsed.scheme() != "https" {
             return Err("Vault URL must use https://".to_string());
         }
         match parsed.host_str() {
             Some(host) => {
                 let lower = host.to_lowercase();
-                let prefix = lower.strip_suffix(".vault.azure.net")
+                let prefix = lower
+                    .strip_suffix(".vault.azure.net")
                     .ok_or_else(|| "Vault URL host must end with .vault.azure.net".to_string())?;
                 if prefix.is_empty()
-                    || !prefix.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                    || !prefix
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-')
                     || prefix.starts_with('-')
                     || prefix.ends_with('-')
                 {
@@ -308,13 +314,17 @@ mod keyvault_cmd {
             return Err("Secret name must be 1-127 characters".to_string());
         }
         if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-            return Err("Secret name may only contain alphanumeric characters and hyphens".to_string());
+            return Err(
+                "Secret name may only contain alphanumeric characters and hyphens".to_string(),
+            );
         }
         Ok(())
     }
 
     #[tauri::command]
-    pub async fn fetch_keyvault_secret(payload: KeyVaultPayload) -> Result<KeyVaultResponse, String> {
+    pub async fn fetch_keyvault_secret(
+        payload: KeyVaultPayload,
+    ) -> Result<KeyVaultResponse, String> {
         validate_vault_url(&payload.vault_url)?;
         validate_secret_name(&payload.secret_name)?;
 
@@ -336,18 +346,21 @@ mod keyvault_cmd {
             client.get_secret(&payload.secret_name, None),
         )
         .await
-        .map_err(|_| format!(
-            "Key Vault request timed out after {} seconds", REQUEST_TIMEOUT_SECS
-        ))?
+        .map_err(|_| {
+            format!(
+                "Key Vault request timed out after {} seconds",
+                REQUEST_TIMEOUT_SECS
+            )
+        })?
         .map_err(|e| format!("Failed to fetch secret '{}': {}", payload.secret_name, e))?;
 
         let secret = response
             .into_model()
             .map_err(|e| format!("Failed to parse secret '{}': {}", payload.secret_name, e))?;
 
-        let value = secret.value.ok_or_else(|| {
-            format!("Secret '{}' exists but has no value", payload.secret_name)
-        })?;
+        let value = secret
+            .value
+            .ok_or_else(|| format!("Secret '{}' exists but has no value", payload.secret_name))?;
 
         Ok(KeyVaultResponse { value })
     }
@@ -375,7 +388,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 fn should_update(source: &Path, target: &Path) -> bool {
     let bundled = source.join(".version");
     let existing = target.join(".version");
-    match (std::fs::read_to_string(bundled), std::fs::read_to_string(existing)) {
+    match (
+        std::fs::read_to_string(bundled),
+        std::fs::read_to_string(existing),
+    ) {
         (Ok(src_ver), Ok(dst_ver)) => src_ver.trim() != dst_ver.trim(),
         _ => true,
     }
@@ -397,10 +413,12 @@ async fn extract_getting_started(app_handle: tauri::AppHandle) -> Result<String,
             std::env::var("HOME")
                 .map(std::path::PathBuf::from)
                 .map(|h| h.join("Documents"))
-                .map_err(|e| tauri::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    e.to_string(),
-                )))
+                .map_err(|e| {
+                    tauri::Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        e.to_string(),
+                    ))
+                })
         })
         .map_err(|e| format!("Failed to resolve document dir: {}", e))?;
     let target = documents.join("Psychic Broccoli").join("getting-started");

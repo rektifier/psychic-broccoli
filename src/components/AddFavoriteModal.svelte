@@ -46,7 +46,9 @@
       </div>
 
       <div class="modal-body">
-        <p class="description">Choose a name for this favorite. It is shown instead of the folder name.</p>
+        <p class="description">
+          Choose a name for this favorite. It is shown instead of the folder name.
+        </p>
         <input
           class="name-input"
           bind:this={inputEl}
@@ -94,7 +96,9 @@
     font-size: var(--text-base);
     outline: none;
   }
-  .name-input:focus { border-color: var(--color-primary); }
+  .name-input:focus {
+    border-color: var(--color-primary);
+  }
 
   .path-hint {
     font-size: var(--text-sm);
@@ -116,7 +120,10 @@
     cursor: pointer;
     transition: all var(--duration-normal);
   }
-  .btn-skip:hover { border-color: var(--color-text-faint); color: var(--color-text); }
+  .btn-skip:hover {
+    border-color: var(--color-text-faint);
+    color: var(--color-text);
+  }
   .btn-confirm {
     padding: var(--space-1\.5) var(--space-3\.5);
     border: none;
@@ -129,5 +136,7 @@
     cursor: pointer;
     transition: background var(--duration-normal);
   }
-  .btn-confirm:hover { background: var(--color-primary-active); }
+  .btn-confirm:hover {
+    background: var(--color-primary-active);
+  }
 </style>

@@ -1,12 +1,31 @@
 import { writable, derived, get } from 'svelte/store';
 import type {
-  HttpFile, HttpRequest, HttpResponse, Variable,
-  EnvironmentFile, NamedRequestResult, PbAssertionResult,
-  Workspace, Favorite, TreeNode, FileNode, FolderNode, RequestLocation,
-  FlowDefinition, FlowRunRecord, FlowRunStatus, FlowStepResult,
-  KeyVaultState, VarSource, ResolvedVarWithCascade,
+  HttpRequest,
+  HttpResponse,
+  EnvironmentFile,
+  NamedRequestResult,
+  PbAssertionResult,
+  Workspace,
+  Favorite,
+  TreeNode,
+  FileNode,
+  FolderNode,
+  RequestLocation,
+  FlowDefinition,
+  FlowRunRecord,
+  FlowRunStatus,
+  FlowStepResult,
+  KeyVaultState,
+  VarSource,
+  ResolvedVarWithCascade,
 } from './types';
-import { createEmptyRequest, resolveEnvironmentVariables, resolveEnvironmentVariablesWithSource, getEnvironmentNames, serializeHttpFile } from './parser';
+import {
+  createEmptyRequest,
+  resolveEnvironmentVariables,
+  resolveEnvironmentVariablesWithSource,
+  getEnvironmentNames,
+  serializeHttpFile,
+} from './parser';
 
 // ─── Workspace ──────────────────────────────────────────────────────────────
 
@@ -27,7 +46,12 @@ export const favorites = writable<Favorite[]>([]);
 export const currentResponse = writable<HttpResponse | null>(null);
 
 /** The resolved request that produced the current response. */
-export const currentSentRequest = writable<{ method: string; url: string; headers: Record<string, string>; body: string } | null>(null);
+export const currentSentRequest = writable<{
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+} | null>(null);
 
 /** Loading state. */
 export const isLoading = writable<boolean>(false);
@@ -44,7 +68,12 @@ export interface Tab {
   /** Cached response for this tab */
   response: HttpResponse | null;
   /** The raw sent request for the Request tab in ResponseViewer */
-  sentRequest: { method: string; url: string; headers: Record<string, string>; body: string } | null;
+  sentRequest: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: string;
+  } | null;
   /** Last active section tab (Body/Assertions) */
   bottomTab: BottomTab;
   /** Last active response tab (Body/Headers/Request/Assertions) */
@@ -62,25 +91,32 @@ export const tabs = writable<Tab[]>([]);
 export const activeTabKey = writable<string | null>(null);
 
 /** Whether the current selection is a preview (not pinned). */
-export const isPreview = derived(
-  [selectedLocation, tabs],
-  ([$loc, $tabs]) => {
-    if (!$loc) return false;
-    return !$tabs.some(t => tabKey(t.location) === tabKey($loc));
-  }
-);
+export const isPreview = derived([selectedLocation, tabs], ([$loc, $tabs]) => {
+  if (!$loc) return false;
+  return !$tabs.some((t) => tabKey(t.location) === tabKey($loc));
+});
 
 /** Pin a request as a tab. If already pinned, just activate it. */
 export function pinTab(loc: RequestLocation, label: string) {
   const key = tabKey(loc);
-  tabs.update(ts => {
-    if (ts.some(t => tabKey(t.location) === key)) return ts;
-    return [...ts, { location: loc, label, response: null, sentRequest: null, bottomTab: 'body', responseTab: 'body' }];
+  tabs.update((ts) => {
+    if (ts.some((t) => tabKey(t.location) === key)) return ts;
+    return [
+      ...ts,
+      {
+        location: loc,
+        label,
+        response: null,
+        sentRequest: null,
+        bottomTab: 'body',
+        responseTab: 'body',
+      },
+    ];
   });
   selectedLocation.set(loc);
   activeTabKey.set(key);
   // Restore cached response for this tab
-  const tab = get(tabs).find(t => tabKey(t.location) === key);
+  const tab = get(tabs).find((t) => tabKey(t.location) === key);
   currentResponse.set(tab?.response ?? null);
   currentSentRequest.set(tab?.sentRequest ?? null);
 }
@@ -88,7 +124,7 @@ export function pinTab(loc: RequestLocation, label: string) {
 /** Activate an existing tab. */
 export function activateTab(loc: RequestLocation) {
   const key = tabKey(loc);
-  const tab = get(tabs).find(t => tabKey(t.location) === key);
+  const tab = get(tabs).find((t) => tabKey(t.location) === key);
   if (!tab) return;
   // Save current tab's response before switching
   cacheCurrentTabResponse();
@@ -102,11 +138,11 @@ export function activateTab(loc: RequestLocation) {
 export function closeTab(loc: RequestLocation) {
   const key = tabKey(loc);
   const currentTabs = get(tabs);
-  const idx = currentTabs.findIndex(t => tabKey(t.location) === key);
+  const idx = currentTabs.findIndex((t) => tabKey(t.location) === key);
   if (idx === -1) return;
 
   const wasActive = get(activeTabKey) === key;
-  tabs.update(ts => ts.filter(t => tabKey(t.location) !== key));
+  tabs.update((ts) => ts.filter((t) => tabKey(t.location) !== key));
 
   if (wasActive) {
     const remaining = get(tabs);
@@ -129,11 +165,13 @@ export function cacheCurrentTabResponse(
   const key = get(activeTabKey);
   if (!key) return;
   const resp = get(currentResponse);
-  tabs.update(ts => ts.map(t =>
-    tabKey(t.location) === key
-      ? { ...t, response: resp, sentRequest: sentReq !== undefined ? sentReq : t.sentRequest }
-      : t
-  ));
+  tabs.update((ts) =>
+    ts.map((t) =>
+      tabKey(t.location) === key
+        ? { ...t, response: resp, sentRequest: sentReq !== undefined ? sentReq : t.sentRequest }
+        : t,
+    ),
+  );
 }
 
 /** Preview a request (single-click). Replaces any existing preview but doesn't create a tab. */
@@ -149,25 +187,19 @@ export function previewRequest(loc: RequestLocation) {
 /** Update tab label when a request is renamed. */
 export function updateTabLabel(loc: RequestLocation, label: string) {
   const key = tabKey(loc);
-  tabs.update(ts => ts.map(t =>
-    tabKey(t.location) === key ? { ...t, label } : t
-  ));
+  tabs.update((ts) => ts.map((t) => (tabKey(t.location) === key ? { ...t, label } : t)));
 }
 
 /** Update the active section tab (Body/Assertions) for a pinned tab. */
 export function setTabBottomTab(loc: RequestLocation, bottomTab: BottomTab) {
   const key = tabKey(loc);
-  tabs.update(ts => ts.map(t =>
-    tabKey(t.location) === key ? { ...t, bottomTab } : t
-  ));
+  tabs.update((ts) => ts.map((t) => (tabKey(t.location) === key ? { ...t, bottomTab } : t)));
 }
 
 /** Update the active response tab (Body/Headers/Request/Assertions) for a pinned tab. */
 export function setTabResponseTab(loc: RequestLocation, responseTab: ResponseTab) {
   const key = tabKey(loc);
-  tabs.update(ts => ts.map(t =>
-    tabKey(t.location) === key ? { ...t, responseTab } : t
-  ));
+  tabs.update((ts) => ts.map((t) => (tabKey(t.location) === key ? { ...t, responseTab } : t)));
 }
 
 // ─── Derived: Active File & Request ─────────────────────────────────────────
@@ -185,34 +217,29 @@ function findFileNode(nodes: TreeNode[], filePath: string): FileNode | null {
 }
 
 /** The currently active file node. */
-export const activeFile = derived(
-  [workspace, selectedLocation],
-  ([$ws, $loc]) => {
-    if (!$loc) return null;
-    return findFileNode($ws.tree, $loc.filePath);
-  }
-);
+export const activeFile = derived([workspace, selectedLocation], ([$ws, $loc]) => {
+  if (!$loc) return null;
+  return findFileNode($ws.tree, $loc.filePath);
+});
 
 /** The currently selected request. */
-export const activeRequest = derived(
-  [activeFile, selectedLocation],
-  ([$file, $loc]) => {
-    if (!$file || !$loc) return null;
-    return $file.requests[$loc.requestIndex] ?? null;
-  }
-);
+export const activeRequest = derived([activeFile, selectedLocation], ([$file, $loc]) => {
+  if (!$file || !$loc) return null;
+  return $file.requests[$loc.requestIndex] ?? null;
+});
 
 /** File-level variables for the active file. */
-export const activeFileVariables = derived(
-  activeFile,
-  ($file) => $file?.variables ?? []
-);
+export const activeFileVariables = derived(activeFile, ($file) => $file?.variables ?? []);
 
 // ─── Tree Mutation Helpers ──────────────────────────────────────────────────
 
 /** Update a FileNode in the tree by path. Returns a new tree (immutable). */
-function updateFileInTree(nodes: TreeNode[], filePath: string, updater: (f: FileNode) => FileNode): TreeNode[] {
-  return nodes.map(node => {
+function updateFileInTree(
+  nodes: TreeNode[],
+  filePath: string,
+  updater: (f: FileNode) => FileNode,
+): TreeNode[] {
+  return nodes.map((node) => {
     if (node.type === 'file' && node.path === filePath) {
       return updater(node);
     }
@@ -225,9 +252,9 @@ function updateFileInTree(nodes: TreeNode[], filePath: string, updater: (f: File
 
 /** Update a request within a file in the workspace tree. */
 export function updateRequestInTree(filePath: string, requestIndex: number, updated: HttpRequest) {
-  workspace.update(ws => ({
+  workspace.update((ws) => ({
     ...ws,
-    tree: updateFileInTree(ws.tree, filePath, file => {
+    tree: updateFileInTree(ws.tree, filePath, (file) => {
       const requests = [...file.requests];
       requests[requestIndex] = updated;
       const currentContent = serializeHttpFile(requests, file.variables);
@@ -241,9 +268,9 @@ export function updateRequestInTree(filePath: string, requestIndex: number, upda
 export function addRequestToFile(filePath: string) {
   const req = createEmptyRequest();
   let newIndex = 0;
-  workspace.update(ws => ({
+  workspace.update((ws) => ({
     ...ws,
-    tree: updateFileInTree(ws.tree, filePath, file => {
+    tree: updateFileInTree(ws.tree, filePath, (file) => {
       newIndex = file.requests.length;
       return { ...file, requests: [...file.requests, req], dirty: true };
     }),
@@ -254,9 +281,9 @@ export function addRequestToFile(filePath: string) {
 
 /** Delete a request from a file. */
 export function deleteRequestFromFile(filePath: string, requestIndex: number) {
-  workspace.update(ws => ({
+  workspace.update((ws) => ({
     ...ws,
-    tree: updateFileInTree(ws.tree, filePath, file => {
+    tree: updateFileInTree(ws.tree, filePath, (file) => {
       if (file.requests.length <= 1) return file;
       return {
         ...file,
@@ -283,8 +310,8 @@ export function deleteRequestFromFile(filePath: string, requestIndex: number) {
 export function removeFileFromTree(filePath: string) {
   function filterTree(nodes: TreeNode[]): TreeNode[] {
     return nodes
-      .filter(n => !(n.type === 'file' && n.path === filePath))
-      .map(n => n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n);
+      .filter((n) => !(n.type === 'file' && n.path === filePath))
+      .map((n) => (n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n));
   }
 
   const file = findFileNode(get(workspace).tree, filePath);
@@ -294,7 +321,7 @@ export function removeFileFromTree(filePath: string) {
     }
   }
 
-  workspace.update(ws => ({ ...ws, tree: filterTree(ws.tree) }));
+  workspace.update((ws) => ({ ...ws, tree: filterTree(ws.tree) }));
 }
 
 /** Remove a folder and all its contents from the workspace tree, closing all affected tabs. */
@@ -321,8 +348,8 @@ export function removeFolderFromTree(folderPath: string) {
 
   function filterTree(nodes: TreeNode[]): TreeNode[] {
     return nodes
-      .filter(n => !(n.type === 'folder' && n.path === folderPath))
-      .map(n => n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n);
+      .filter((n) => !(n.type === 'folder' && n.path === folderPath))
+      .map((n) => (n.type === 'folder' ? { ...n, children: filterTree(n.children) } : n));
   }
 
   const folder = findFolder(get(workspace).tree);
@@ -338,14 +365,14 @@ export function removeFolderFromTree(folderPath: string) {
     }
   }
 
-  workspace.update(ws => ({ ...ws, tree: filterTree(ws.tree) }));
+  workspace.update((ws) => ({ ...ws, tree: filterTree(ws.tree) }));
 }
 
 /** Mark a file as saved (not dirty). */
 export function markFileSaved(filePath: string) {
-  workspace.update(ws => ({
+  workspace.update((ws) => ({
     ...ws,
-    tree: updateFileInTree(ws.tree, filePath, file => ({
+    tree: updateFileInTree(ws.tree, filePath, (file) => ({
       ...file,
       dirty: false,
       savedContent: serializeHttpFile(file.requests, file.variables),
@@ -361,12 +388,12 @@ export const editingFolderPath = writable<string | null>(null);
 
 /** Add a file node to the tree under the given parent folder path. */
 export function addFileToTree(parentPath: string | null, fileNode: FileNode) {
-  workspace.update(ws => {
+  workspace.update((ws) => {
     if (!parentPath || parentPath === ws.rootPath) {
       return { ...ws, tree: [...ws.tree, fileNode] };
     }
     function insert(nodes: TreeNode[]): TreeNode[] {
-      return nodes.map(node => {
+      return nodes.map((node) => {
         if (node.type === 'folder' && node.path === parentPath) {
           return { ...node, children: [...node.children, fileNode] };
         }
@@ -382,12 +409,12 @@ export function addFileToTree(parentPath: string | null, fileNode: FileNode) {
 
 /** Add a folder node to the tree under the given parent folder path. */
 export function addFolderToTree(parentPath: string | null, folderNode: FolderNode) {
-  workspace.update(ws => {
+  workspace.update((ws) => {
     if (!parentPath || parentPath === ws.rootPath) {
       return { ...ws, tree: [...ws.tree, folderNode] };
     }
     function insert(nodes: TreeNode[]): TreeNode[] {
-      return nodes.map(node => {
+      return nodes.map((node) => {
         if (node.type === 'folder' && node.path === parentPath) {
           return { ...node, children: [...node.children, folderNode] };
         }
@@ -411,12 +438,14 @@ export function renameFileInTree(oldPath: string, newPath: string, newName: stri
   }
 
   // Update tabs that reference the old path
-  tabs.update(ts => ts.map(t => {
-    if (t.location.filePath === oldPath) {
-      return { ...t, location: { ...t.location, filePath: newPath } };
-    }
-    return t;
-  }));
+  tabs.update((ts) =>
+    ts.map((t) => {
+      if (t.location.filePath === oldPath) {
+        return { ...t, location: { ...t.location, filePath: newPath } };
+      }
+      return t;
+    }),
+  );
 
   // Update selected location
   const loc = get(selectedLocation);
@@ -425,9 +454,9 @@ export function renameFileInTree(oldPath: string, newPath: string, newName: stri
   }
 
   // Update tree node
-  workspace.update(ws => ({
+  workspace.update((ws) => ({
     ...ws,
-    tree: updateFileInTree(ws.tree, oldPath, file => ({
+    tree: updateFileInTree(ws.tree, oldPath, (file) => ({
       ...file,
       path: newPath,
       name: newName,
@@ -438,20 +467,21 @@ export function renameFileInTree(oldPath: string, newPath: string, newName: stri
 /** Rename a folder in the tree, updating its name, path, and all descendant paths. */
 export function renameFolderInTree(oldPath: string, newPath: string, newName: string) {
   function rewriteDescendants(nodes: TreeNode[]): TreeNode[] {
-    return nodes.map(n => {
+    return nodes.map((n) => {
       if (n.type === 'file') {
         if (!n.path.startsWith(oldPath + '/') && !n.path.startsWith(oldPath + '\\')) return n;
         return { ...n, path: newPath + n.path.slice(oldPath.length) };
       }
-      const childPath = n.path.startsWith(oldPath + '/') || n.path.startsWith(oldPath + '\\')
-        ? newPath + n.path.slice(oldPath.length)
-        : n.path;
+      const childPath =
+        n.path.startsWith(oldPath + '/') || n.path.startsWith(oldPath + '\\')
+          ? newPath + n.path.slice(oldPath.length)
+          : n.path;
       return { ...n, path: childPath, children: rewriteDescendants(n.children) };
     });
   }
 
   function update(nodes: TreeNode[]): TreeNode[] {
-    return nodes.map(n => {
+    return nodes.map((n) => {
       if (n.type === 'folder' && n.path === oldPath) {
         return { ...n, name: newName, path: newPath, children: rewriteDescendants(n.children) };
       }
@@ -462,13 +492,13 @@ export function renameFolderInTree(oldPath: string, newPath: string, newName: st
     });
   }
 
-  workspace.update(ws => ({ ...ws, tree: update(ws.tree) }));
+  workspace.update((ws) => ({ ...ws, tree: update(ws.tree) }));
 }
 
 /** Toggle a folder's expanded state. */
 export function toggleFolder(folderPath: string) {
   function toggle(nodes: TreeNode[]): TreeNode[] {
-    return nodes.map(node => {
+    return nodes.map((node) => {
       if (node.type === 'folder' && node.path === folderPath) {
         return { ...node, expanded: !node.expanded };
       }
@@ -478,7 +508,7 @@ export function toggleFolder(folderPath: string) {
       return node;
     });
   }
-  workspace.update(ws => ({ ...ws, tree: toggle(ws.tree) }));
+  workspace.update((ws) => ({ ...ws, tree: toggle(ws.tree) }));
 }
 
 // ─── Environment State ──────────────────────────────────────────────────────
@@ -487,15 +517,12 @@ export const envFile = writable<EnvironmentFile | null>(null);
 export const userEnvFile = writable<EnvironmentFile | null>(null);
 export const activeEnvironment = writable<string | null>(null);
 
-export const availableEnvironments = derived(
-  [envFile, userEnvFile],
-  ([$envFile, $userEnvFile]) => {
-    const names = new Set<string>();
-    for (const name of getEnvironmentNames($envFile)) names.add(name);
-    for (const name of getEnvironmentNames($userEnvFile)) names.add(name);
-    return Array.from(names).sort();
-  }
-);
+export const availableEnvironments = derived([envFile, userEnvFile], ([$envFile, $userEnvFile]) => {
+  const names = new Set<string>();
+  for (const name of getEnvironmentNames($envFile)) names.add(name);
+  for (const name of getEnvironmentNames($userEnvFile)) names.add(name);
+  return Array.from(names).sort();
+});
 
 /** File-scoped overrides injected by pb.set directives at runtime, keyed by file path. */
 export const pbFileOverrides = writable<Record<string, Record<string, string>>>({});
@@ -519,7 +546,7 @@ export const baseEnvVars = derived(
   [activeEnvironment, envFile, userEnvFile],
   ([$active, $envFile, $userEnvFile]) => {
     return $active ? resolveEnvironmentVariables($active, $envFile, $userEnvFile) : {};
-  }
+  },
 );
 
 /** Environment variables with source layer tracking (for display components).
@@ -542,14 +569,14 @@ export const baseEnvVarsWithSource = derived(
       // Map VarSource pref to matching VarSourceLayer entries in the cascade.
       // 'local' -> prefer 'env' then 'shared'; 'user-local' -> prefer 'user-env' then 'user-shared'
       const layers = pref === 'local' ? ['env', 'shared'] : ['user-env', 'user-shared'];
-      const match = [...result[key].cascade].reverse().find(c => layers.includes(c.source));
+      const match = [...result[key].cascade].reverse().find((c) => layers.includes(c.source));
       if (match) {
         result[key] = { ...result[key], source: match.source, value: match.value };
       }
     }
 
     return result;
-  }
+  },
 );
 
 /** Active file's pb.set overrides (file-scoped). */
@@ -558,11 +585,20 @@ export const activeFileOverrides = derived(
   ([$overrides, $loc]) => {
     if (!$loc) return {};
     return $overrides[$loc.filePath] ?? {};
-  }
+  },
 );
 
 export const resolvedEnvVars = derived(
-  [baseEnvVars, keyVaultState, varSourcePrefs, pbGlobals, activeFileOverrides, envFile, userEnvFile, activeEnvironment],
+  [
+    baseEnvVars,
+    keyVaultState,
+    varSourcePrefs,
+    pbGlobals,
+    activeFileOverrides,
+    envFile,
+    userEnvFile,
+    activeEnvironment,
+  ],
   ([$base, $kv, $prefs, $globals, $fileOverrides, $envFile, $userEnvFile, $active]) => {
     const merged = { ...$base };
 
@@ -600,7 +636,7 @@ export const resolvedEnvVars = derived(
     }
 
     return { ...merged, ...$globals, ...$fileOverrides };
-  }
+  },
 );
 
 // ─── Named Request Results ──────────────────────────────────────────────────
@@ -627,12 +663,12 @@ export const toasts = writable<Toast[]>([]);
 
 export function addToast(message: string, type: Toast['type'] = 'error', durationMs = 6000) {
   const id = nextToastId++;
-  toasts.update(t => [...t, { id, message, type }]);
+  toasts.update((t) => [...t, { id, message, type }]);
   setTimeout(() => dismissToast(id), durationMs);
 }
 
 export function dismissToast(id: number) {
-  toasts.update(t => t.filter(toast => toast.id !== id));
+  toasts.update((t) => t.filter((toast) => toast.id !== id));
 }
 
 // ─── Test Flows ──────────────────────────────────────────────────────────────
@@ -644,9 +680,8 @@ export const flows = writable<Record<string, FlowDefinition>>({});
 export const activeFlowPath = writable<string | null>(null);
 
 /** The active FlowDefinition, derived from flows + activeFlowPath. */
-export const activeFlow = derived(
-  [flows, activeFlowPath],
-  ([$flows, $path]) => ($path ? $flows[$path] ?? null : null),
+export const activeFlow = derived([flows, activeFlowPath], ([$flows, $path]) =>
+  $path ? ($flows[$path] ?? null) : null,
 );
 
 /** Live execution state for the currently running (or last-run) flow. */
@@ -675,8 +710,8 @@ export const activeFlowTabPath = writable<string | null>(null);
 
 /** Open a flow as a tab. If already open, just activate it. */
 export function openFlowTab(flowPath: string, label: string) {
-  flowTabs.update(ts => {
-    if (ts.some(t => t.flowPath === flowPath)) return ts;
+  flowTabs.update((ts) => {
+    if (ts.some((t) => t.flowPath === flowPath)) return ts;
     return [...ts, { flowPath, label }];
   });
   activateFlowTab(flowPath);
@@ -698,11 +733,11 @@ export function activateFlowTab(flowPath: string) {
 /** Close a flow tab. If active, activate an adjacent tab or clear. */
 export function closeFlowTab(flowPath: string) {
   const current = get(flowTabs);
-  const idx = current.findIndex(t => t.flowPath === flowPath);
+  const idx = current.findIndex((t) => t.flowPath === flowPath);
   if (idx === -1) return;
 
   const wasActive = get(activeFlowTabPath) === flowPath;
-  flowTabs.update(ts => ts.filter(t => t.flowPath !== flowPath));
+  flowTabs.update((ts) => ts.filter((t) => t.flowPath !== flowPath));
 
   if (wasActive) {
     const remaining = get(flowTabs);

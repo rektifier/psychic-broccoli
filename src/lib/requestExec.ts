@@ -1,5 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
-import { substituteAll, executePbDirectives, parseScriptText, applyRequestMutations } from './parser';
+import {
+  substituteAll,
+  executePbDirectives,
+  parseScriptText,
+  applyRequestMutations,
+} from './parser';
 import type { SubstitutionContext } from './parser';
 import type { HttpRequest, HttpResponse, PbAssertionResult, NamedRequestResult } from './types';
 
@@ -65,8 +70,14 @@ export interface ExecuteOptions {
 /** Methods that must not carry a request body. */
 const BODYLESS_METHODS = ['GET', 'HEAD', 'OPTIONS'];
 
-function mergeVars(ctx: SubstitutionContext, ...overrides: Record<string, string>[]): Record<string, string> {
-  const merged: Record<string, string> = Object.assign({ ...ctx.environmentVariables }, ...overrides);
+function mergeVars(
+  ctx: SubstitutionContext,
+  ...overrides: Record<string, string>[]
+): Record<string, string> {
+  const merged: Record<string, string> = Object.assign(
+    { ...ctx.environmentVariables },
+    ...overrides,
+  );
   for (const v of ctx.fileVariables) merged[v.key] = v.value;
   return merged;
 }
@@ -107,11 +118,20 @@ export async function executeHttpRequest(
   const beforeSend: PbVarEffects = { setVars: {}, globalVars: {} };
   const beforeSendDirectives = parseScriptText(request.beforeSend ?? '');
   if (beforeSendDirectives.length > 0) {
-    const dummyResponse: HttpResponse = { status: 0, statusText: '', headers: {}, body: '', time: 0, size: 0 };
+    const dummyResponse: HttpResponse = {
+      status: 0,
+      statusText: '',
+      headers: {},
+      body: '',
+      time: 0,
+      size: 0,
+    };
     const bsResult = executePbDirectives(
-      beforeSendDirectives, dummyResponse,
+      beforeSendDirectives,
+      dummyResponse,
       { url, method: request.method, headers, body },
-      mergeVars(ctx), namedResults,
+      mergeVars(ctx),
+      namedResults,
     );
 
     const mutated = applyRequestMutations(
@@ -166,8 +186,11 @@ export async function executeHttpRequest(
   ];
   if (allDirectives.length > 0) {
     const pbResult = executePbDirectives(
-      allDirectives, response, sentRequest,
-      mergeVars(ctx, beforeSend.setVars, beforeSend.globalVars), namedResults,
+      allDirectives,
+      response,
+      sentRequest,
+      mergeVars(ctx, beforeSend.setVars, beforeSend.globalVars),
+      namedResults,
     );
     assertionResults = pbResult.assertionResults;
     Object.assign(afterReceive.setVars, pbResult.setVars);
