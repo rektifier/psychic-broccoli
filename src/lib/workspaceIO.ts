@@ -23,8 +23,9 @@ import {
   activeFlowTabPath,
   addToast,
 } from './stores';
-import { buildWorkspaceTree, parseEnvironmentFile } from './parser';
-import type { DiscoveredFile, DiscoveredFolder } from './parser';
+import { parseEnvironmentFile } from './envFiles';
+import { buildWorkspaceTree } from './workspaceTree';
+import type { DiscoveredFile, DiscoveredFolder } from './workspaceTree';
 import { scanForFlowFiles, loadFlowHistory, migrateFlowsDirectory } from './flowIO';
 import type { FlowDefinition } from './types';
 

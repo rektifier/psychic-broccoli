@@ -20,12 +20,11 @@ import type {
   ResolvedVarWithCascade,
 } from './types';
 import {
-  createEmptyRequest,
   resolveEnvironmentVariables,
   resolveEnvironmentVariablesWithSource,
   getEnvironmentNames,
-  serializeHttpFile,
-} from './parser';
+} from './envFiles';
+import { createEmptyRequest, serializeHttpFile } from './parser';
 import { findFile, findFolder, collectFilePaths, removeNodeByPath } from './tree';
 
 // ─── Workspace ──────────────────────────────────────────────────────────────

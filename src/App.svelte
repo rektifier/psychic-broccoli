@@ -72,8 +72,9 @@
     resetKeyVaultCache,
     refreshKeyVaultForEnv,
   } from './lib/keyvaultCache';
-  import { serializeHttpFile, substituteAll } from './lib/parser';
-  import type { SubstitutionContext } from './lib/parser';
+  import { serializeHttpFile } from './lib/parser';
+  import { substituteAll } from './lib/substitution';
+  import type { SubstitutionContext } from './lib/substitution';
   import { errorMessage } from './lib/errors';
   import type { HttpRequest, RequestLocation, EnvironmentFile } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';

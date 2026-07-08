@@ -26,8 +26,8 @@ import {
   currentResponse,
   pbAssertionResults,
 } from './stores';
-import { resolveEnvironmentVariables } from './parser';
-import type { SubstitutionContext } from './parser';
+import { resolveEnvironmentVariables } from './envFiles';
+import type { SubstitutionContext } from './substitution';
 import { getAllFileNodes } from './tree';
 import { executeHttpRequest } from './requestExec';
 import { runFlow } from './flowRunner';
