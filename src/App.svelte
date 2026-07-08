@@ -91,22 +91,20 @@
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
 
-  let showEnvEditor = false;
-  let showVarInspector = false;
+  let showEnvEditor = $state(false);
+  let showVarInspector = $state(false);
 
-  let showHelp = false;
+  let showHelp = $state(false);
 
   // ─── Theme / Settings ───
-  let currentTheme: ThemeId = 'default';
-  let showSettings = false;
+  let currentTheme: ThemeId = $state('default');
+  let showSettings = $state(false);
   loadTheme().then((t) => (currentTheme = t));
   loadFavorites().then((f) => favorites.set(f));
 
   // ─── MCP status (titlebar pill) ───
-  // Plain legacy `let` (not $state) so App.svelte stays in legacy mode and
-  // the `$:` reactive statements elsewhere in this file keep working.
-  let mcpRunning = false;
-  let mcpPort = 3742;
+  let mcpRunning = $state(false);
+  let mcpPort = $state(3742);
 
   async function refreshMcpStatus() {
     try {
@@ -119,11 +117,11 @@
   }
 
   // ─── Import Collection Modal ───
-  let showImportCollectionModal = false;
+  let showImportCollectionModal = $state(false);
 
   // ─── Import Environment Modal ───
-  let showImportEnvModal = false;
-  let pendingImportVars: import('./lib/types').Variable[] = [];
+  let showImportEnvModal = $state(false);
+  let pendingImportVars: import('./lib/types').Variable[] = $state([]);
 
   async function handleImportEnvConfirm(target: string) {
     showImportEnvModal = false;
@@ -165,9 +163,9 @@
 
   // ─── Resizable Panes ───
 
-  let editorWidthPercent = loadLayoutNumber(LAYOUT_KEY_EDITOR_PCT, 50);
-  let dragging = false;
-  let mainPanelsEl: HTMLDivElement;
+  let editorWidthPercent = $state(loadLayoutNumber(LAYOUT_KEY_EDITOR_PCT, 50));
+  let dragging = $state(false);
+  let mainPanelsEl: HTMLDivElement | undefined = $state();
 
   function onDividerDown(e: MouseEvent) {
     e.preventDefault();
@@ -193,9 +191,9 @@
 
   // ─── Resizable Sidebar ───
 
-  let sidebarWidth = loadLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, 260);
-  let sidebarDragging = false;
-  let layoutEl: HTMLDivElement;
+  let sidebarWidth = $state(loadLayoutNumber(LAYOUT_KEY_SIDEBAR_PX, 260));
+  let sidebarDragging = $state(false);
+  let layoutEl: HTMLDivElement | undefined = $state();
 
   function onSidebarDividerDown(e: MouseEvent) {
     e.preventDefault();
@@ -254,19 +252,24 @@
     };
   }
 
-  // Clear stale named results and response when environment changes
+  // Clear stale named results and response when environment changes.
+  // lastEnv is intentionally a plain (untracked) variable: the effect must
+  // re-run only when $activeEnvironment changes, and the first run (which
+  // sees lastEnv === null) records the initial environment without clearing.
   let lastEnv: string | null = null;
-  $: if ($activeEnvironment !== lastEnv) {
-    if (lastEnv !== null) {
-      namedResults.set({});
-      currentResponse.set(null);
-      currentSentRequest.set(null);
+  $effect(() => {
+    if ($activeEnvironment !== lastEnv) {
+      if (lastEnv !== null) {
+        namedResults.set({});
+        currentResponse.set(null);
+        currentSentRequest.set(null);
+      }
+      lastEnv = $activeEnvironment;
     }
-    lastEnv = $activeEnvironment;
-  }
+  });
 
   // Active tab's section tab (Body/Assertions) for pinned tabs
-  $: activeBottomTab = (() => {
+  let activeBottomTab: BottomTab = $derived.by(() => {
     const key =
       $tabs.length > 0 && $selectedLocation
         ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
@@ -274,7 +277,7 @@
     if (!key) return 'body' as BottomTab;
     const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
     return tab?.bottomTab ?? ('body' as BottomTab);
-  })();
+  });
 
   function handleBottomTabChange(tab: BottomTab) {
     if ($selectedLocation) {
@@ -283,7 +286,7 @@
   }
 
   // Active response tab (Body/Headers/Request/Assertions) for pinned tabs
-  $: activeResponseTab = (() => {
+  let activeResponseTab: ResponseTab = $derived.by(() => {
     const key =
       $tabs.length > 0 && $selectedLocation
         ? `${$selectedLocation.filePath}::${$selectedLocation.requestIndex}`
@@ -291,7 +294,7 @@
     if (!key) return 'body' as ResponseTab;
     const tab = $tabs.find((t) => `${t.location.filePath}::${t.location.requestIndex}` === key);
     return tab?.responseTab ?? ('body' as ResponseTab);
-  })();
+  });
 
   function handleResponseTabChange(tab: ResponseTab) {
     if ($selectedLocation) {
@@ -300,7 +303,7 @@
   }
 
   // Reactive resolved URL - all store dependencies are explicit so Svelte tracks them
-  $: computedResolvedUrl = (() => {
+  let computedResolvedUrl = $derived.by(() => {
     if (!$activeRequest || !$activeRequest.url.includes('{{')) return '';
     const resolved = substituteAll($activeRequest.url, {
       fileVariables: $activeFileVariables,
@@ -310,7 +313,7 @@
     });
     // Only show if substitution actually changed something
     return resolved !== $activeRequest.url ? resolved : '';
-  })();
+  });
 
   // ─── Open Folder (scan for .http files) ───
   // Scanning and opening live in src/lib/workspaceIO.ts; the Key Vault hooks
@@ -337,9 +340,9 @@
 
   // ─── Favorites ───
 
-  let showAddFavoriteModal = false;
-  let pendingFavoritePath = '';
-  let pendingFavoriteName = '';
+  let showAddFavoriteModal = $state(false);
+  let pendingFavoritePath = $state('');
+  let pendingFavoriteName = $state('');
 
   /**
    * Toggle the currently open workspace folder in/out of the favorites list.
@@ -559,19 +562,20 @@
 
   // ─── Flow Handlers ───
 
+  // Not $state: only read inside handlers, never by the template.
   let flowAbortController: AbortController | null = null;
-  let lastFlowRunRecords: Record<string, FlowRunRecord> = {};
-  let runningFlowPath: string | null = null;
+  const lastFlowRunRecords: Record<string, FlowRunRecord> = $state({});
+  let runningFlowPath: string | null = $state(null);
 
   /** Persisted UI state for flow editors, keyed by flow path. */
-  let flowUIState: Record<
+  const flowUIState: Record<
     string,
     {
       expandedStepId: string | null;
       collapsedKeys: Record<string, boolean>;
       activeOverrideTabs: Record<string, string>;
     }
-  > = {};
+  > = $state({});
 
   async function handleRunFlow() {
     const flow = $activeFlow;
@@ -631,7 +635,6 @@
 
     record.flowFilePath = flowPathVal;
     lastFlowRunRecords[flowPathVal] = record;
-    lastFlowRunRecords = lastFlowRunRecords; // trigger reactivity
     flowRunState.set({ status: record.status, stepResults: record.stepResults });
     runningFlowPath = null;
 
@@ -721,14 +724,14 @@
   onCancel={cancelAddFavorite}
 />
 
-<svelte:window on:dragover|preventDefault={() => {}} on:drop|preventDefault={() => {}} />
+<svelte:window ondragover={(e) => e.preventDefault()} ondrop={(e) => e.preventDefault()} />
 
 <main class="app">
   <div class="titlebar" data-tauri-drag-region>
     {#if mcpRunning}
       <button
         class="mcp-pill"
-        on:click={() => (showSettings = true)}
+        onclick={() => (showSettings = true)}
         title="MCP server running on port {mcpPort}"
       >
         <span class="mcp-dot"></span>
@@ -737,7 +740,7 @@
     {/if}
   </div>
 
-  <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
+  <div class={['layout', { 'sidebar-dragging': sidebarDragging }]} bind:this={layoutEl}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
       <TreeSidebar
         selected={$selectedLocation}
@@ -759,7 +762,7 @@
       />
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="sidebar-divider" on:mousedown={onSidebarDividerDown} role="separator"></div>
+    <div class="sidebar-divider" onmousedown={onSidebarDividerDown} role="separator"></div>
 
     <div class="main-area">
       <TabBar
@@ -777,7 +780,7 @@
           closeFlowTab(flowPath);
         }}
       />
-      <div class="main-panels" bind:this={mainPanelsEl} class:dragging>
+      <div class={['main-panels', { dragging }]} bind:this={mainPanelsEl}>
         {#if showEnvEditor}
           <div class="env-editor-pane">
             <EnvironmentEditor
@@ -809,7 +812,6 @@
             uiState={flowUIState[$activeFlowTabPath] ?? null}
             onUiStateChange={(state) => {
               flowUIState[$activeFlowTabPath] = state;
-              flowUIState = flowUIState;
             }}
             onSave={(detail) => saveFlow(detail.flowPath, detail.flow)}
             onRun={handleRunFlow}
@@ -819,7 +821,6 @@
                 $flowRunHistory.filter((r) => r.flowFilePath !== $activeFlowTabPath),
               );
               delete lastFlowRunRecords[$activeFlowTabPath];
-              lastFlowRunRecords = lastFlowRunRecords;
               if ($workspace.rootPath && $activeFlow) {
                 clearFlowRunHistory($workspace.rootPath, $activeFlow.name);
               }
@@ -844,7 +845,7 @@
             />
           </div>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="divider" on:mousedown={onDividerDown} role="separator"></div>
+          <div class="divider" onmousedown={onDividerDown} role="separator"></div>
           <div class="response-pane">
             <ResponseViewer
               response={$currentResponse}
