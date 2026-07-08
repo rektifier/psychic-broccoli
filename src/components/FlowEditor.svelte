@@ -17,9 +17,14 @@
     Variable,
     NamedRequestResult,
   } from '../lib/types';
-  import { substituteAll } from '../lib/substitution';
   import { parseScriptText } from '../lib/pbScript';
   import { getAllFileNodes } from '../lib/tree';
+  import {
+    findFileForStep as findStepFile,
+    isStepBroken as stepIsBroken,
+    resolveStepUrls,
+    urlFromLabel as getUrl,
+  } from '../lib/flowValidation';
   import { applyAliasSync, autoAliasFor } from '../lib/flowAlias';
   import { baseEnvVars, dotenvVariables } from '../lib/stores';
   import { METHOD_COLORS } from '../lib/theme';
@@ -54,20 +59,12 @@
 
   /** Find the FileNode matching a step's filePath. */
   function findFileForStep(step: FlowStep): FileNode | undefined {
-    const normalized = step.filePath.replaceAll('\\', '/');
-    return allFiles.find((f) => {
-      const rel = f.path.substring(rootPath.length + 1).replaceAll('\\', '/');
-      return rel === normalized;
-    });
+    return findStepFile(step, allFiles, rootPath);
   }
 
   /** Check if a step's target file and request still exist in the workspace. */
   function isStepBroken(step: FlowStep): boolean {
-    const file = findFileForStep(step);
-    if (!file) return true;
-    if (step.requestIndex >= 0 && step.requestIndex < file.requests.length) return false;
-    if (step.varName && file.requests.some((r) => r.varName === step.varName)) return false;
-    return true;
+    return stepIsBroken(step, allFiles, rootPath);
   }
 
   $: brokenCount = flow.steps.filter(isStepBroken).length;
@@ -99,34 +96,14 @@
     return { ...v.setVars, ...v.globalVars };
   })();
 
-  $: resolvedStepUrls = (() => {
-    const env = $baseEnvVars;
-    const dotenv = $dotenvVariables;
-    const scope = flowScopeVars;
-    return flow.steps.map((step) => {
-      const file = findFileForStep(step);
-      const req =
-        file && step.requestIndex >= 0 && step.requestIndex < (file.requests?.length ?? 0)
-          ? file.requests[step.requestIndex]
-          : null;
-      // Prefer the step's override URL (what the user is actively editing) over the base.
-      const rawUrl = step.overrides?.url ?? (req ? req.url : getUrl(step.label));
-      if (!rawUrl || !rawUrl.includes('{{')) return '';
-      // Merge env with flow-scope vars (pb.set / pb.global captured on last run) so
-      // URLs that reference them (e.g. {{sessionId}}) resolve in the preview.
-      const nonEmptyEnv: Record<string, string> = {};
-      for (const [k, v] of Object.entries(env)) if (v) nonEmptyEnv[k] = v;
-      for (const [k, v] of Object.entries(scope))
-        if (v != null && v !== '') nonEmptyEnv[k] = String(v);
-      const resolved = substituteAll(rawUrl, {
-        fileVariables: [],
-        environmentVariables: nonEmptyEnv,
-        namedResults: {},
-        dotenvVariables: dotenv,
-      });
-      return resolved !== rawUrl ? resolved : '';
-    });
-  })();
+  $: resolvedStepUrls = resolveStepUrls(
+    flow.steps,
+    allFiles,
+    rootPath,
+    $baseEnvVars,
+    $dotenvVariables,
+    flowScopeVars,
+  );
 
   function getStepStatus(stepId: string): FlowStepResult | undefined {
     return runState?.stepResults.find((r) => r.stepId === stepId);
@@ -352,11 +329,6 @@
   function getMethod(label: string): string {
     const m = label.match(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\b/);
     return m ? m[1] : '';
-  }
-
-  function getUrl(label: string): string {
-    const m = label.match(/^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\s+(.*)/);
-    return m ? m[1] : label;
   }
 
   /** Compute URL suffixes for requests in a file, stripping common prefix segments. */
