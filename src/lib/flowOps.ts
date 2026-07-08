@@ -74,7 +74,9 @@ export async function saveFlow(flowPath: string, flow: FlowDefinition) {
   flows.update((f) => ({ ...f, [flowPath]: flow }));
 
   // Update tab label if the name changed
-  flowTabs.update((ts) => ts.map((t) => (t.flowPath === flowPath ? { ...t, label: flow.name } : t)));
+  flowTabs.update((ts) =>
+    ts.map((t) => (t.flowPath === flowPath ? { ...t, label: flow.name } : t)),
+  );
 }
 
 /** Delete a flow file (best effort) and drop it from the stores and tabs. */
