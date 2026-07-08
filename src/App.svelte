@@ -38,11 +38,8 @@
     keyVaultState,
     varSourcePrefs,
     updateRequestInTree,
-    addRequestToFile,
-    deleteRequestFromFile,
     editingFilePath,
     editingFolderPath,
-    toggleFolder,
     markFileSaved,
     addToast,
     tabs,
@@ -55,12 +52,10 @@
     currentSentRequest,
     setTabBottomTab,
     setTabResponseTab,
-    flows,
     flowRunHistory,
     flowRunState,
     flowTabs,
     activeFlowTabPath,
-    openFlowTab,
     closeFlowTab,
     activateFlowTab,
     activeFlowPath,
@@ -81,18 +76,8 @@
   import { saveFlowRunRecord, clearFlowRunHistory } from './lib/flowIO';
   import { openFolderByPath } from './lib/workspaceIO';
   import { importCollectionContent, applyImportedVariables } from './lib/importIO';
-  import { createFlow, duplicateFlow, saveFlow, deleteFlow } from './lib/flowOps';
-  import { runAllRequests, nameRequest } from './lib/requestOps';
-  import {
-    createFile,
-    createFolder,
-    renameFile,
-    renameFolder,
-    duplicateFile,
-    deleteFile,
-    deleteFolder,
-    cancelRename,
-  } from './lib/fileOps';
+  import { saveFlow, deleteFlow } from './lib/flowOps';
+  import { runAllRequests } from './lib/requestOps';
   import { runFlow } from './lib/flowRunner';
   import { executeHttpRequest } from './lib/requestExec';
   import { startMcpBridge } from './lib/mcpBridge';
@@ -401,13 +386,6 @@
     });
   }
 
-  /**
-   * Name shown for the open folder: the favorite's custom name when the open
-   * folder is favorited, otherwise the folder basename.
-   */
-  $: rootDisplayName =
-    $favorites.find((f) => f.path === $workspace.rootPath)?.name ?? $workspace.rootName;
-
   /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
   async function openFavorite(path: string) {
     try {
@@ -533,7 +511,7 @@
 
   // ─── Event Handlers ───
 
-  function handleSelect(e: CustomEvent<RequestLocation>) {
+  function handleSelect(loc: RequestLocation) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
@@ -541,7 +519,6 @@
     // Deactivate any flow tab when selecting a request
     activeFlowTabPath.set(null);
     activeFlowPath.set(null);
-    const loc = e.detail;
     const hasTab = $tabs.some(
       (t) => t.location.filePath === loc.filePath && t.location.requestIndex === loc.requestIndex,
     );
@@ -552,14 +529,12 @@
     }
   }
 
-  function handlePinRequest(
-    e: CustomEvent<{ filePath: string; requestIndex: number; label: string }>,
-  ) {
+  function handlePinRequest(detail: { filePath: string; requestIndex: number; label: string }) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
     }
-    pinTab({ filePath: e.detail.filePath, requestIndex: e.detail.requestIndex }, e.detail.label);
+    pinTab({ filePath: detail.filePath, requestIndex: detail.requestIndex }, detail.label);
   }
 
   function handleTabActivate(location: RequestLocation) {
@@ -582,26 +557,7 @@
     updateRequestInTree($selectedLocation.filePath, $selectedLocation.requestIndex, updated);
   }
 
-  function handleAddRequest(e: CustomEvent<string>) {
-    addRequestToFile(e.detail);
-  }
-
-  function handleDeleteRequest(e: CustomEvent<{ filePath: string; requestIndex: number }>) {
-    deleteRequestFromFile(e.detail.filePath, e.detail.requestIndex);
-  }
-
-  function handleToggleFolder(e: CustomEvent<string>) {
-    toggleFolder(e.detail);
-  }
-
   // ─── Flow Handlers ───
-
-  function handleOpenFlow(e: CustomEvent<string>) {
-    const path = e.detail;
-    const flow = $flows[path];
-    if (!flow) return;
-    openFlowTab(path, flow.name);
-  }
 
   let flowAbortController: AbortController | null = null;
   let lastFlowRunRecords: Record<string, FlowRunRecord> = {};
@@ -701,9 +657,9 @@
     flowAbortController?.abort();
   }
 
-  async function handleDeleteFlow(e: CustomEvent<string>) {
-    delete flowUIState[e.detail];
-    await deleteFlow(e.detail);
+  async function handleDeleteFlow(path: string) {
+    delete flowUIState[path];
+    await deleteFlow(path);
   }
 </script>
 
@@ -784,48 +740,22 @@
   <div class="layout" bind:this={layoutEl} class:sidebar-dragging={sidebarDragging}>
     <div class="sidebar-container" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
       <TreeSidebar
-        tree={$workspace.tree}
         selected={$selectedLocation}
-        rootName={rootDisplayName}
-        hasWorkspace={!!$workspace.rootPath}
-        rootPath={$workspace.rootPath}
-        favorites={$favorites}
         editingFilePath={$editingFilePath}
         editingFolderPath={$editingFolderPath}
-        environments={$availableEnvironments}
-        activeEnv={$activeEnvironment}
-        flows={$flows}
-        activeFlowPath={$activeFlowTabPath}
-        on:openFolder={openFolder}
-        on:openGettingStarted={openGettingStarted}
-        on:toggleFavorite={toggleFavorite}
-        on:openFavorite={(e) => openFavorite(e.detail)}
-        on:removeFavorite={(e) => removeFavorite(e.detail)}
-        on:importCollection={() => (showImportCollectionModal = true)}
-        on:select={handleSelect}
-        on:pinRequest={handlePinRequest}
-        on:toggleFolder={handleToggleFolder}
-        on:addRequest={handleAddRequest}
-        on:deleteRequest={handleDeleteRequest}
-        on:deleteFile={(e) => deleteFile(e.detail)}
-        on:deleteFolder={(e) => deleteFolder(e.detail)}
-        on:createFile={(e) => createFile(e.detail)}
-        on:createFolder={(e) => createFolder(e.detail)}
-        on:renameFile={(e) => renameFile(e.detail.oldPath, e.detail.newName)}
-        on:renameFolder={(e) => renameFolder(e.detail.oldPath, e.detail.newName)}
-        on:duplicateFile={(e) => duplicateFile(e.detail)}
-        on:cancelRename={cancelRename}
-        on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-        on:editEnv={() => (showEnvEditor = true)}
-        on:openVarInspector={() => (showVarInspector = true)}
-        on:openHelp={() => (showHelp = true)}
-        on:openSettings={() => (showSettings = true)}
-        on:nameRequest={(e) =>
-          nameRequest(e.detail.filePath, e.detail.requestIndex, e.detail.varName)}
-        on:openFlow={handleOpenFlow}
-        on:createFlow={(e) => createFlow(e.detail)}
-        on:duplicateFlow={(e) => duplicateFlow(e.detail)}
-        on:deleteFlow={handleDeleteFlow}
+        onOpenFolder={openFolder}
+        onOpenGettingStarted={openGettingStarted}
+        onToggleFavorite={toggleFavorite}
+        onOpenFavorite={openFavorite}
+        onRemoveFavorite={removeFavorite}
+        onImportCollection={() => (showImportCollectionModal = true)}
+        onSelect={handleSelect}
+        onPinRequest={handlePinRequest}
+        onEditEnv={() => (showEnvEditor = true)}
+        onOpenVarInspector={() => (showVarInspector = true)}
+        onOpenHelp={() => (showHelp = true)}
+        onOpenSettings={() => (showSettings = true)}
+        onDeleteFlow={handleDeleteFlow}
       />
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
