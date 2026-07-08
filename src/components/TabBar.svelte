@@ -1,23 +1,33 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { Tab, FlowTab } from '../lib/stores';
   import type { RequestLocation } from '../lib/types';
 
-  export let tabs: Tab[] = [];
-  export let activeLocation: RequestLocation | null = null;
-  export let isPreview: boolean = false;
-  export let previewLabel: string = '';
+  interface Props {
+    tabs?: Tab[];
+    activeLocation?: RequestLocation | null;
+    isPreview?: boolean;
+    previewLabel?: string;
+    // Flow tabs
+    flowTabs?: FlowTab[];
+    activeFlowPath?: string | null;
+    onActivate?: (location: RequestLocation) => void;
+    onClose?: (location: RequestLocation) => void;
+    onActivateFlowTab?: (flowPath: string) => void;
+    onCloseFlowTab?: (flowPath: string) => void;
+  }
 
-  // Flow tabs
-  export let flowTabs: FlowTab[] = [];
-  export let activeFlowPath: string | null = null;
-
-  const dispatch = createEventDispatcher<{
-    activate: RequestLocation;
-    close: RequestLocation;
-    activateFlowTab: string;
-    closeFlowTab: string;
-  }>();
+  let {
+    tabs = [],
+    activeLocation = null,
+    isPreview = false,
+    previewLabel = '',
+    flowTabs = [],
+    activeFlowPath = null,
+    onActivate,
+    onClose,
+    onActivateFlowTab,
+    onCloseFlowTab,
+  }: Props = $props();
 
   function isActive(tab: Tab): boolean {
     if (!activeLocation || activeFlowPath) return false;
@@ -32,13 +42,12 @@
   <div class="tab-bar">
     {#each flowTabs as ft}
       <div
-        class="tab flow-tab"
-        class:active={activeFlowPath === ft.flowPath}
-        on:click={() => dispatch('activateFlowTab', ft.flowPath)}
-        on:keydown={(e) => {
+        class={['tab', 'flow-tab', { active: activeFlowPath === ft.flowPath }]}
+        onclick={() => onActivateFlowTab?.(ft.flowPath)}
+        onkeydown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            dispatch('activateFlowTab', ft.flowPath);
+            onActivateFlowTab?.(ft.flowPath);
           }
         }}
         role="tab"
@@ -62,20 +71,22 @@
         <span class="tab-label">{ft.label}</span>
         <button
           class="tab-close"
-          on:click|stopPropagation={() => dispatch('closeFlowTab', ft.flowPath)}
+          onclick={(e) => {
+            e.stopPropagation();
+            onCloseFlowTab?.(ft.flowPath);
+          }}
           title="Close tab">&times;</button
         >
       </div>
     {/each}
     {#each tabs as tab}
       <div
-        class="tab"
-        class:active={isActive(tab) && !isPreview}
-        on:click={() => dispatch('activate', tab.location)}
-        on:keydown={(e) => {
+        class={['tab', { active: isActive(tab) && !isPreview }]}
+        onclick={() => onActivate?.(tab.location)}
+        onkeydown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            dispatch('activate', tab.location);
+            onActivate?.(tab.location);
           }
         }}
         role="tab"
@@ -84,7 +95,10 @@
         <span class="tab-label">{tab.label}</span>
         <button
           class="tab-close"
-          on:click|stopPropagation={() => dispatch('close', tab.location)}
+          onclick={(e) => {
+            e.stopPropagation();
+            onClose?.(tab.location);
+          }}
           title="Close tab">&times;</button
         >
       </div>
