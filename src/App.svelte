@@ -40,12 +40,6 @@
     updateRequestInTree,
     addRequestToFile,
     deleteRequestFromFile,
-    removeFileFromTree,
-    removeFolderFromTree,
-    addFileToTree,
-    addFolderToTree,
-    renameFolderInTree,
-    renameFileInTree,
     editingFilePath,
     editingFolderPath,
     toggleFolder,
@@ -73,52 +67,41 @@
     activeFlow,
     favorites,
   } from './lib/stores';
-  import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
   import {
-    serializeHttpFile,
-    substituteAll,
-    parseEnvironmentFile,
-    ensureSharedEnvironment,
-    buildWorkspaceTree,
-    createFileNode,
-    createEmptyFileNode,
-    resolveEnvironmentVariables,
-  } from './lib/parser';
+    refreshKeyVaultSecrets,
+    resetKeyVaultCache,
+    refreshKeyVaultForEnv,
+  } from './lib/keyvaultCache';
+  import { serializeHttpFile, substituteAll } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
-  import { getAllFileNodes, findFile, findFolder, collectFilePaths } from './lib/tree';
   import { errorMessage } from './lib/errors';
-  import { importPostmanCollection } from './lib/postman';
-  import { importInsomniaExport } from './lib/insomnia';
-  import { importOpenApiSpec } from './lib/openapi';
-  import type {
-    HttpRequest,
-    RequestLocation,
-    EnvironmentFile,
-    ImportResult,
-    KeyVaultState,
-  } from './lib/types';
+  import type { HttpRequest, RequestLocation, EnvironmentFile } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
-  import type { DiscoveredFile, DiscoveredFolder } from './lib/parser';
+  import { saveFlowRunRecord, clearFlowRunHistory } from './lib/flowIO';
+  import { openFolderByPath } from './lib/workspaceIO';
+  import { importCollectionContent, applyImportedVariables } from './lib/importIO';
+  import { createFlow, duplicateFlow, saveFlow, deleteFlow } from './lib/flowOps';
+  import { runAllRequests, nameRequest } from './lib/requestOps';
   import {
-    scanForFlowFiles,
-    loadFlowHistory,
-    saveFlowRunRecord,
-    clearFlowRunHistory,
-    parseFlowFile,
-    FLOWS_DIR,
-    migrateFlowsDirectory,
-  } from './lib/flowIO';
-  import { generateFolderName } from './lib/folderCreate';
+    createFile,
+    createFolder,
+    renameFile,
+    renameFolder,
+    duplicateFile,
+    deleteFile,
+    deleteFolder,
+    cancelRename,
+  } from './lib/fileOps';
   import { runFlow } from './lib/flowRunner';
   import { executeHttpRequest } from './lib/requestExec';
+  import { startMcpBridge } from './lib/mcpBridge';
   import type { PbVarEffects } from './lib/requestExec';
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile, readDir, rename } from '@tauri-apps/plugin-fs';
+  import { writeTextFile } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
-  import { listen, emit } from '@tauri-apps/api/event';
-  import { join, basename, dirname } from '@tauri-apps/api/path';
+  import { join } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
 
@@ -158,44 +141,7 @@
 
   async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
     showImportEnvModal = false;
-    const envName = e.detail.target;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath || pendingImportVars.length === 0) return;
-
-    try {
-      // Load or create the env file
-      const currentEnv: EnvironmentFile = ensureSharedEnvironment($envFile ?? {});
-
-      // Ensure the target environment exists
-      if (!currentEnv[envName]) {
-        currentEnv[envName] = {};
-      }
-
-      // Add discovered variables with their values (only if not already present)
-      for (const v of pendingImportVars) {
-        if (!(v.key in currentEnv[envName])) {
-          (currentEnv[envName] as Record<string, string>)[v.key] = v.value;
-        }
-      }
-
-      // Write the env file
-      const envPath = await join(rootPath, 'http-client.env.json');
-      await writeTextFile(envPath, JSON.stringify(currentEnv, null, 2));
-
-      // Update stores
-      envFile.set(currentEnv);
-      if (!$activeEnvironment) {
-        activeEnvironment.set(envName);
-      }
-
-      addToast(
-        `Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`,
-        'info',
-      );
-    } catch (e) {
-      addToast(`Failed to update environment file: ${errorMessage(e)}`, 'error');
-    }
-
+    await applyImportedVariables(e.detail.target, pendingImportVars);
     pendingImportVars = [];
   }
 
@@ -287,338 +233,18 @@
   }
 
   // ─── Key Vault ───
-
-  let lastKvEnv: string | null = null;
-  let kvFetchSeq = 0;
-  /** Per-environment KV cache - persists across env switches, cleared on folder change. */
-  let kvCache: Record<string, KeyVaultState> = {};
-  const idleKv: KeyVaultState = { status: 'idle', variables: {}, error: null, cacheKey: null };
-
-  async function refreshKeyVaultSecrets(forEnv?: string) {
-    const env = forEnv ?? $activeEnvironment;
-    if (!env) {
-      keyVaultState.set(idleKv);
-      return;
-    }
-
-    const config = extractKeyVaultConfig(env, $envFile, $userEnvFile);
-    if (!config) {
-      // No KV config for this env - restore idle but keep cache for other envs
-      keyVaultState.set(idleKv);
-      return;
-    }
-
-    const newCacheKey = kvCacheKey(env, config);
-
-    // Check per-env cache first
-    const cached = kvCache[newCacheKey];
-    if (cached && cached.status === 'loaded') {
-      keyVaultState.set(cached);
-      return;
-    }
-
-    // Only clear conflict preferences when switching environments
-    if (lastKvEnv !== env) {
-      varSourcePrefs.set({});
-    }
-    lastKvEnv = env;
-
-    const seq = ++kvFetchSeq;
-    keyVaultState.set({ status: 'loading', variables: {}, error: null, cacheKey: newCacheKey });
-
-    try {
-      const vars = await fetchKeyVaultSecrets(config);
-      if (kvFetchSeq === seq) {
-        const state: KeyVaultState = {
-          status: 'loaded',
-          variables: vars,
-          error: null,
-          cacheKey: newCacheKey,
-        };
-        kvCache[newCacheKey] = state;
-        kvCache = kvCache;
-        keyVaultState.set(state);
-      }
-    } catch (err: unknown) {
-      if (kvFetchSeq === seq) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const state: KeyVaultState = {
-          status: 'error',
-          variables: {},
-          error: msg,
-          cacheKey: newCacheKey,
-        };
-        keyVaultState.set(state);
-        addToast(`Key Vault error: ${msg}`, 'error');
-      }
-    }
-  }
+  // Cache and fetch live in src/lib/keyvaultCache.ts; App.svelte only owns
+  // the environment-change subscription.
 
   const unsubKv = activeEnvironment.subscribe(() => {
     refreshKeyVaultSecrets();
   });
 
   // ─── MCP Bridge ───
-  // The embedded MCP server (Rust) reaches live app state through Tauri events:
-  // it emits `mcp:request` with { id, kind, params }; we do the work for `kind`
-  // and emit `mcp:response` with { id, ok, data?, error? }, matched by `id`.
-  // New MCP tools that need frontend state add a `kind` branch here.
+  // Bridge logic lives in src/lib/mcpBridge.ts; App.svelte only owns the
+  // listener's lifecycle (started here, torn down in onDestroy).
 
-  interface BridgeRequest {
-    id: string;
-    kind: string;
-    params: unknown;
-  }
-
-  function respondBridge(
-    id: string,
-    payload: { ok: true; data: unknown } | { ok: false; error: string },
-  ) {
-    emit('mcp:response', { id, ...payload }).catch(() => {});
-  }
-
-  /** Gather every request across all .http files in the open workspace. */
-  function collectWorkspaceRequests() {
-    const ws = get(workspace);
-    if (!ws.rootPath) return [];
-    return getAllFileNodes(ws.tree).flatMap((file) => {
-      const filePath = file.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/');
-      return file.requests.map((req, requestIndex) => ({
-        filePath,
-        requestIndex,
-        name: req.name,
-        method: req.method,
-        url: req.url,
-      }));
-    });
-  }
-
-  interface ExecuteRequestParams {
-    filePath: string;
-    requestIndex: number;
-    environment?: string | null;
-  }
-
-  /**
-   * Run a single request for the MCP `execute_request` tool and return the
-   * structured result. This is the silent twin of `sendRequest`: it must never
-   * touch UI stores (`currentResponse`, `currentSentRequest`, `pbAssertionResults`,
-   * tabs, `namedResults`, `pbGlobals`, `pbFileOverrides`). All runtime state from
-   * pb directives is kept in locals and discarded after the call.
-   */
-  async function executeRequestSilently(params: ExecuteRequestParams) {
-    const ws = get(workspace);
-    if (!ws.rootPath) throw new Error('No workspace folder is open');
-
-    const normalized = params.filePath.replaceAll('\\', '/');
-    const file = getAllFileNodes(ws.tree).find(
-      (f) => f.path.substring(ws.rootPath!.length + 1).replaceAll('\\', '/') === normalized,
-    );
-    if (!file) throw new Error(`File not found in workspace: ${params.filePath}`);
-
-    const request = file.requests[params.requestIndex];
-    if (!request) {
-      throw new Error(`No request at index ${params.requestIndex} in ${params.filePath}`);
-    }
-
-    // Resolve environment variables for the requested environment, falling back to
-    // the active one. For the active environment, reuse the fully-resolved store so
-    // Key Vault secrets, globals, and pb.set overrides are included exactly as the
-    // UI sees them; for any other environment, resolve it fresh from the env files.
-    const active = get(activeEnvironment);
-    const effectiveEnv = params.environment ?? active;
-    let environmentVariables: Record<string, string>;
-    if (effectiveEnv && effectiveEnv === active) {
-      environmentVariables = { ...get(resolvedEnvVars) };
-    } else if (effectiveEnv) {
-      environmentVariables = {
-        ...resolveEnvironmentVariables(effectiveEnv, get(envFile), get(userEnvFile)),
-        ...get(pbGlobals),
-        ...(get(pbFileOverrides)[file.path] ?? {}),
-      };
-    } else {
-      environmentVariables = { ...get(pbGlobals) };
-    }
-
-    const ctx: SubstitutionContext = {
-      fileVariables: file.variables,
-      environmentVariables,
-      // Read-only copy: chaining can resolve existing named results, but the
-      // silent run must not mutate the shared store.
-      namedResults: { ...get(namedResults) },
-      dotenvVariables: get(dotenvVariables),
-    };
-
-    // All pb effects (set/global vars, named result) stay in the returned
-    // locals and are discarded - a silent run never reaches the stores.
-    const result = await executeHttpRequest(request, ctx, { alias: request.varName });
-
-    return {
-      status: result.response.status,
-      statusText: result.response.statusText,
-      headers: result.response.headers,
-      body: result.response.body,
-      time: result.response.time,
-      assertions: result.assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
-    };
-  }
-
-  interface ExecuteFlowParams {
-    flowFilePath: string;
-    environment?: string | null;
-  }
-
-  /**
-   * Run a whole flow for the MCP `execute_flow` tool and return the structured
-   * run record. This is the silent twin of `handleRunFlow`: it loads and runs the
-   * flow but must never touch UI stores (`flowRunState`, `flowRunHistory`,
-   * `lastFlowRunRecords`, tabs) and must not persist a results file. `runFlow`
-   * keeps all run state in isolated locals, which are discarded after mapping.
-   */
-  async function executeFlowSilently(params: ExecuteFlowParams) {
-    const ws = get(workspace);
-    if (!ws.rootPath) throw new Error('No workspace folder is open');
-
-    const relPath = params.flowFilePath.replaceAll('\\', '/');
-    if (!relPath.endsWith('.pb-flow.json')) {
-      throw new Error(`Not a flow file (expected .pb-flow.json): ${params.flowFilePath}`);
-    }
-    const absolutePath = await join(ws.rootPath, relPath);
-
-    let content: string;
-    try {
-      content = await readTextFile(absolutePath);
-    } catch {
-      throw new Error(`Flow file not found: ${params.flowFilePath}`);
-    }
-
-    let raw: unknown;
-    try {
-      raw = JSON.parse(content);
-    } catch {
-      throw new Error(`Flow file is not valid JSON: ${params.flowFilePath}`);
-    }
-    if (
-      typeof raw !== 'object' ||
-      raw === null ||
-      !Array.isArray((raw as { steps?: unknown }).steps)
-    ) {
-      throw new Error(`Not a valid flow file: ${params.flowFilePath}`);
-    }
-    const flow = parseFlowFile(content);
-
-    // Resolve environment variables for the requested environment, falling back to
-    // the active one. Mirror executeRequestSilently: reuse the resolved store for
-    // the active env (so Key Vault secrets, globals, and pb.set overrides are
-    // included as the UI sees them); resolve any other env fresh from the files.
-    const active = get(activeEnvironment);
-    const effectiveEnv = params.environment ?? active;
-    let environmentVariables: Record<string, string>;
-    if (effectiveEnv && effectiveEnv === active) {
-      environmentVariables = { ...get(resolvedEnvVars) };
-    } else if (effectiveEnv) {
-      environmentVariables = {
-        ...resolveEnvironmentVariables(effectiveEnv, get(envFile), get(userEnvFile)),
-        ...get(pbGlobals),
-      };
-    } else {
-      environmentVariables = { ...get(pbGlobals) };
-    }
-
-    // No-op callbacks: a silent run reports nothing to the UI. runFlow returns a
-    // fully isolated record; we never write it to stores or to disk.
-    const record = await runFlow(
-      flow,
-      ws.rootPath,
-      ws.tree,
-      environmentVariables,
-      get(dotenvVariables),
-      effectiveEnv,
-      { onStepStart() {}, onStepComplete() {} },
-    );
-
-    // Map the internal record onto the tool's output shape. The flow runner stores
-    // both network errors and assertion/HTTP failures as `failed`; split them back
-    // out so a network-level failure (non-null `error`) surfaces as `error`.
-    const stepById = new Map(flow.steps.map((s) => [s.id, s]));
-    const steps = record.stepResults.map((r) => {
-      const status: 'passed' | 'failed' | 'skipped' | 'error' =
-        r.status === 'failed' && r.error != null
-          ? 'error'
-          : r.status === 'passed'
-            ? 'passed'
-            : r.status === 'skipped'
-              ? 'skipped'
-              : 'failed';
-      return {
-        id: r.stepId,
-        label: stepById.get(r.stepId)?.label ?? '',
-        status,
-        durationMs: r.durationMs,
-        assertions: r.assertionResults.map((a) => ({ label: a.label, passed: a.passed })),
-        error: r.error,
-      };
-    });
-
-    const overall: 'passed' | 'failed' | 'error' = steps.some((s) => s.status === 'error')
-      ? 'error'
-      : steps.some((s) => s.status === 'failed')
-        ? 'failed'
-        : 'passed';
-
-    return { status: overall, summary: record.summary, steps };
-  }
-
-  /**
-   * Snapshot the user's most recent manual request result for the MCP
-   * `get_last_result` tool. Reads the live UI stores without mutating them and
-   * returns the `execute_request` shape, or `null` if no request has run yet.
-   */
-  function snapshotLastResult() {
-    const response = get(currentResponse);
-    if (!response) return null;
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-      body: response.body,
-      time: response.time,
-      assertions: get(pbAssertionResults).map((a) => ({ label: a.label, passed: a.passed })),
-    };
-  }
-
-  async function handleBridgeRequest(req: BridgeRequest) {
-    try {
-      switch (req.kind) {
-        case 'list_requests':
-          respondBridge(req.id, { ok: true, data: collectWorkspaceRequests() });
-          break;
-        case 'execute_request':
-          respondBridge(req.id, {
-            ok: true,
-            data: await executeRequestSilently(req.params as ExecuteRequestParams),
-          });
-          break;
-        case 'execute_flow':
-          respondBridge(req.id, {
-            ok: true,
-            data: await executeFlowSilently(req.params as ExecuteFlowParams),
-          });
-          break;
-        case 'get_last_result':
-          respondBridge(req.id, { ok: true, data: snapshotLastResult() });
-          break;
-        default:
-          respondBridge(req.id, { ok: false, error: `Unknown MCP bridge request: ${req.kind}` });
-      }
-    } catch (e) {
-      respondBridge(req.id, { ok: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-
-  const mcpBridgeUnlisten = listen<BridgeRequest>('mcp:request', (event) => {
-    void handleBridgeRequest(event.payload);
-  });
+  const mcpBridgeUnlisten = startMcpBridge();
 
   void refreshMcpStatus();
 
@@ -701,65 +327,23 @@
   })();
 
   // ─── Open Folder (scan for .http files) ───
+  // Scanning and opening live in src/lib/workspaceIO.ts; the Key Vault hooks
+  // reset and refill the per-environment secret cache in lib/keyvaultCache.ts.
 
-  async function openFolderByPath(rootPath: string) {
-    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
-    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
-    const rootName = await basename(rootPath);
-
-    workspace.set({ rootPath, rootName, tree });
-    selectedLocation.set(null);
-    currentResponse.set(null);
-    namedResults.set({});
-    tabs.set([]);
-    currentSentRequest.set(null);
-
-    // Reset environment state before loading new env files
-    envFile.set(null);
-    userEnvFile.set(null);
-    kvCache = {};
-    activeEnvironment.set(null);
-
-    // Auto-discover env files from workspace root
-    await tryLoadEnvFiles(rootPath);
-
-    // Migrate legacy flows/ to .flows/ if needed
-    try {
-      const migrated = await migrateFlowsDirectory(rootPath);
-      if (migrated) addToast("Workspace updated: renamed 'flows' to '.flows'", 'info');
-    } catch {
-      /* best effort */
-    }
-
-    // Discover test flows and load run history
-    try {
-      const discoveredFlows = await scanForFlowFiles(rootPath, rootPath);
-      const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
-      for (const df of discoveredFlows) {
-        flowMap[df.relativePath] = df.flow;
-      }
-      flows.set(flowMap);
-    } catch {
-      /* no flows yet */
-    }
-
-    try {
-      const history = await loadFlowHistory(rootPath);
-      flowRunHistory.set(history);
-    } catch {
-      /* no history yet */
-    }
-
-    // Reset flow tabs
-    flowTabs.set([]);
-    activeFlowTabPath.set(null);
+  function openWorkspaceFolder(rootPath: string) {
+    return openFolderByPath(rootPath, {
+      resetCache: resetKeyVaultCache,
+      refresh: () => {
+        refreshKeyVaultSecrets();
+      },
+    });
   }
 
   async function openFolder() {
     try {
       const rootPath = await open({ directory: true, title: 'Select workspace folder' });
       if (!rootPath) return;
-      await openFolderByPath(rootPath as string);
+      await openWorkspaceFolder(rootPath as string);
     } catch (e) {
       addToast(`Failed to open folder: ${errorMessage(e)}`, 'error');
     }
@@ -826,7 +410,7 @@
   /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
   async function openFavorite(path: string) {
     try {
-      await openFolderByPath(path);
+      await openWorkspaceFolder(path);
     } catch (e) {
       addToast(`Could not open favorite "${path}": ${errorMessage(e)}`, 'error');
     }
@@ -835,240 +419,31 @@
   async function openGettingStarted() {
     try {
       const path = await invoke<string>('extract_getting_started');
-      await openFolderByPath(path);
+      await openWorkspaceFolder(path);
     } catch (e) {
       addToast(`Failed to open getting-started folder: ${errorMessage(e)}`, 'error');
     }
   }
 
-  // ── Recursively scan a directory for .http/.rest files ──
-
-  async function scanDir(
-    dir: string,
-    rootDir: string,
-    emptyFolderSink: DiscoveredFolder[],
-  ): Promise<DiscoveredFile[]> {
-    const entries = await readDir(dir);
-    const results: DiscoveredFile[] = [];
-    let hasHttpDescendant = false;
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      const fullPath = await join(dir, entry.name);
-      if (entry.isDirectory) {
-        const subFiles = await scanDir(fullPath, rootDir, emptyFolderSink);
-        results.push(...subFiles);
-        if (subFiles.length > 0) hasHttpDescendant = true;
-      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
-        const content = await readTextFile(fullPath);
-        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
-        results.push({ absolutePath: fullPath, relativePath, content });
-        hasHttpDescendant = true;
-      }
-    }
-
-    if (!hasHttpDescendant) {
-      const relDir = dir.substring(rootDir.length + 1).replaceAll('\\', '/');
-      emptyFolderSink.push({ relativePath: relDir });
-    }
-
-    return results;
-  }
-
-  async function scanForHttpFiles(
-    rootDir: string,
-  ): Promise<{ files: DiscoveredFile[]; emptyFolders: DiscoveredFolder[] }> {
-    const emptyFolders: DiscoveredFolder[] = [];
-    const entries = await readDir(rootDir);
-    const files: DiscoveredFile[] = [];
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      const fullPath = await join(rootDir, entry.name);
-      if (entry.isDirectory) {
-        const subFiles = await scanDir(fullPath, rootDir, emptyFolders);
-        files.push(...subFiles);
-      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
-        const content = await readTextFile(fullPath);
-        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
-        files.push({ absolutePath: fullPath, relativePath, content });
-      }
-    }
-
-    return { files, emptyFolders };
-  }
-
-  // ── Auto-discover env files from workspace root ──
-
-  async function tryLoadEnvFiles(rootDir: string) {
-    try {
-      const envPath = await join(rootDir, 'http-client.env.json');
-      const content = await readTextFile(envPath);
-      const parsed = parseEnvironmentFile(content);
-      if (parsed) {
-        envFile.set(parsed);
-        const names = Object.keys(parsed).filter((k) => k !== '$shared');
-        if (names.length > 0 && !$activeEnvironment) activeEnvironment.set(names[0]);
-      }
-    } catch {
-      /* file doesn't exist */
-    }
-
-    try {
-      const userPath = await join(rootDir, 'http-client.env.json.user');
-      const content = await readTextFile(userPath);
-      const parsed = parseEnvironmentFile(content);
-      if (parsed) userEnvFile.set(parsed);
-    } catch {
-      /* file doesn't exist */
-    }
-
-    refreshKeyVaultSecrets();
-  }
-
   // ─── Import Collections ───
+  // Writing and env-merge live in src/lib/importIO.ts; App.svelte only owns
+  // the modal state and shows the env-target modal for returned variables.
 
-  /** Validate and join a relative path onto a root, preventing directory traversal. */
-  async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
-    for (const seg of relativePath.split('/')) {
-      if (
-        !seg ||
-        seg === '..' ||
-        seg === '.' ||
-        seg.includes('\0') ||
-        seg.includes('\\') ||
-        seg.includes('/')
-      ) {
-        throw new Error(`Invalid path segment: "${seg}"`);
-      }
-    }
-    return join(rootPath, relativePath);
-  }
-
-  async function writeImportedFiles(result: ImportResult): Promise<number> {
-    const rootPath = $workspace.rootPath!;
-    const { mkdir } = await import('@tauri-apps/plugin-fs');
-    let written = 0;
-    for (const file of result.files) {
-      const outPath = await safeJoinPath(rootPath, file.relativePath);
-      const parentDir = await dirname(outPath);
-      try {
-        await mkdir(parentDir, { recursive: true });
-      } catch {
-        /* already exists */
-      }
-      await writeTextFile(outPath, file.content);
-      written++;
-    }
-
-    // Refresh workspace tree
-    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
-    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
-    const rootName = await basename(rootPath);
-    workspace.set({ rootPath, rootName, tree });
-
-    return written;
-  }
-
-  /** After writing files, write the env file directly if multi-env, or show the modal. */
-  async function showEnvModalIfNeeded(result: ImportResult) {
-    if (result.environmentFile && Object.keys(result.environmentFile).length > 0) {
-      await writeImportedEnvironmentFile(result.environmentFile);
-      return;
-    }
-    if (result.discoveredVariables.length > 0) {
-      pendingImportVars = result.discoveredVariables;
+  function showEnvModalIfNeeded(vars: import('./lib/types').Variable[]) {
+    if (vars.length > 0) {
+      pendingImportVars = vars;
       showImportEnvModal = true;
-    }
-  }
-
-  async function writeImportedEnvironmentFile(imported: EnvironmentFile) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-    try {
-      const current: EnvironmentFile = ensureSharedEnvironment(
-        $envFile ? structuredClone($envFile) : {},
-      );
-
-      for (const [envName, vars] of Object.entries(imported)) {
-        if (!current[envName]) current[envName] = {};
-        for (const [key, value] of Object.entries(vars)) {
-          if (typeof value === 'string' && !(key in current[envName])) {
-            current[envName][key] = value;
-          }
-        }
-      }
-
-      const envPath = await join(rootPath, 'http-client.env.json');
-      await writeTextFile(envPath, JSON.stringify(current, null, 2));
-      envFile.set(current);
-
-      const envNames = Object.keys(imported).filter((n) => n !== '$shared');
-      if (!$activeEnvironment && envNames.length > 0) {
-        activeEnvironment.set(envNames[0]);
-      }
-
-      addToast(
-        `Imported ${envNames.length} environment${envNames.length !== 1 ? 's' : ''}: ${envNames.join(', ')}`,
-        'info',
-      );
-    } catch (e) {
-      addToast(`Failed to write environment file: ${errorMessage(e)}`, 'error');
     }
   }
 
   async function handleImportFile(e: CustomEvent<{ content: string; format: ImportFormat }>) {
     showImportCollectionModal = false;
-    const { content, format } = e.detail;
-
-    if (!$workspace.rootPath) {
-      addToast('Open a workspace folder first before importing.', 'error');
-      return;
-    }
-
-    try {
-      let result: ImportResult;
-      switch (format) {
-        case 'postman':
-          result = importPostmanCollection(content);
-          break;
-        case 'insomnia':
-          result = importInsomniaExport(content);
-          break;
-        case 'openapi':
-          result = importOpenApiSpec(content);
-          break;
-      }
-      const written = await writeImportedFiles(result);
-      addToast(
-        `Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`,
-        'info',
-      );
-      await showEnvModalIfNeeded(result);
-    } catch (e) {
-      addToast(`Import failed: ${errorMessage(e)}`, 'error');
-    }
+    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, e.detail.format));
   }
 
   async function handleImportUrl(e: CustomEvent<{ content: string }>) {
     showImportCollectionModal = false;
-
-    if (!$workspace.rootPath) {
-      addToast('Open a workspace folder first before importing.', 'error');
-      return;
-    }
-
-    try {
-      const result = importOpenApiSpec(e.detail.content);
-      const written = await writeImportedFiles(result);
-      addToast(
-        `Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`,
-        'info',
-      );
-      await showEnvModalIfNeeded(result);
-    } catch (e) {
-      addToast(`Import failed: ${errorMessage(e)}`, 'error');
-    }
+    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, 'openapi'));
   }
 
   // ─── Save File ───
@@ -1214,279 +589,8 @@
     deleteRequestFromFile(e.detail.filePath, e.detail.requestIndex);
   }
 
-  async function handleDeleteFile(e: CustomEvent<string>) {
-    const filePath = e.detail;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      await remove(filePath);
-    } catch (err) {
-      addToast(`Failed to delete file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    removeFileFromTree(filePath);
-  }
-
-  async function handleDeleteFolder(e: CustomEvent<string>) {
-    const folderPath = e.detail;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      await remove(folderPath, { recursive: true });
-    } catch (err) {
-      addToast(`Failed to delete folder: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    removeFolderFromTree(folderPath);
-  }
-
-  async function handleCreateFile(e: CustomEvent<string | null>) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const folderPath = e.detail || rootPath;
-
-    // Generate unique filename
-    const stem = 'new-request';
-    let fileName = stem + '.http';
-    let filePath = await join(folderPath, fileName);
-    let counter = 2;
-
-    // Check for collisions in the tree
-    const existingNames = new Set(collectFilePaths($workspace.tree));
-
-    while (existingNames.has(filePath)) {
-      fileName = `${stem}-${counter}.http`;
-      filePath = await join(folderPath, fileName);
-      counter++;
-    }
-
-    const fileNode = createEmptyFileNode(filePath, fileName);
-    const content = serializeHttpFile(fileNode.requests, fileNode.variables);
-
-    try {
-      await writeTextFile(filePath, content);
-    } catch (err) {
-      addToast(`Failed to create file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    fileNode.dirty = false;
-    fileNode.savedContent = content;
-    addFileToTree(folderPath === rootPath ? null : folderPath, fileNode);
-    editingFilePath.set(filePath);
-  }
-
-  async function handleCreateFolder(e: CustomEvent<string | null>) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const parentDir = e.detail || rootPath;
-
-    // Collect sibling names in the target parent
-    const siblings = new Set<string>();
-    if (parentDir === rootPath) {
-      for (const n of $workspace.tree) siblings.add(n.name);
-    } else {
-      const parent = findFolder($workspace.tree, parentDir);
-      for (const c of parent?.children ?? []) siblings.add(c.name);
-    }
-
-    const folderName = generateFolderName(siblings);
-    const folderPath = await join(parentDir, folderName);
-
-    try {
-      const { mkdir } = await import('@tauri-apps/plugin-fs');
-      await mkdir(folderPath, { recursive: true });
-    } catch (err) {
-      addToast(`Failed to create folder: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    addFolderToTree(parentDir === rootPath ? null : parentDir, {
-      type: 'folder',
-      name: folderName,
-      path: folderPath,
-      children: [],
-      expanded: true,
-    });
-    editingFolderPath.set(folderPath);
-  }
-
-  async function handleRenameFolder(e: CustomEvent<{ oldPath: string; newName: string }>) {
-    const { oldPath, newName } = e.detail;
-    const dir = await dirname(oldPath);
-    const newPath = await join(dir, newName);
-
-    try {
-      await rename(oldPath, newPath);
-    } catch (err) {
-      addToast(`Failed to rename folder: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    renameFolderInTree(oldPath, newPath, newName);
-    editingFolderPath.set(null);
-  }
-
-  async function handleRenameFile(e: CustomEvent<{ oldPath: string; newName: string }>) {
-    const { oldPath, newName } = e.detail;
-
-    // If file is dirty, save first
-    const file = findFile($workspace.tree, oldPath);
-    if (file && file.dirty) {
-      try {
-        const content = serializeHttpFile(file.requests, file.variables);
-        await writeTextFile(oldPath, content);
-        markFileSaved(oldPath);
-      } catch (err) {
-        addToast(`Failed to save file before rename: ${errorMessage(err)}`, 'error');
-        return;
-      }
-    }
-
-    const dir = await dirname(oldPath);
-    const newPath = await join(dir, newName);
-
-    try {
-      await rename(oldPath, newPath);
-    } catch (err) {
-      addToast(`Failed to rename file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    renameFileInTree(oldPath, newPath, newName);
-    editingFilePath.set(null);
-  }
-
-  async function handleDuplicateFile(e: CustomEvent<string>) {
-    const sourcePath = e.detail;
-
-    let content: string;
-    try {
-      content = await readTextFile(sourcePath);
-    } catch (err) {
-      addToast(`Failed to read file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    const dir = await dirname(sourcePath);
-    const sourceBase = await basename(sourcePath);
-    const sourceStem = sourceBase.replace(/\.(http|rest)$/, '');
-
-    // Generate unique copy name
-    let copyStem = `${sourceStem} (copy)`;
-    let copyName = copyStem + '.http';
-    let copyPath = await join(dir, copyName);
-    let counter = 2;
-
-    const existingNames = new Set(collectFilePaths($workspace.tree));
-
-    while (existingNames.has(copyPath)) {
-      copyStem = `${sourceStem} (copy ${counter})`;
-      copyName = copyStem + '.http';
-      copyPath = await join(dir, copyName);
-      counter++;
-    }
-
-    try {
-      await writeTextFile(copyPath, content);
-    } catch (err) {
-      addToast(`Failed to duplicate file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    const fileNode = createFileNode(copyPath, copyName, content);
-    const rootPath = $workspace.rootPath;
-    const parentPath = dir === rootPath ? null : dir;
-    addFileToTree(parentPath, fileNode);
-    editingFilePath.set(copyPath);
-  }
-
-  function handleCancelRename() {
-    editingFilePath.set(null);
-    editingFolderPath.set(null);
-  }
-
   function handleToggleFolder(e: CustomEvent<string>) {
     toggleFolder(e.detail);
-  }
-
-  /** Resolve the full dependency chain in topological order, then run each unsent request. */
-  async function handleRunAll(e: CustomEvent<string[]>) {
-    const allFiles = getAllFileNodes($workspace.tree);
-    const depRe = /\{\{(\w+)\.(?:request|response)\./g;
-
-    // Build a lookup: varName -> HttpRequest
-    const requestByName = new Map<string, HttpRequest>();
-    for (const file of allFiles) {
-      for (const req of file.requests) {
-        if (req.varName) requestByName.set(req.varName, req);
-      }
-    }
-
-    // Collect transitive dependencies in execution order (deepest first)
-    const ordered: string[] = [];
-    const visited = new Set<string>();
-
-    function resolve(name: string) {
-      if (visited.has(name)) return;
-      visited.add(name);
-      const req = requestByName.get(name);
-      if (!req) return;
-      // Find this request's own dependencies
-      const text = `${req.url} ${req.headers.map((h) => h.value).join(' ')} ${req.body}`;
-      let match;
-      const re = new RegExp(depRe.source, 'g');
-      while ((match = re.exec(text)) !== null) {
-        resolve(match[1]);
-      }
-      ordered.push(name);
-    }
-
-    for (const name of e.detail) {
-      resolve(name);
-    }
-
-    // Execute in order, skipping already-sent requests
-    for (const name of ordered) {
-      if ($namedResults[name]) continue;
-      const req = requestByName.get(name);
-      if (req) await sendRequest(req);
-    }
-  }
-
-  function handleNameRequest(
-    e: CustomEvent<{ filePath: string; requestIndex: number; varName: string }>,
-  ) {
-    const { filePath, requestIndex, varName } = e.detail;
-    const file = findFile($workspace.tree, filePath);
-    if (!file) return;
-    const req = file.requests[requestIndex];
-    if (!req) return;
-    // Block duplicate names
-    if (varName) {
-      const duplicate = getAllFileNodes($workspace.tree).some((f) =>
-        f.requests.some(
-          (r, ri) => r.varName === varName && !(f.path === filePath && ri === requestIndex),
-        ),
-      );
-      if (duplicate) {
-        addToast(`Name "${varName}" is already in use`);
-        return;
-      }
-    }
-    // Remove old name from namedResults if it changed or was cleared
-    if (req.varName && req.varName !== varName) {
-      namedResults.update((nr) => {
-        const updated = { ...nr };
-        delete updated[req.varName!];
-        return updated;
-      });
-    }
-    updateRequestInTree(filePath, requestIndex, { ...req, varName: varName || null });
   }
 
   // ─── Flow Handlers ───
@@ -1496,33 +600,6 @@
     const flow = $flows[path];
     if (!flow) return;
     openFlowTab(path, flow.name);
-  }
-
-  async function handleCreateFlow(e: CustomEvent<string>) {
-    const name = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { createEmptyFlow, writeFlowFile } = await import('./lib/flowIO');
-    const flow = createEmptyFlow(name);
-    const safeName =
-      name
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '') || 'unnamed';
-    const flowsDir = await join(rootPath, FLOWS_DIR);
-    try {
-      await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true });
-    } catch {
-      /* exists */
-    }
-    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
-    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
-
-    await writeFlowFile(absolutePath, flow);
-    flows.update((f) => ({ ...f, [relativePath]: flow }));
-    openFlowTab(relativePath, flow.name);
   }
 
   let flowAbortController: AbortController | null = null;
@@ -1623,78 +700,9 @@
     flowAbortController?.abort();
   }
 
-  async function handleSaveFlow(
-    e: CustomEvent<{ flowPath: string; flow: import('./lib/types').FlowDefinition }>,
-  ) {
-    const { flowPath, flow } = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { writeFlowFile } = await import('./lib/flowIO');
-    const absolutePath = await safeJoinPath(rootPath, flowPath);
-    await writeFlowFile(absolutePath, flow);
-    flows.update((f) => ({ ...f, [flowPath]: flow }));
-
-    // Update tab label if the name changed
-    flowTabs.update((ts) =>
-      ts.map((t) => (t.flowPath === flowPath ? { ...t, label: flow.name } : t)),
-    );
-  }
-
-  async function handleDuplicateFlow(e: CustomEvent<string>) {
-    const sourcePath = e.detail;
-    const sourceFlow = $flows[sourcePath];
-    if (!sourceFlow) return;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const { writeFlowFile } = await import('./lib/flowIO');
-    const newName = `${sourceFlow.name} (copy)`;
-    const newFlow = {
-      ...sourceFlow,
-      name: newName,
-      steps: sourceFlow.steps.map((s) => ({ ...s, id: crypto.randomUUID() })),
-    };
-    const safeName =
-      newName
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '') || 'unnamed';
-    const flowsDir = await join(rootPath, FLOWS_DIR);
-    try {
-      await (await import('@tauri-apps/plugin-fs')).mkdir(flowsDir, { recursive: true });
-    } catch {
-      /* exists */
-    }
-    const absolutePath = await join(flowsDir, `${safeName}.pb-flow.json`);
-    const relativePath = `${FLOWS_DIR}/${safeName}.pb-flow.json`;
-
-    await writeFlowFile(absolutePath, newFlow);
-    flows.update((f) => ({ ...f, [relativePath]: newFlow }));
-    openFlowTab(relativePath, newFlow.name);
-  }
-
   async function handleDeleteFlow(e: CustomEvent<string>) {
-    const path = e.detail;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      const absolutePath = await safeJoinPath(rootPath, path);
-      await remove(absolutePath);
-    } catch {
-      // Silently ignore - flow file may not exist on disk
-    }
-
-    flows.update((f) => {
-      const updated = { ...f };
-      delete updated[path];
-      return updated;
-    });
-    delete flowUIState[path];
-    closeFlowTab(path);
+    delete flowUIState[e.detail];
+    await deleteFlow(e.detail);
   }
 </script>
 
@@ -1798,23 +806,24 @@
         on:toggleFolder={handleToggleFolder}
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
-        on:deleteFile={handleDeleteFile}
-        on:deleteFolder={handleDeleteFolder}
-        on:createFile={handleCreateFile}
-        on:createFolder={handleCreateFolder}
-        on:renameFile={handleRenameFile}
-        on:renameFolder={handleRenameFolder}
-        on:duplicateFile={handleDuplicateFile}
-        on:cancelRename={handleCancelRename}
+        on:deleteFile={(e) => deleteFile(e.detail)}
+        on:deleteFolder={(e) => deleteFolder(e.detail)}
+        on:createFile={(e) => createFile(e.detail)}
+        on:createFolder={(e) => createFolder(e.detail)}
+        on:renameFile={(e) => renameFile(e.detail.oldPath, e.detail.newName)}
+        on:renameFolder={(e) => renameFolder(e.detail.oldPath, e.detail.newName)}
+        on:duplicateFile={(e) => duplicateFile(e.detail)}
+        on:cancelRename={cancelRename}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
         on:editEnv={() => (showEnvEditor = true)}
         on:openVarInspector={() => (showVarInspector = true)}
         on:openHelp={() => (showHelp = true)}
         on:openSettings={() => (showSettings = true)}
-        on:nameRequest={handleNameRequest}
+        on:nameRequest={(e) =>
+          nameRequest(e.detail.filePath, e.detail.requestIndex, e.detail.varName)}
         on:openFlow={handleOpenFlow}
-        on:createFlow={handleCreateFlow}
-        on:duplicateFlow={handleDuplicateFlow}
+        on:createFlow={(e) => createFlow(e.detail)}
+        on:duplicateFlow={(e) => duplicateFlow(e.detail)}
         on:deleteFlow={handleDeleteFlow}
       />
     </div>
@@ -1854,15 +863,7 @@
               on:sourcePref={(e) => {
                 varSourcePrefs.update((p) => ({ ...p, [e.detail.key]: e.detail.source }));
               }}
-              on:refreshKv={(e) => {
-                // Invalidate cache for this env so fresh secrets are fetched
-                for (const key of Object.keys(kvCache)) {
-                  if (key.startsWith(e.detail + '::')) delete kvCache[key];
-                }
-                kvCache = kvCache;
-                keyVaultState.update((s) => ({ ...s, cacheKey: null }));
-                refreshKeyVaultSecrets(e.detail);
-              }}
+              on:refreshKv={(e) => refreshKeyVaultForEnv(e.detail)}
             />
           </div>
         {:else if $activeFlowTabPath && $activeFlow}
@@ -1879,7 +880,7 @@
               flowUIState[$activeFlowTabPath] = e.detail;
               flowUIState = flowUIState;
             }}
-            on:save={handleSaveFlow}
+            on:save={(e) => saveFlow(e.detail.flowPath, e.detail.flow)}
             on:run={handleRunFlow}
             on:abort={handleAbortFlow}
             on:clearHistory={() => {
@@ -1907,7 +908,7 @@
               on:update={handleUpdateRequest}
               on:send={(e) => sendRequest(e.detail)}
               on:save={saveActiveFile}
-              on:runAll={handleRunAll}
+              on:runAll={(e) => runAllRequests(e.detail, sendRequest)}
               on:bottomTabChange={handleBottomTabChange}
             />
           </div>
