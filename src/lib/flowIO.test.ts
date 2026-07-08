@@ -128,17 +128,29 @@ describe('redactFlowRunRecord', () => {
   it('does not mutate the original record', () => {
     const record = makeRecord();
     redactFlowRunRecord(record, ['supersecretvalue']);
-    expect(record.stepResults[0].sentRequest!.headers.Authorization).toBe('Bearer supersecretvalue');
+    expect(record.stepResults[0].sentRequest!.headers.Authorization).toBe(
+      'Bearer supersecretvalue',
+    );
     expect(record.variables!.setVars.token).toBe('supersecretvalue');
   });
 
   it('ignores trivially short secret values to avoid mangling text', () => {
-    const safe = redactFlowRunRecord(makeRecord({
-      stepResults: [{
-        ...makeRecord().stepResults[0],
-        sentRequest: { method: 'GET', url: 'https://api.example.com/ok', headers: {}, body: 'ok' },
-      }],
-    }), ['ok']);
+    const safe = redactFlowRunRecord(
+      makeRecord({
+        stepResults: [
+          {
+            ...makeRecord().stepResults[0],
+            sentRequest: {
+              method: 'GET',
+              url: 'https://api.example.com/ok',
+              headers: {},
+              body: 'ok',
+            },
+          },
+        ],
+      }),
+      ['ok'],
+    );
     expect(safe.stepResults[0].sentRequest!.body).toBe('ok');
   });
 });

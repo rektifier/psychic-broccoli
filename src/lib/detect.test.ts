@@ -5,7 +5,10 @@ describe('detectImportFormat', () => {
   // ── Postman ──
   it('detects Postman collection by schema URL', () => {
     const content = JSON.stringify({
-      info: { name: 'Test', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' },
+      info: {
+        name: 'Test',
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+      },
       item: [],
     });
     expect(detectImportFormat(content)).toBe('postman');

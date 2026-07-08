@@ -1,88 +1,138 @@
 <script lang="ts">
-  import { createEventDispatcher, tick } from 'svelte';
+  import { tick } from 'svelte';
+  import Self from './TreeNode.svelte';
   import type { TreeNode as TNode, RequestLocation } from '../lib/types';
   import { METHOD_COLORS } from '../lib/theme';
 
-  export let node: TNode;
-  export let selected: RequestLocation | null = null;
-  export let depth: number = 0;
-  export let displayMode: 'name' | 'url' = 'name';
-  export let sortByUrl: boolean = false;
-  export let usedNames: string[] = [];
-  export let forceExpand: boolean = false;
-  /** When set and matches this node's path, auto-enter inline rename mode */
-  export let editingFilePath: string | null = null;
-  /** When set and matches this folder's path, auto-enter inline folder rename mode */
-  export let editingFolderPath: string | null = null;
-  /** Sibling file names in the same folder (for collision detection) */
-  export let siblingNames: string[] = [];
-  /** Sibling folder/file names in the same folder (for folder rename collision detection) */
-  export let siblingFolderNames: string[] = [];
+  interface Props {
+    node: TNode;
+    selected?: RequestLocation | null;
+    depth?: number;
+    displayMode?: 'name' | 'url';
+    sortByUrl?: boolean;
+    usedNames?: string[];
+    forceExpand?: boolean;
+    /** When set and matches this node's path, auto-enter inline rename mode */
+    editingFilePath?: string | null;
+    /** When set and matches this folder's path, auto-enter inline folder rename mode */
+    editingFolderPath?: string | null;
+    /** Sibling file names in the same folder (for collision detection) */
+    siblingNames?: string[];
+    /** Sibling folder/file names in the same folder (for folder rename collision detection) */
+    siblingFolderNames?: string[];
+    onToggleFolder?: (folderPath: string) => void;
+    onSelect?: (location: RequestLocation) => void;
+    onPinRequest?: (detail: { filePath: string; requestIndex: number; label: string }) => void;
+    onAddRequest?: (filePath: string) => void;
+    onDeleteRequest?: (detail: { filePath: string; requestIndex: number }) => void;
+    onDeleteFile?: (filePath: string) => void;
+    onDeleteFolder?: (folderPath: string) => void;
+    onNameRequest?: (detail: { filePath: string; requestIndex: number; varName: string }) => void;
+    onRenameFile?: (detail: { oldPath: string; newName: string }) => void;
+    onRenameFolder?: (detail: { oldPath: string; newName: string }) => void;
+    onDuplicateFile?: (filePath: string) => void;
+    onCreateFile?: (parentPath: string) => void;
+    onCreateFolder?: (parentPath: string) => void;
+    onCancelRename?: () => void;
+  }
 
-  const dispatch = createEventDispatcher();
+  let {
+    node,
+    selected = null,
+    depth = 0,
+    displayMode = 'name',
+    sortByUrl = false,
+    usedNames = [],
+    forceExpand = false,
+    editingFilePath = null,
+    editingFolderPath = null,
+    siblingNames = [],
+    siblingFolderNames = [],
+    onToggleFolder,
+    onSelect,
+    onPinRequest,
+    onAddRequest,
+    onDeleteRequest,
+    onDeleteFile,
+    onDeleteFolder,
+    onNameRequest,
+    onRenameFile,
+    onRenameFolder,
+    onDuplicateFile,
+    onCreateFile,
+    onCreateFolder,
+    onCancelRename,
+  }: Props = $props();
 
   const INVALID_FS_CHARS = /[/\\:*?"<>|]/;
 
-  let fileExpanded = false;
-  let namingIndex: number = -1;
+  let fileExpanded = $state(false);
+  let namingIndex = $state(-1);
 
   /** Compute unique URL suffixes for requests in a file node */
   function computeUrlSuffixes(requests: { url: string }[]): string[] {
     if (requests.length === 0) return [];
     if (requests.length === 1) return [requests[0].url];
-    const split = requests.map(r => r.url.split('/'));
-    const minLen = Math.min(...split.map(s => s.length));
+    const split = requests.map((r) => r.url.split('/'));
+    const minLen = Math.min(...split.map((s) => s.length));
     let common = 0;
     for (let i = 0; i < minLen; i++) {
-      if (split.every(s => s[i] === split[0][i])) common = i + 1;
+      if (split.every((s) => s[i] === split[0][i])) common = i + 1;
       else break;
     }
-    if (common === 0) return requests.map(r => r.url);
-    return split.map(s => {
+    if (common === 0) return requests.map((r) => r.url);
+    return split.map((s) => {
       const unique = s.slice(common);
       return '/' + unique.join('/');
     });
   }
 
-  $: urlSuffixes = node.type === 'file' ? computeUrlSuffixes(node.requests) : [];
-  $: sortedIndices = node.type === 'file'
-    ? (sortByUrl
+  const urlSuffixes = $derived(node.type === 'file' ? computeUrlSuffixes(node.requests) : []);
+  const sortedIndices = $derived(
+    node.type === 'file'
+      ? sortByUrl
         ? [...Array(node.requests.length).keys()].sort((a, b) =>
-            node.requests[a].url.localeCompare(node.requests[b].url))
-        : [...Array(node.requests.length).keys()])
-    : [];
-  let namingValue: string = '';
-  let confirmDeleteIndex: number = -1;
-  let showFileMenu = false;
-  let fileMenuPos = { x: 0, y: 0 };
-  let confirmDeleteFile = false;
-  let confirmDeleteFolder = false;
+            node.requests[a].url.localeCompare(node.requests[b].url),
+          )
+        : [...Array(node.requests.length).keys()]
+      : [],
+  );
+  let namingValue = $state('');
+  let confirmDeleteIndex = $state(-1);
+  let showFileMenu = $state(false);
+  let fileMenuPos = $state({ x: 0, y: 0 });
+  let confirmDeleteFile = $state(false);
+  let confirmDeleteFolder = $state(false);
 
   // Inline file rename state
-  let renamingFile = false;
-  let renamingValue = '';
-  let renameInputEl: HTMLInputElement;
+  let renamingFile = $state(false);
+  let renamingValue = $state('');
+  let renameInputEl: HTMLInputElement | null = $state(null);
   let cancelledRename = false;
 
   // Folder context menu state
-  let showFolderMenu = false;
-  let folderMenuPos = { x: 0, y: 0 };
+  let showFolderMenu = $state(false);
+  let folderMenuPos = $state({ x: 0, y: 0 });
 
   // Inline folder rename state
-  let renamingFolder = false;
-  let renamingFolderValue = '';
-  let folderRenameInputEl: HTMLInputElement;
+  let renamingFolder = $state(false);
+  let renamingFolderValue = $state('');
+  let folderRenameInputEl: HTMLInputElement | null = $state(null);
   let cancelledFolderRename = false;
 
   // Auto-enter rename mode when editingFilePath matches this node
-  $: if (node.type === 'file' && editingFilePath === node.path && !renamingFile) {
-    enterFileRename();
-  }
+  $effect(() => {
+    if (node.type === 'file' && editingFilePath === node.path && !renamingFile) {
+      enterFileRename();
+    }
+  });
 
   // Auto-enter folder rename mode when editingFolderPath matches this folder
-  $: if (node.type === 'folder' && editingFolderPath === node.path && !renamingFolder) {
-    enterFolderRename();
-  }
+  $effect(() => {
+    if (node.type === 'folder' && editingFolderPath === node.path && !renamingFolder) {
+      enterFolderRename();
+    }
+  });
 
   function enterFileRename() {
     cancelledRename = false;
@@ -94,19 +144,23 @@
     });
   }
 
-  $: fileRenameError = (() => {
+  const fileRenameError = $derived.by(() => {
     if (!renamingFile) return '';
     const v = renamingValue.trim();
     if (!v) return 'Name required';
     if (INVALID_FS_CHARS.test(v)) return 'Invalid character';
     const fullName = v + '.http';
-    if (node.type === 'file' && fullName !== node.name && siblingNames.includes(fullName)) return 'Name in use';
+    if (node.type === 'file' && fullName !== node.name && siblingNames.includes(fullName))
+      return 'Name in use';
     return '';
-  })();
+  });
 
   function confirmFileRename() {
     if (!renamingFile) return;
-    if (cancelledRename) { cancelledRename = false; return; }
+    if (cancelledRename) {
+      cancelledRename = false;
+      return;
+    }
     if (fileRenameError) return;
     const newName = renamingValue.trim();
     renamingFile = false;
@@ -114,17 +168,17 @@
     if (node.type === 'file') {
       const currentStem = node.name.replace(/\.(http|rest)$/, '');
       if (newName !== currentStem) {
-        dispatch('renameFile', { oldPath: node.path, newName: newName + '.http' });
+        onRenameFile?.({ oldPath: node.path, newName: newName + '.http' });
       }
     }
-    dispatch('cancelRename');
+    onCancelRename?.();
   }
 
   function cancelFileRename() {
     cancelledRename = true;
     renamingFile = false;
     renamingValue = '';
-    dispatch('cancelRename');
+    onCancelRename?.();
   }
 
   function enterFolderRename() {
@@ -137,33 +191,37 @@
     });
   }
 
-  $: folderRenameError = (() => {
+  const folderRenameError = $derived.by(() => {
     if (!renamingFolder) return '';
     const v = renamingFolderValue.trim();
     if (!v) return 'Name required';
     if (INVALID_FS_CHARS.test(v)) return 'Invalid character';
-    if (node.type === 'folder' && v !== node.name && siblingFolderNames.includes(v)) return 'Name in use';
+    if (node.type === 'folder' && v !== node.name && siblingFolderNames.includes(v))
+      return 'Name in use';
     return '';
-  })();
+  });
 
   function confirmFolderRename() {
     if (!renamingFolder) return;
-    if (cancelledFolderRename) { cancelledFolderRename = false; return; }
+    if (cancelledFolderRename) {
+      cancelledFolderRename = false;
+      return;
+    }
     if (folderRenameError) return;
     const newName = renamingFolderValue.trim();
     renamingFolder = false;
     renamingFolderValue = '';
     if (node.type === 'folder' && newName !== node.name) {
-      dispatch('renameFolder', { oldPath: node.path, newName });
+      onRenameFolder?.({ oldPath: node.path, newName });
     }
-    dispatch('cancelRename');
+    onCancelRename?.();
   }
 
   function cancelFolderRename() {
     cancelledFolderRename = true;
     renamingFolder = false;
     renamingFolderValue = '';
-    dispatch('cancelRename');
+    onCancelRename?.();
   }
 
   function handleFileContextMenu(e: MouseEvent) {
@@ -205,13 +263,13 @@
     });
   }
 
-  $: isDuplicate = (() => {
+  const isDuplicate = $derived.by(() => {
     const v = namingValue.trim();
     if (!v || namingIndex < 0) return false;
     const currentVarName = node.type === 'file' ? node.requests[namingIndex]?.varName : null;
     if (v === currentVarName) return false;
     return usedNames.includes(v);
-  })();
+  });
 
   function isSel(fp: string, ri: number): boolean {
     return selected?.filePath === fp && selected?.requestIndex === ri;
@@ -224,29 +282,21 @@
 
   function confirmNaming(filePath: string) {
     if (isDuplicate) return;
-    dispatch('nameRequest', { filePath, requestIndex: namingIndex, varName: namingValue.trim() });
+    onNameRequest?.({ filePath, requestIndex: namingIndex, varName: namingValue.trim() });
     namingIndex = -1;
     namingValue = '';
   }
 
-  function handleContextMenu(e: MouseEvent, filePath: string, index: number, currentName: string | null) {
-    e.preventDefault();
-    startNaming(index, currentName);
-  }
-
   // Keep file expanded when it contains the selection
-  $: if (node.type === 'file' && selected?.filePath === node.path) {
-    fileExpanded = true;
-  }
-
-  function forward(event: CustomEvent) {
-    // Re-dispatch events from children up to parent
-    dispatch(event.type, event.detail);
-  }
+  $effect(() => {
+    if (node.type === 'file' && selected?.filePath === node.path) {
+      fileExpanded = true;
+    }
+  });
 
   /** Compute sibling file names for child nodes in a folder */
   function childSiblingNames(children: TNode[]): string[] {
-    return children.filter(c => c.type === 'file').map(c => c.name);
+    return children.filter((c) => c.type === 'file').map((c) => c.name);
   }
 </script>
 
@@ -256,21 +306,33 @@
     <div class="tree-row folder-row folder-rename-row" style="padding-left: {12 + depth * 16}px">
       <span class="chevron">
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path
+            d="M3 1.5l4 3.5-4 3.5"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </span>
       <svg class="icon folder-icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
-        <path d="M2 12V4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z"
-          fill="#B0883020" stroke="#B08830" stroke-width="1.2"/>
+        <path
+          d="M2 12V4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z"
+          fill="#B0883020"
+          stroke="#B08830"
+          stroke-width="1.2"
+        />
       </svg>
       <!-- svelte-ignore a11y_autofocus -->
       <input
         bind:this={folderRenameInputEl}
-        class="file-rename-input"
-        class:naming-error={!!folderRenameError}
+        class={['file-rename-input', { 'naming-error': !!folderRenameError }]}
         bind:value={renamingFolderValue}
-        on:keydown={(e) => { if (e.key === 'Enter') confirmFolderRename(); if (e.key === 'Escape') cancelFolderRename(); }}
-        on:blur={confirmFolderRename}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') confirmFolderRename();
+          if (e.key === 'Escape') cancelFolderRename();
+        }}
+        onblur={confirmFolderRename}
         spellcheck="false"
         autofocus
       />
@@ -282,17 +344,27 @@
     <button
       class="tree-row folder-row"
       style="padding-left: {12 + depth * 16}px"
-      on:click={() => dispatch('toggleFolder', node.path)}
-      on:contextmenu={handleFolderContextMenu}
+      onclick={() => onToggleFolder?.(node.path)}
+      oncontextmenu={handleFolderContextMenu}
     >
-      <span class="chevron" class:open={node.expanded}>
+      <span class={['chevron', { open: node.expanded }]}>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path
+            d="M3 1.5l4 3.5-4 3.5"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </span>
       <svg class="icon folder-icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
-        <path d="M2 12V4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z"
-          fill="#B0883020" stroke="#B08830" stroke-width="1.2"/>
+        <path
+          d="M2 12V4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1z"
+          fill="#B0883020"
+          stroke="#B08830"
+          stroke-width="1.2"
+        />
       </svg>
       <span class="node-name">{node.name}</span>
     </button>
@@ -300,24 +372,69 @@
 
   {#if showFolderMenu}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="file-context-menu folder-context-menu" style="left: {folderMenuPos.x}px; top: {folderMenuPos.y}px" on:click|stopPropagation on:keydown|stopPropagation>
+    <div
+      class="file-context-menu folder-context-menu"
+      style="left: {folderMenuPos.x}px; top: {folderMenuPos.y}px"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       {#if confirmDeleteFolder}
         <span class="confirm-delete-text">Has items, delete anyway?</span>
-        <button class="confirm-delete-yes" on:click|stopPropagation={() => { dispatch('deleteFolder', node.path); showFolderMenu = false; confirmDeleteFolder = false; }}>Yes</button>
-        <button class="confirm-delete-no" on:click|stopPropagation={() => { showFolderMenu = false; confirmDeleteFolder = false; }}>No</button>
-      {:else}
-        <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFile', node.path); showFolderMenu = false; }}>New .http file</button>
-        <button class="file-context-item" on:click|stopPropagation={() => { dispatch('createFolder', node.path); showFolderMenu = false; }}>New subfolder</button>
-        <div class="context-menu-divider"></div>
-        <button class="file-context-item" on:click|stopPropagation={() => { showFolderMenu = false; enterFolderRename(); }}>Rename</button>
-        <button class="file-context-item file-context-delete" on:click|stopPropagation={() => {
-          if (node.type === 'folder' && node.children.length === 0) {
-            dispatch('deleteFolder', node.path);
+        <button
+          class="confirm-delete-yes"
+          onclick={(e) => {
+            e.stopPropagation();
+            onDeleteFolder?.(node.path);
             showFolderMenu = false;
-          } else {
-            confirmDeleteFolder = true;
-          }
-        }}>Delete folder</button>
+            confirmDeleteFolder = false;
+          }}>Yes</button
+        >
+        <button
+          class="confirm-delete-no"
+          onclick={(e) => {
+            e.stopPropagation();
+            showFolderMenu = false;
+            confirmDeleteFolder = false;
+          }}>No</button
+        >
+      {:else}
+        <button
+          class="file-context-item"
+          onclick={(e) => {
+            e.stopPropagation();
+            onCreateFile?.(node.path);
+            showFolderMenu = false;
+          }}>New .http file</button
+        >
+        <button
+          class="file-context-item"
+          onclick={(e) => {
+            e.stopPropagation();
+            onCreateFolder?.(node.path);
+            showFolderMenu = false;
+          }}>New subfolder</button
+        >
+        <div class="context-menu-divider"></div>
+        <button
+          class="file-context-item"
+          onclick={(e) => {
+            e.stopPropagation();
+            showFolderMenu = false;
+            enterFolderRename();
+          }}>Rename</button
+        >
+        <button
+          class="file-context-item file-context-delete"
+          onclick={(e) => {
+            e.stopPropagation();
+            if (node.type === 'folder' && node.children.length === 0) {
+              onDeleteFolder?.(node.path);
+              showFolderMenu = false;
+            } else {
+              confirmDeleteFolder = true;
+            }
+          }}>Delete folder</button
+        >
       {/if}
     </div>
   {/if}
@@ -325,7 +442,7 @@
   {#if node.expanded}
     <div class="children">
       {#each node.children as child}
-        <svelte:self
+        <Self
           node={child}
           {selected}
           depth={depth + 1}
@@ -336,45 +453,59 @@
           {editingFilePath}
           {editingFolderPath}
           siblingNames={childSiblingNames(node.children)}
-          siblingFolderNames={node.children.map(c => c.name)}
-          on:toggleFolder
-          on:select
-          on:pinRequest
-          on:addRequest
-          on:deleteRequest
-          on:deleteFile
-          on:nameRequest
-          on:renameFile
-          on:renameFolder
-          on:duplicateFile
-          on:createFile
-          on:createFolder
-          on:deleteFolder
-          on:cancelRename
+          siblingFolderNames={node.children.map((c) => c.name)}
+          {onToggleFolder}
+          {onSelect}
+          {onPinRequest}
+          {onAddRequest}
+          {onDeleteRequest}
+          {onDeleteFile}
+          {onDeleteFolder}
+          {onNameRequest}
+          {onRenameFile}
+          {onRenameFolder}
+          {onDuplicateFile}
+          {onCreateFile}
+          {onCreateFolder}
+          {onCancelRename}
         />
       {/each}
     </div>
   {/if}
-
 {:else if node.type === 'file'}
   <!-- .http File -->
   {#if renamingFile}
     <div class="tree-row file-row file-rename-row" style="padding-left: {12 + depth * 16}px">
-      <span class="chevron"><svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-        <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg></span>
+      <span class="chevron"
+        ><svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path
+            d="M3 1.5l4 3.5-4 3.5"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg></span
+      >
       <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <path d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" fill="#2B7FC518" stroke="#2B7FC5" stroke-width="1.2"/>
-        <path d="M9 2v4h4" stroke="#2B7FC5" stroke-width="1.2"/>
+        <path
+          d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z"
+          fill="#2B7FC518"
+          stroke="#2B7FC5"
+          stroke-width="1.2"
+        />
+        <path d="M9 2v4h4" stroke="#2B7FC5" stroke-width="1.2" />
       </svg>
       <!-- svelte-ignore a11y_autofocus -->
       <input
         bind:this={renameInputEl}
-        class="file-rename-input"
-        class:naming-error={!!fileRenameError}
+        class={['file-rename-input', { 'naming-error': !!fileRenameError }]}
         bind:value={renamingValue}
-        on:keydown={(e) => { if (e.key === 'Enter') confirmFileRename(); if (e.key === 'Escape') cancelFileRename(); }}
-        on:blur={confirmFileRename}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') confirmFileRename();
+          if (e.key === 'Escape') cancelFileRename();
+        }}
+        onblur={confirmFileRename}
         spellcheck="false"
         autofocus
       />
@@ -385,23 +516,38 @@
     </div>
   {:else}
     <div
-      class="tree-row file-row"
-      class:dirty={node.dirty}
+      class={['tree-row', 'file-row', { dirty: node.dirty }]}
       style="padding-left: {12 + depth * 16}px"
-      on:click={() => fileExpanded = !fileExpanded}
-      on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileExpanded = !fileExpanded; } }}
-      on:contextmenu={handleFileContextMenu}
+      onclick={() => (fileExpanded = !fileExpanded)}
+      onkeydown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          fileExpanded = !fileExpanded;
+        }
+      }}
+      oncontextmenu={handleFileContextMenu}
       role="button"
       tabindex="0"
     >
-      <span class="chevron" class:open={fileExpanded}>
+      <span class={['chevron', { open: fileExpanded }]}>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path
+            d="M3 1.5l4 3.5-4 3.5"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </span>
       <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <path d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" fill="#2B7FC518" stroke="#2B7FC5" stroke-width="1.2"/>
-        <path d="M9 2v4h4" stroke="#2B7FC5" stroke-width="1.2"/>
+        <path
+          d="M4 2h5l4 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z"
+          fill="#2B7FC518"
+          stroke="#2B7FC5"
+          stroke-width="1.2"
+        />
+        <path d="M9 2v4h4" stroke="#2B7FC5" stroke-width="1.2" />
       </svg>
       <span class="node-name">{node.name.replace(/\.(http|rest)$/, '')}</span>
       {#if node.dirty}
@@ -409,25 +555,68 @@
       {/if}
       <button
         class="btn-add-req"
-        on:click|stopPropagation={() => dispatch('addRequest', node.path)}
-        title="Add request"
-      >+</button>
+        onclick={(e) => {
+          e.stopPropagation();
+          onAddRequest?.(node.path);
+        }}
+        title="Add request">+</button
+      >
       <span class="req-count">{node.requests.length}</span>
     </div>
   {/if}
 
   {#if showFileMenu}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="file-context-menu" style="left: {fileMenuPos.x}px; top: {fileMenuPos.y}px" on:click|stopPropagation on:keydown|stopPropagation>
+    <div
+      class="file-context-menu"
+      style="left: {fileMenuPos.x}px; top: {fileMenuPos.y}px"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       {#if confirmDeleteFile}
         <span class="confirm-delete-text">Delete file?</span>
-        <button class="confirm-delete-yes" on:click|stopPropagation={() => { dispatch('deleteFile', node.path); showFileMenu = false; confirmDeleteFile = false; }}>Yes</button>
-        <button class="confirm-delete-no" on:click|stopPropagation={() => { showFileMenu = false; confirmDeleteFile = false; }}>No</button>
+        <button
+          class="confirm-delete-yes"
+          onclick={(e) => {
+            e.stopPropagation();
+            onDeleteFile?.(node.path);
+            showFileMenu = false;
+            confirmDeleteFile = false;
+          }}>Yes</button
+        >
+        <button
+          class="confirm-delete-no"
+          onclick={(e) => {
+            e.stopPropagation();
+            showFileMenu = false;
+            confirmDeleteFile = false;
+          }}>No</button
+        >
       {:else}
-        <button class="file-context-item" on:click|stopPropagation={() => { showFileMenu = false; enterFileRename(); }}>Rename</button>
-        <button class="file-context-item" on:click|stopPropagation={() => { dispatch('duplicateFile', node.path); showFileMenu = false; }}>Duplicate</button>
+        <button
+          class="file-context-item"
+          onclick={(e) => {
+            e.stopPropagation();
+            showFileMenu = false;
+            enterFileRename();
+          }}>Rename</button
+        >
+        <button
+          class="file-context-item"
+          onclick={(e) => {
+            e.stopPropagation();
+            onDuplicateFile?.(node.path);
+            showFileMenu = false;
+          }}>Duplicate</button
+        >
         <div class="context-menu-divider"></div>
-        <button class="file-context-item file-context-delete" on:click|stopPropagation={() => confirmDeleteFile = true}>Delete file</button>
+        <button
+          class="file-context-item file-context-delete"
+          onclick={(e) => {
+            e.stopPropagation();
+            confirmDeleteFile = true;
+          }}>Delete file</button
+        >
       {/if}
     </div>
   {/if}
@@ -441,11 +630,15 @@
             <span class="naming-label">@name</span>
             <!-- svelte-ignore a11y_autofocus -->
             <input
-              class="naming-input"
-              class:naming-error={isDuplicate}
+              class={['naming-input', { 'naming-error': isDuplicate }]}
               bind:value={namingValue}
-              on:keydown={(e) => { if (e.key === 'Enter') confirmNaming(node.path); if (e.key === 'Escape') { namingIndex = -1; } }}
-              on:blur={() => confirmNaming(node.path)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') confirmNaming(node.path);
+                if (e.key === 'Escape') {
+                  namingIndex = -1;
+                }
+              }}
+              onblur={() => confirmNaming(node.path)}
               placeholder="responseAlias"
               spellcheck="false"
               autofocus
@@ -456,37 +649,68 @@
           </div>
         {:else}
           <div
-            class="tree-row request-row"
-            class:active={isSel(node.path, i)}
+            class={['tree-row', 'request-row', { active: isSel(node.path, i) }]}
             style="padding-left: {28 + depth * 16}px"
-            on:click={() => dispatch('select', { filePath: node.path, requestIndex: i })}
-            on:dblclick={() => dispatch('pinRequest', { filePath: node.path, requestIndex: i, label: req.name })}
-            on:contextmenu|preventDefault={(e) => startNaming(i, req.varName)}
-            on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('select', { filePath: node.path, requestIndex: i }); } }}
+            onclick={() => onSelect?.({ filePath: node.path, requestIndex: i })}
+            ondblclick={() =>
+              onPinRequest?.({ filePath: node.path, requestIndex: i, label: req.name })}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              startNaming(i, req.varName);
+            }}
+            onkeydown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect?.({ filePath: node.path, requestIndex: i });
+              }
+            }}
             role="button"
             tabindex="0"
           >
             <span class="method-badge" style="color: {METHOD_COLORS[req.method] || '#888'}">
               {req.method.slice(0, 3)}
             </span>
-            <span class="req-name" title={displayMode === 'url' ? req.name : req.url}>{displayMode === 'url' ? urlSuffixes[i] : req.name}</span>
+            <span class="req-name" title={displayMode === 'url' ? req.name : req.url}
+              >{displayMode === 'url' ? urlSuffixes[i] : req.name}</span
+            >
             {#if req.varName}
               <span class="varname-tag">{req.varName}</span>
             {/if}
             {#if node.requests.length > 1}
               {#if confirmDeleteIndex === i}
                 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-                <div class="confirm-delete-popup" on:click|stopPropagation on:keydown|stopPropagation role="alert">
+                <div
+                  class="confirm-delete-popup"
+                  onclick={(e) => e.stopPropagation()}
+                  onkeydown={(e) => e.stopPropagation()}
+                  role="alert"
+                >
                   <span class="confirm-delete-text">Delete?</span>
-                  <button class="confirm-delete-yes" on:click|stopPropagation={() => { dispatch('deleteRequest', { filePath: node.path, requestIndex: i }); confirmDeleteIndex = -1; }}>Yes</button>
-                  <button class="confirm-delete-no" on:click|stopPropagation={() => confirmDeleteIndex = -1}>No</button>
+                  <button
+                    class="confirm-delete-yes"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      onDeleteRequest?.({ filePath: node.path, requestIndex: i });
+                      confirmDeleteIndex = -1;
+                    }}>Yes</button
+                  >
+                  <button
+                    class="confirm-delete-no"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      confirmDeleteIndex = -1;
+                    }}>No</button
+                  >
                 </div>
               {:else}
                 <button
                   class="btn-del-req"
-                  on:click|stopPropagation={() => confirmDeleteIndex = i}
-                  title="Delete request"
-                >×</button>
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    confirmDeleteIndex = i;
+                  }}
+                  title="Delete request">×</button
+                >
               {/if}
             {/if}
           </div>
@@ -510,7 +734,9 @@
     font-size: var(--text-base);
     text-align: left;
     cursor: pointer;
-    transition: background var(--duration-fast), color var(--duration-fast);
+    transition:
+      background var(--duration-fast),
+      color var(--duration-fast);
     position: relative;
     white-space: nowrap;
   }
@@ -609,7 +835,7 @@
     padding-bottom: var(--space-1);
   }
   .request-row.active {
-    background: #DDE4F0;
+    background: #dde4f0;
     color: var(--color-text-heading);
   }
   .request-row.active::before {
@@ -686,7 +912,7 @@
     cursor: pointer;
   }
   .confirm-delete-yes:hover {
-    background: #B33344;
+    background: #b33344;
   }
   .confirm-delete-no {
     padding: 1px var(--space-1\.5);

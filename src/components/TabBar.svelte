@@ -1,28 +1,40 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { Tab, FlowTab } from '../lib/stores';
   import type { RequestLocation } from '../lib/types';
 
-  export let tabs: Tab[] = [];
-  export let activeLocation: RequestLocation | null = null;
-  export let isPreview: boolean = false;
-  export let previewLabel: string = '';
+  interface Props {
+    tabs?: Tab[];
+    activeLocation?: RequestLocation | null;
+    isPreview?: boolean;
+    previewLabel?: string;
+    // Flow tabs
+    flowTabs?: FlowTab[];
+    activeFlowPath?: string | null;
+    onActivate?: (location: RequestLocation) => void;
+    onClose?: (location: RequestLocation) => void;
+    onActivateFlowTab?: (flowPath: string) => void;
+    onCloseFlowTab?: (flowPath: string) => void;
+  }
 
-  // Flow tabs
-  export let flowTabs: FlowTab[] = [];
-  export let activeFlowPath: string | null = null;
-
-  const dispatch = createEventDispatcher<{
-    activate: RequestLocation;
-    close: RequestLocation;
-    activateFlowTab: string;
-    closeFlowTab: string;
-  }>();
+  let {
+    tabs = [],
+    activeLocation = null,
+    isPreview = false,
+    previewLabel = '',
+    flowTabs = [],
+    activeFlowPath = null,
+    onActivate,
+    onClose,
+    onActivateFlowTab,
+    onCloseFlowTab,
+  }: Props = $props();
 
   function isActive(tab: Tab): boolean {
     if (!activeLocation || activeFlowPath) return false;
-    return tab.location.filePath === activeLocation.filePath
-      && tab.location.requestIndex === activeLocation.requestIndex;
+    return (
+      tab.location.filePath === activeLocation.filePath &&
+      tab.location.requestIndex === activeLocation.requestIndex
+    );
   }
 </script>
 
@@ -30,40 +42,65 @@
   <div class="tab-bar">
     {#each flowTabs as ft}
       <div
-        class="tab flow-tab"
-        class:active={activeFlowPath === ft.flowPath}
-        on:click={() => dispatch('activateFlowTab', ft.flowPath)}
-        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('activateFlowTab', ft.flowPath); } }}
+        class={['tab', 'flow-tab', { active: activeFlowPath === ft.flowPath }]}
+        onclick={() => onActivateFlowTab?.(ft.flowPath)}
+        onkeydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onActivateFlowTab?.(ft.flowPath);
+          }
+        }}
         role="tab"
         tabindex="0"
       >
         <svg class="flow-tab-icon" width="10" height="10" viewBox="0 0 16 16" fill="none">
-          <path d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.15"/>
-          <path d="M6 4.5h4M11.5 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path
+            d="M3 3h3v3H3zM10 3h3v3h-3zM10 10h3v3h-3z"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="currentColor"
+            fill-opacity="0.15"
+          />
+          <path
+            d="M6 4.5h4M11.5 6v4"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
         </svg>
         <span class="tab-label">{ft.label}</span>
         <button
           class="tab-close"
-          on:click|stopPropagation={() => dispatch('closeFlowTab', ft.flowPath)}
-          title="Close tab"
-        >&times;</button>
+          onclick={(e) => {
+            e.stopPropagation();
+            onCloseFlowTab?.(ft.flowPath);
+          }}
+          title="Close tab">&times;</button
+        >
       </div>
     {/each}
     {#each tabs as tab}
       <div
-        class="tab"
-        class:active={isActive(tab) && !isPreview}
-        on:click={() => dispatch('activate', tab.location)}
-        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dispatch('activate', tab.location); } }}
+        class={['tab', { active: isActive(tab) && !isPreview }]}
+        onclick={() => onActivate?.(tab.location)}
+        onkeydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onActivate?.(tab.location);
+          }
+        }}
         role="tab"
         tabindex="0"
       >
         <span class="tab-label">{tab.label}</span>
         <button
           class="tab-close"
-          on:click|stopPropagation={() => dispatch('close', tab.location)}
-          title="Close tab"
-        >&times;</button>
+          onclick={(e) => {
+            e.stopPropagation();
+            onClose?.(tab.location);
+          }}
+          title="Close tab">&times;</button
+        >
       </div>
     {/each}
     {#if isPreview && previewLabel}

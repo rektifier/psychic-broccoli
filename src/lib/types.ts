@@ -2,8 +2,7 @@
 // Full set from the Visual Studio .http spec, including TRACE and CONNECT.
 
 export type HttpMethod =
-  | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  | 'HEAD' | 'OPTIONS' | 'TRACE' | 'CONNECT';
+  'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'TRACE' | 'CONNECT';
 
 // ─── Request / Response ─────────────────────────────────────────────────────
 

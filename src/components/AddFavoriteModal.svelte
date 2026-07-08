@@ -1,58 +1,68 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  interface Props {
+    /** Whether the modal is visible */
+    visible?: boolean;
+    /** Absolute path of the folder being favorited (shown as a hint) */
+    folderPath?: string;
+    /** Default name to prefill (the folder basename) */
+    defaultName?: string;
+    onConfirm?: (name: string) => void;
+    onCancel?: () => void;
+  }
 
-  /** Whether the modal is visible */
-  export let visible: boolean = false;
-  /** Absolute path of the folder being favorited (shown as a hint) */
-  export let folderPath: string = '';
-  /** Default name to prefill (the folder basename) */
-  export let defaultName: string = '';
+  let { visible = false, folderPath = '', defaultName = '', onConfirm, onCancel }: Props = $props();
 
-  const dispatch = createEventDispatcher<{
-    confirm: { name: string };
-    cancel: void;
-  }>();
-
-  let name = '';
-  let inputEl: HTMLInputElement | null = null;
+  let name = $state('');
+  let inputEl: HTMLInputElement | null = $state(null);
 
   // Reset and focus when the modal opens.
-  $: if (visible) {
-    name = defaultName;
-    queueMicrotask(() => {
-      inputEl?.focus();
-      inputEl?.select();
-    });
-  }
+  $effect(() => {
+    if (visible) {
+      name = defaultName;
+      queueMicrotask(() => {
+        inputEl?.focus();
+        inputEl?.select();
+      });
+    }
+  });
 
   function confirm() {
     // Empty/whitespace name falls back to the folder basename.
     const trimmed = name.trim() || defaultName;
-    dispatch('confirm', { name: trimmed });
+    onConfirm?.(trimmed);
   }
 
   function cancel() {
-    dispatch('cancel');
+    onCancel?.();
   }
 </script>
 
 {#if visible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="overlay" on:click|self={cancel} role="dialog" tabindex="-1">
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) cancel();
+    }}
+    role="dialog"
+    tabindex="-1"
+  >
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Name this favorite</span>
-        <button class="btn-close" on:click={cancel}>&times;</button>
+        <button class="btn-close" onclick={cancel}>&times;</button>
       </div>
 
       <div class="modal-body">
-        <p class="description">Choose a name for this favorite. It is shown instead of the folder name.</p>
+        <p class="description">
+          Choose a name for this favorite. It is shown instead of the folder name.
+        </p>
         <input
           class="name-input"
           bind:this={inputEl}
           bind:value={name}
           placeholder="Favorite name..."
-          on:keydown={(e) => {
+          onkeydown={(e) => {
             if (e.key === 'Enter') confirm();
             else if (e.key === 'Escape') cancel();
           }}
@@ -63,8 +73,8 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn-skip" on:click={cancel}>Cancel</button>
-        <button class="btn-confirm" on:click={confirm}>Save</button>
+        <button class="btn-skip" onclick={cancel}>Cancel</button>
+        <button class="btn-confirm" onclick={confirm}>Save</button>
       </div>
     </div>
   </div>
@@ -94,7 +104,9 @@
     font-size: var(--text-base);
     outline: none;
   }
-  .name-input:focus { border-color: var(--color-primary); }
+  .name-input:focus {
+    border-color: var(--color-primary);
+  }
 
   .path-hint {
     font-size: var(--text-sm);
@@ -116,7 +128,10 @@
     cursor: pointer;
     transition: all var(--duration-normal);
   }
-  .btn-skip:hover { border-color: var(--color-text-faint); color: var(--color-text); }
+  .btn-skip:hover {
+    border-color: var(--color-text-faint);
+    color: var(--color-text);
+  }
   .btn-confirm {
     padding: var(--space-1\.5) var(--space-3\.5);
     border: none;
@@ -129,5 +144,7 @@
     cursor: pointer;
     transition: background var(--duration-normal);
   }
-  .btn-confirm:hover { background: var(--color-primary-active); }
+  .btn-confirm:hover {
+    background: var(--color-primary-active);
+  }
 </style>
