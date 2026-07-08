@@ -250,7 +250,7 @@
                       label={key}
                       {value}
                       inserted={insertedKey === rowKey}
-                      on:click={() => doInsert(rowKey, `{{${key}}}`)}
+                      onclick={() => doInsert(rowKey, `{{${key}}}`)}
                     />
                   {/each}
                 {/if}
@@ -306,7 +306,7 @@
                         label={field.path}
                         value={field.value}
                         inserted={insertedKey === rowKey}
-                        on:click={() => insertResponseBody(alias.name, field.path)}
+                        onclick={() => insertResponseBody(alias.name, field.path)}
                       />
                     {/each}
                     {#if bodyFields.length > 12}
@@ -319,7 +319,7 @@
                       label="$"
                       value={group ? 'no matches' : 'fill in JSONPath after $'}
                       inserted={insertedKey === bodyKey}
-                      on:click={() => doInsert(bodyKey, `{{${alias.name}.response.body.$.}}`)}
+                      onclick={() => doInsert(bodyKey, `{{${alias.name}.response.body.$.}}`)}
                     />
                   {/if}
 
@@ -332,7 +332,7 @@
                         label={field.path}
                         value={field.value}
                         inserted={insertedKey === rowKey}
-                        on:click={() => insertResponseHeader(alias.name, field.path)}
+                        onclick={() => insertResponseHeader(alias.name, field.path)}
                       />
                     {/each}
                   {:else}
@@ -342,7 +342,7 @@
                       label="headers"
                       value={group ? 'no matches' : 'fill in header name'}
                       inserted={insertedKey === hdrKey}
-                      on:click={() => doInsert(hdrKey, `{{${alias.name}.response.headers.}}`)}
+                      onclick={() => doInsert(hdrKey, `{{${alias.name}.response.headers.}}`)}
                     />
                   {/if}
                 {/if}
@@ -370,7 +370,7 @@
                   label={key}
                   {value}
                   inserted={insertedKey === key}
-                  on:click={() => insertEnvVar(key)}
+                  onclick={() => insertEnvVar(key)}
                 />
               {/each}
             {/if}
@@ -386,7 +386,7 @@
                   label={v.key}
                   value={v.value}
                   inserted={insertedKey === v.key}
-                  on:click={() => insertEnvVar(v.key)}
+                  onclick={() => insertEnvVar(v.key)}
                 />
               {/each}
             {/if}
@@ -409,7 +409,7 @@
                   label={d.key}
                   value={d.value}
                   inserted={insertedKey === d.key}
-                  on:click={() => doInsert(d.key, d.insert)}
+                  onclick={() => doInsert(d.key, d.insert)}
                 />
               {/each}
             {/if}
@@ -435,7 +435,7 @@
                       label={field.path}
                       value={field.value}
                       inserted={insertedKey === rowKey}
-                      on:click={() => insertResponseBody(group.name, field.path)}
+                      onclick={() => insertResponseBody(group.name, field.path)}
                     />
                   {/each}
                   {#if group.bodyFields.length > 12}
@@ -454,7 +454,7 @@
                       label={field.path}
                       value={field.value}
                       inserted={insertedKey === rowKey}
-                      on:click={() => insertResponseHeader(group.name, field.path)}
+                      onclick={() => insertResponseHeader(group.name, field.path)}
                     />
                   {/each}
                 {/if}
