@@ -18,7 +18,7 @@ function step(partial: Partial<FlowStep>): FlowStep {
 describe('normalizeFlowAliases', () => {
   it('assigns Step1, Step2, ... to unlocked steps', () => {
     const { steps } = normalizeFlowAliases([step({}), step({}), step({})]);
-    expect(steps.map(s => s.varName)).toEqual(['Step1', 'Step2', 'Step3']);
+    expect(steps.map((s) => s.varName)).toEqual(['Step1', 'Step2', 'Step3']);
   });
 
   it('preserves locked aliases', () => {
@@ -27,7 +27,7 @@ describe('normalizeFlowAliases', () => {
       step({}),
       step({}),
     ]);
-    expect(steps.map(s => s.varName)).toEqual(['login', 'Step2', 'Step3']);
+    expect(steps.map((s) => s.varName)).toEqual(['login', 'Step2', 'Step3']);
   });
 
   it('skips numbers reserved by locked aliases', () => {
@@ -37,14 +37,11 @@ describe('normalizeFlowAliases', () => {
       step({}),
       step({ varName: 'Step2', aliasLocked: true }),
     ]);
-    expect(steps.map(s => s.varName)).toEqual(['Step1', 'Step3', 'Step2']);
+    expect(steps.map((s) => s.varName)).toEqual(['Step1', 'Step3', 'Step2']);
   });
 
   it('reports renames for auto aliases that shifted', () => {
-    const before = [
-      step({ id: 'a', varName: 'Step1' }),
-      step({ id: 'b', varName: 'Step2' }),
-    ];
+    const before = [step({ id: 'a', varName: 'Step1' }), step({ id: 'b', varName: 'Step2' })];
     // Move 'b' to position 0.
     const { renames } = normalizeFlowAliases([before[1], before[0]]);
     expect(renames).toEqual({ Step2: 'Step1', Step1: 'Step2' });
@@ -83,7 +80,7 @@ describe('applyAliasSync integration', () => {
     });
     // Reorder: swap.
     const result = applyAliasSync([s2, s1]);
-    expect(result.map(s => s.varName)).toEqual(['Step1', 'Step2']);
+    expect(result.map((s) => s.varName)).toEqual(['Step1', 'Step2']);
     // The step that was b (now at index 0 = Step1) still holds the old URL referring to the former Step1
     // which is now Step2. Cascade should rewrite it.
     expect(result[0].overrides?.url).toBe('/x?tok={{Step2.response.body.$.token}}');
@@ -95,11 +92,21 @@ describe('applyAliasSync integration', () => {
       id: 'b',
       varName: 'Step2',
       overrides: {
-        headers: [{ key: 'X-Tok-{{Step1.response.body.$.k}}', value: 'Bearer {{Step1.response.body.$.token}}', enabled: true }],
+        headers: [
+          {
+            key: 'X-Tok-{{Step1.response.body.$.k}}',
+            value: 'Bearer {{Step1.response.body.$.token}}',
+            enabled: true,
+          },
+        ],
         beforeSend: 'const x = "{{Step1.response.body.$.id}}";',
         afterReceive: 'log("{{Step1.response.headers.X-Trace}}");',
         directives: [
-          { type: 'assert', expr: 'pb.response.body.$.ref == "{{Step1.response.body.$.id}}"', label: 'ref matches' },
+          {
+            type: 'assert',
+            expr: 'pb.response.body.$.ref == "{{Step1.response.body.$.id}}"',
+            label: 'ref matches',
+          },
           { type: 'set', key: 'tok', expr: '{{Step1.response.body.$.token}}' },
         ],
       },

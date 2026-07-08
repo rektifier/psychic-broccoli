@@ -32,7 +32,7 @@ describe('parseHttpFile - comment-like lines inside bodies (issue #161)', () => 
         '// slash comment',
         '  user { id }',
         '}',
-      ].join('\n')
+      ].join('\n'),
     );
   });
 
@@ -65,7 +65,7 @@ describe('parseHttpFile - comment-like lines inside bodies (issue #161)', () => 
         '// slash comment',
         '  user { id }',
         '}',
-      ].join('\n')
+      ].join('\n'),
     );
   });
 

@@ -84,7 +84,10 @@ jobs:
           # src-tauri/Cargo.toml
           perl -i -pe "s/^(version\s*=\s*)\"[^\"]*\"/\$1\"$VERSION\"/" src-tauri/Cargo.toml
 
-          # getting-started version marker
+          # getting-started version marker: getting-started/.version is tracked
+          # in git with a placeholder value and stamped with the release version
+          # here at build time, so the bundled tutorial can report which release
+          # it shipped with. Do not hand-edit the tracked file.
           echo "$VERSION" > getting-started/.version
 
       - name: Install pnpm
@@ -116,7 +119,7 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

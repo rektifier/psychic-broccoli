@@ -88,7 +88,7 @@ export function applyTheme(themeId: ThemeId): void {
 
 export function setTheme(themeId: ThemeId): void {
   applyTheme(themeId);
-  readSettings().then(settings => {
+  readSettings().then((settings) => {
     writeSettings({ ...settings, theme: themeId });
   });
 }
@@ -96,7 +96,8 @@ export function setTheme(themeId: ThemeId): void {
 /** Load theme from settings file and apply it. */
 export async function loadTheme(): Promise<ThemeId> {
   const settings = await readSettings();
-  const themeId = settings.theme && THEMES.some(t => t.id === settings.theme) ? settings.theme : 'default';
+  const themeId =
+    settings.theme && THEMES.some((t) => t.id === settings.theme) ? settings.theme : 'default';
   applyTheme(themeId);
   return themeId;
 }
@@ -116,7 +117,13 @@ export async function loadFavorites(): Promise<Favorite[]> {
       typeof entry === 'string'
         ? { path: entry, name: pathBasename(entry) }
         : entry && typeof entry.path === 'string'
-          ? { path: entry.path, name: typeof entry.name === 'string' && entry.name ? entry.name : pathBasename(entry.path) }
+          ? {
+              path: entry.path,
+              name:
+                typeof entry.name === 'string' && entry.name
+                  ? entry.name
+                  : pathBasename(entry.path),
+            }
           : null;
     if (!fav || seen.has(fav.path)) continue;
     seen.add(fav.path);

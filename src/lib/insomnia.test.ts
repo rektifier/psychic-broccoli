@@ -9,7 +9,14 @@ describe('importInsomniaExport - v4 JSON', () => {
   it('imports a simple request', () => {
     const content = makeV4Export([
       { _id: 'wrk_1', _type: 'workspace', name: 'My API', parentId: null },
-      { _id: 'req_1', _type: 'request', parentId: 'wrk_1', name: 'Get Users', method: 'GET', url: 'https://api.example.com/users' },
+      {
+        _id: 'req_1',
+        _type: 'request',
+        parentId: 'wrk_1',
+        name: 'Get Users',
+        method: 'GET',
+        url: 'https://api.example.com/users',
+      },
     ]);
     const result = importInsomniaExport(content);
     expect(result.collectionName).toBe('My API');
@@ -21,13 +28,27 @@ describe('importInsomniaExport - v4 JSON', () => {
     const content = makeV4Export([
       { _id: 'wrk_1', _type: 'workspace', name: 'API', parentId: null },
       { _id: 'grp_1', _type: 'request_group', parentId: 'wrk_1', name: 'Auth' },
-      { _id: 'req_1', _type: 'request', parentId: 'grp_1', name: 'Login', method: 'POST', url: 'https://api.example.com/login' },
+      {
+        _id: 'req_1',
+        _type: 'request',
+        parentId: 'grp_1',
+        name: 'Login',
+        method: 'POST',
+        url: 'https://api.example.com/login',
+      },
       { _id: 'grp_2', _type: 'request_group', parentId: 'wrk_1', name: 'Users' },
-      { _id: 'req_2', _type: 'request', parentId: 'grp_2', name: 'List', method: 'GET', url: 'https://api.example.com/users' },
+      {
+        _id: 'req_2',
+        _type: 'request',
+        parentId: 'grp_2',
+        name: 'List',
+        method: 'GET',
+        url: 'https://api.example.com/users',
+      },
     ]);
     const result = importInsomniaExport(content);
     expect(result.files).toHaveLength(2);
-    const filePaths = result.files.map(f => f.relativePath);
+    const filePaths = result.files.map((f) => f.relativePath);
     expect(filePaths).toContain('Auth.http');
     expect(filePaths).toContain('Users.http');
   });
@@ -35,19 +56,37 @@ describe('importInsomniaExport - v4 JSON', () => {
   it('extracts base environment variables', () => {
     const content = makeV4Export([
       { _id: 'wrk_1', _type: 'workspace', name: 'API', parentId: null },
-      { _id: 'env_1', _type: 'environment', parentId: 'wrk_1', data: { baseUrl: 'https://api.example.com' } },
-      { _id: 'req_1', _type: 'request', parentId: 'wrk_1', name: 'Test', method: 'GET', url: '{{baseUrl}}/test' },
+      {
+        _id: 'env_1',
+        _type: 'environment',
+        parentId: 'wrk_1',
+        data: { baseUrl: 'https://api.example.com' },
+      },
+      {
+        _id: 'req_1',
+        _type: 'request',
+        parentId: 'wrk_1',
+        name: 'Test',
+        method: 'GET',
+        url: '{{baseUrl}}/test',
+      },
     ]);
     const result = importInsomniaExport(content);
-    expect(result.variables.find(v => v.key === 'baseUrl')?.value).toBe('https://api.example.com');
+    expect(result.variables.find((v) => v.key === 'baseUrl')?.value).toBe(
+      'https://api.example.com',
+    );
   });
 
   it('handles request with headers and body', () => {
     const content = makeV4Export([
       { _id: 'wrk_1', _type: 'workspace', name: 'API', parentId: null },
       {
-        _id: 'req_1', _type: 'request', parentId: 'wrk_1',
-        name: 'Create', method: 'POST', url: 'https://api.example.com/data',
+        _id: 'req_1',
+        _type: 'request',
+        parentId: 'wrk_1',
+        name: 'Create',
+        method: 'POST',
+        url: 'https://api.example.com/data',
         headers: [{ name: 'Accept', value: 'application/json' }],
         body: { mimeType: 'application/json', text: '{"key":"value"}' },
       },
@@ -61,8 +100,12 @@ describe('importInsomniaExport - v4 JSON', () => {
     const content = makeV4Export([
       { _id: 'wrk_1', _type: 'workspace', name: 'API', parentId: null },
       {
-        _id: 'req_1', _type: 'request', parentId: 'wrk_1',
-        name: 'Protected', method: 'GET', url: 'https://api.example.com/protected',
+        _id: 'req_1',
+        _type: 'request',
+        parentId: 'wrk_1',
+        name: 'Protected',
+        method: 'GET',
+        url: 'https://api.example.com/protected',
         authentication: { type: 'bearer', token: 'my-token' },
       },
     ]);
@@ -128,7 +171,9 @@ environments:
     baseUrl: https://api.example.com
 `;
     const result = importInsomniaExport(yaml);
-    expect(result.variables.find(v => v.key === 'baseUrl')?.value).toBe('https://api.example.com');
+    expect(result.variables.find((v) => v.key === 'baseUrl')?.value).toBe(
+      'https://api.example.com',
+    );
   });
 
   it('converts Insomnia template syntax to .http syntax', () => {
@@ -180,9 +225,18 @@ environments:
 `;
     const result = importInsomniaExport(yaml);
     expect(result.environmentFile).toBeDefined();
-    expect(result.environmentFile!['$shared']).toEqual({ baseUrl: 'https://api.example.com', apiKey: 'shared-key' });
-    expect(result.environmentFile!['dev']).toEqual({ baseUrl: 'http://localhost:3000', debug: 'true' });
-    expect(result.environmentFile!['prod']).toEqual({ baseUrl: 'https://prod.example.com', apiKey: 'prod-secret' });
+    expect(result.environmentFile!['$shared']).toEqual({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'shared-key',
+    });
+    expect(result.environmentFile!['dev']).toEqual({
+      baseUrl: 'http://localhost:3000',
+      debug: 'true',
+    });
+    expect(result.environmentFile!['prod']).toEqual({
+      baseUrl: 'https://prod.example.com',
+      apiKey: 'prod-secret',
+    });
   });
 
   it('returns no environmentFile when no sub-environments exist', () => {
@@ -225,7 +279,11 @@ environments:
         debug: false
 `;
     const result = importInsomniaExport(yaml);
-    expect(result.environmentFile!['$shared']).toEqual({ port: '8080', enabled: 'true', name: 'my-api' });
+    expect(result.environmentFile!['$shared']).toEqual({
+      port: '8080',
+      enabled: 'true',
+      name: 'my-api',
+    });
     expect(result.environmentFile!['dev']).toEqual({ port: '3000', debug: 'false' });
   });
 
@@ -280,7 +338,10 @@ environments:
     const result = importInsomniaExport(yaml);
     expect(result.files).toHaveLength(1);
     expect(result.environmentFile).toBeDefined();
-    expect(result.environmentFile!['$shared']).toEqual({ base_url: 'https://api.default.com', countryId: 'se' });
+    expect(result.environmentFile!['$shared']).toEqual({
+      base_url: 'https://api.default.com',
+      countryId: 'se',
+    });
     expect(result.environmentFile!['localhost']).toEqual({ base_url: 'http://localhost:8080' });
     expect(result.environmentFile!['staging']).toEqual({ base_url: 'https://staging.example.com' });
   });
