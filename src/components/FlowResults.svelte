@@ -1,29 +1,33 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import type { FlowRunRecord, FlowStepResult } from '../lib/types';
+  import type { FlowRunRecord } from '../lib/types';
 
-  const dispatch = createEventDispatcher<{ clearHistory: void }>();
+  interface Props {
+    runRecord?: FlowRunRecord | null;
+    history?: FlowRunRecord[];
+    flowFilePath?: string;
+    onClearHistory?: () => void;
+  }
 
-  export let runRecord: FlowRunRecord | null = null;
-  export let history: FlowRunRecord[] = [];
-  export let flowFilePath: string = '';
+  let { runRecord = null, history = [], flowFilePath = '', onClearHistory }: Props = $props();
 
-  let selectedRunId: string | null = null;
-  let expandedStep: string | null = null;
-  let stepsOpen: boolean = true;
+  let selectedRunId: string | null = $state(null);
+  let expandedStep: string | null = $state(null);
+  let stepsOpen: boolean = $state(true);
 
-  $: relevantHistory = history.filter(r => r.flowFilePath === flowFilePath);
-  $: displayRecord = selectedRunId
-    ? relevantHistory.find(r => r.id === selectedRunId) ?? runRecord
-    : runRecord;
+  const relevantHistory = $derived(history.filter((r) => r.flowFilePath === flowFilePath));
+  const displayRecord = $derived(
+    selectedRunId ? (relevantHistory.find((r) => r.id === selectedRunId) ?? runRecord) : runRecord,
+  );
 
   // Reset collapse state when the displayed record changes
   let prevDisplayId: string | null = null;
-  $: if (displayRecord?.id !== prevDisplayId) {
-    prevDisplayId = displayRecord?.id ?? null;
-    stepsOpen = true;
-    expandedStep = null;
-  }
+  $effect(() => {
+    if (displayRecord?.id !== prevDisplayId) {
+      prevDisplayId = displayRecord?.id ?? null;
+      stepsOpen = true;
+      expandedStep = null;
+    }
+  });
 
   function selectRun(id: string) {
     selectedRunId = selectedRunId === id ? null : id;
@@ -36,8 +40,16 @@
   function formatTime(iso: string): string {
     try {
       const d = new Date(iso);
-      return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch { return iso; }
+      return d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
   }
 
   function totalDuration(record: FlowRunRecord): number {
@@ -61,10 +73,16 @@
   {#if displayRecord}
     <div class="results-card">
       <!-- Summary bar (toggles step results) -->
-      <button class="results-summary" on:click={() => stepsOpen = !stepsOpen}>
-        <span class="summary-chevron" class:open={stepsOpen}>
+      <button class="results-summary" onclick={() => (stepsOpen = !stepsOpen)}>
+        <span class={['summary-chevron', { open: stepsOpen }]}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path
+              d="M3 1.5l4 3.5-4 3.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
         </span>
         <div class="summary-stats">
@@ -86,67 +104,85 @@
 
       <!-- Step results (inside summary toggle) -->
       {#if stepsOpen}
-      <div class="results-steps">
-        {#each displayRecord.stepResults as sr, i}
-          {@const step = sr}
-          <div class="result-step">
-            <button class="result-step-header" on:click={() => toggleStep(sr.stepId)}>
-              <span class="result-status-icon" style="color: {statusColor(sr.status)}">
-                {#if sr.status === 'passed'}&#10003;{:else if sr.status === 'failed'}&#10005;{:else if sr.status === 'running'}...{:else}-{/if}
-              </span>
-              <span class="result-step-num">{i + 1}</span>
-              {#if sr.sentRequest}
-                <span class="result-method" style="color: {statusColor(sr.status === 'passed' ? 'passed' : sr.status === 'failed' ? 'failed' : '')}">{sr.sentRequest.method}</span>
-                <span class="result-url">{sr.sentRequest.url}</span>
-              {:else}
-                <span class="result-url">{sr.error || 'Skipped'}</span>
-              {/if}
-              {#if sr.response}
-                <span class="result-http-code" class:ok={sr.response.status < 400} class:err={sr.response.status >= 400}>{sr.response.status}</span>
-              {/if}
-              {#if sr.durationMs > 0}
-                <span class="result-dur">{sr.durationMs}ms</span>
-              {/if}
-              <span class="result-chevron" class:open={expandedStep === sr.stepId}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
-            </button>
-
-            {#if expandedStep === sr.stepId}
-              <div class="result-detail">
-                {#if sr.error}
-                  <div class="detail-section">
-                    <span class="detail-label">Error</span>
-                    <pre class="detail-pre error">{sr.error}</pre>
-                  </div>
-                {/if}
-                {#if sr.assertionResults.length > 0}
-                  <div class="detail-section">
-                    <span class="detail-label">Assertions ({sr.assertionResults.filter(a => a.passed).length}/{sr.assertionResults.length})</span>
-                    <div class="assertions-list">
-                      {#each sr.assertionResults as ar}
-                        <div class="assertion-row" class:pass={ar.passed} class:fail={!ar.passed}>
-                          <span class="assertion-icon">{ar.passed ? '\u2713' : '\u2717'}</span>
-                          <span class="assertion-label">{ar.label}</span>
-                        </div>
-                      {/each}
-                    </div>
-                  </div>
+        <div class="results-steps">
+          {#each displayRecord.stepResults as sr, i}
+            <div class="result-step">
+              <button class="result-step-header" onclick={() => toggleStep(sr.stepId)}>
+                <span class="result-status-icon" style="color: {statusColor(sr.status)}">
+                  {#if sr.status === 'passed'}&#10003;{:else if sr.status === 'failed'}&#10005;{:else if sr.status === 'running'}...{:else}-{/if}
+                </span>
+                <span class="result-step-num">{i + 1}</span>
+                {#if sr.sentRequest}
+                  <span
+                    class="result-method"
+                    style="color: {statusColor(
+                      sr.status === 'passed' ? 'passed' : sr.status === 'failed' ? 'failed' : '',
+                    )}">{sr.sentRequest.method}</span
+                  >
+                  <span class="result-url">{sr.sentRequest.url}</span>
+                {:else}
+                  <span class="result-url">{sr.error || 'Skipped'}</span>
                 {/if}
                 {#if sr.response}
-                  <div class="detail-section">
-                    <span class="detail-label">Response body</span>
-                    <pre class="detail-pre">{truncateBody(sr.response.body)}</pre>
-                  </div>
+                  <span
+                    class={[
+                      'result-http-code',
+                      { ok: sr.response.status < 400, err: sr.response.status >= 400 },
+                    ]}>{sr.response.status}</span
+                  >
                 {/if}
-              </div>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    {/if}
+                {#if sr.durationMs > 0}
+                  <span class="result-dur">{sr.durationMs}ms</span>
+                {/if}
+                <span class={['result-chevron', { open: expandedStep === sr.stepId }]}>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path
+                      d="M3 1.5l4 3.5-4 3.5"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+              </button>
+
+              {#if expandedStep === sr.stepId}
+                <div class="result-detail">
+                  {#if sr.error}
+                    <div class="detail-section">
+                      <span class="detail-label">Error</span>
+                      <pre class="detail-pre error">{sr.error}</pre>
+                    </div>
+                  {/if}
+                  {#if sr.assertionResults.length > 0}
+                    <div class="detail-section">
+                      <span class="detail-label"
+                        >Assertions ({sr.assertionResults.filter((a) => a.passed).length}/{sr
+                          .assertionResults.length})</span
+                      >
+                      <div class="assertions-list">
+                        {#each sr.assertionResults as ar}
+                          <div class={['assertion-row', { pass: ar.passed, fail: !ar.passed }]}>
+                            <span class="assertion-icon">{ar.passed ? '\u2713' : '\u2717'}</span>
+                            <span class="assertion-label">{ar.label}</span>
+                          </div>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+                  {#if sr.response}
+                    <div class="detail-section">
+                      <span class="detail-label">Response body</span>
+                      <pre class="detail-pre">{truncateBody(sr.response.body)}</pre>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   {:else}
     <div class="results-empty">Run the flow to see results here.</div>
@@ -157,17 +193,21 @@
     <div class="results-history">
       <div class="history-header">
         <span class="history-title">Run history</span>
-        <button class="btn-clear-history" on:click={() => dispatch('clearHistory')}>Clear</button>
+        <button class="btn-clear-history" onclick={() => onClearHistory?.()}>Clear</button>
       </div>
       <div class="history-list">
         {#each relevantHistory.slice(0, 20) as rec}
           <button
-            class="history-item"
-            class:active={selectedRunId === rec.id}
-            class:is-current={rec.id === runRecord?.id}
-            on:click={() => selectRun(rec.id)}
+            class={[
+              'history-item',
+              { active: selectedRunId === rec.id, 'is-current': rec.id === runRecord?.id },
+            ]}
+            onclick={() => selectRun(rec.id)}
           >
-            <span class="history-status" style="color: {statusColor(rec.summary.failed > 0 ? 'failed' : 'passed')}">
+            <span
+              class="history-status"
+              style="color: {statusColor(rec.summary.failed > 0 ? 'failed' : 'passed')}"
+            >
               {rec.summary.failed > 0 ? '\u2717' : '\u2713'}
             </span>
             <span class="history-stats">{rec.summary.passed}/{rec.summary.total}</span>
@@ -231,10 +271,19 @@
     font-size: var(--text-base);
     font-weight: var(--weight-semibold);
   }
-  .stat.passed { color: var(--color-success); }
-  .stat.failed { color: var(--color-error); }
-  .stat.skipped { color: var(--color-text-faint); }
-  .stat.total { color: var(--color-text-muted); font-weight: var(--weight-regular); }
+  .stat.passed {
+    color: var(--color-success);
+  }
+  .stat.failed {
+    color: var(--color-error);
+  }
+  .stat.skipped {
+    color: var(--color-text-faint);
+  }
+  .stat.total {
+    color: var(--color-text-muted);
+    font-weight: var(--weight-regular);
+  }
   .summary-meta {
     display: flex;
     align-items: center;
@@ -314,8 +363,14 @@
     border-radius: var(--radius-xs);
     flex-shrink: 0;
   }
-  .result-http-code.ok { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
-  .result-http-code.err { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 6%, transparent); }
+  .result-http-code.ok {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 6%, transparent);
+  }
+  .result-http-code.err {
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 6%, transparent);
+  }
   .result-dur {
     font-size: var(--text-xs);
     color: var(--color-text-faint);
@@ -390,10 +445,18 @@
     text-align: center;
     flex-shrink: 0;
   }
-  .assertion-row.pass .assertion-icon { color: var(--color-success); }
-  .assertion-row.fail .assertion-icon { color: var(--color-error); }
-  .assertion-row.pass .assertion-label { color: var(--color-text-secondary); }
-  .assertion-row.fail .assertion-label { color: var(--color-error); }
+  .assertion-row.pass .assertion-icon {
+    color: var(--color-success);
+  }
+  .assertion-row.fail .assertion-icon {
+    color: var(--color-error);
+  }
+  .assertion-row.pass .assertion-label {
+    color: var(--color-text-secondary);
+  }
+  .assertion-row.fail .assertion-label {
+    color: var(--color-error);
+  }
 
   /* Empty state */
   .results-empty {

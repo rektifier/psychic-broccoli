@@ -1,5 +1,6 @@
 import { readTextFile, writeTextFile, readDir, mkdir, remove, rename } from '@tauri-apps/plugin-fs';
-import { join, basename } from '@tauri-apps/api/path';
+import type { DirEntry } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
 import type { FlowDefinition, FlowRunRecord, FlowStep, FlowStepOverrides } from './types';
 import { applyAliasSync } from './flowAlias';
 
@@ -14,47 +15,56 @@ const MAX_HISTORY_PER_FLOW = 20;
 
 /** Parse a .pb-flow.json file's contents into a FlowDefinition. */
 export function parseFlowFile(content: string): FlowDefinition {
-  const raw = JSON.parse(content);
+  const raw = asRecord(JSON.parse(content));
   const steps = Array.isArray(raw.steps) ? raw.steps.map(parseFlowStep) : [];
   // One-time normalization: ensures every step has an auto alias if unlocked.
   // Legacy flows without `aliasLocked`: parseFlowStep infers it from varName presence.
   const normalized = applyAliasSync(steps);
   return {
-    version: raw.version ?? 1,
-    name: raw.name ?? 'Untitled Flow',
-    description: raw.description ?? '',
+    version: typeof raw.version === 'number' ? raw.version : 1,
+    name: typeof raw.name === 'string' ? raw.name : 'Untitled Flow',
+    description: typeof raw.description === 'string' ? raw.description : '',
     steps: normalized,
   };
 }
 
-function parseOverrides(raw: any): FlowStepOverrides | undefined {
-  if (!raw) return undefined;
+/** Narrow an unknown JSON value to a plain record, treating anything else as empty. */
+function asRecord(raw: unknown): Record<string, unknown> {
+  return typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
+}
+
+function parseOverrides(raw: unknown): FlowStepOverrides | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
   const o: FlowStepOverrides = {};
-  if (raw.url !== undefined) o.url = raw.url;
-  if (Array.isArray(raw.headers)) o.headers = raw.headers;
-  if (raw.body !== undefined) o.body = raw.body;
-  if (Array.isArray(raw.directives)) o.directives = raw.directives;
+  if (typeof r.url === 'string') o.url = r.url;
+  if (Array.isArray(r.headers)) o.headers = r.headers as FlowStepOverrides['headers'];
+  if (typeof r.body === 'string') o.body = r.body;
+  if (Array.isArray(r.directives)) o.directives = r.directives as FlowStepOverrides['directives'];
   return Object.keys(o).length > 0 ? o : undefined;
 }
 
-function parseFlowStep(raw: any): FlowStep {
+function parseFlowStep(raw: unknown): FlowStep {
+  const r = asRecord(raw);
+  const varName = typeof r.varName === 'string' ? r.varName : null;
   // Legacy flows don't carry `aliasLocked`. Infer:
   //   - explicit boolean: honor it
   //   - varName matches auto shape `Step{N}`: treat as auto (re-normalized)
   //   - non-null custom varName: preserve as locked
   //   - null varName: auto
-  const aliasLocked = typeof raw.aliasLocked === 'boolean'
-    ? raw.aliasLocked
-    : (raw.varName != null && !/^Step\d+$/.test(raw.varName));
+  const aliasLocked =
+    typeof r.aliasLocked === 'boolean'
+      ? r.aliasLocked
+      : varName != null && !/^Step\d+$/.test(varName);
   return {
-    id: raw.id ?? crypto.randomUUID(),
-    filePath: raw.filePath ?? '',
-    requestIndex: raw.requestIndex ?? 0,
-    varName: raw.varName ?? null,
+    id: typeof r.id === 'string' ? r.id : crypto.randomUUID(),
+    filePath: typeof r.filePath === 'string' ? r.filePath : '',
+    requestIndex: typeof r.requestIndex === 'number' ? r.requestIndex : 0,
+    varName,
     aliasLocked,
-    label: raw.label ?? '',
-    continueOnFailure: raw.continueOnFailure ?? false,
-    overrides: parseOverrides(raw.overrides),
+    label: typeof r.label === 'string' ? r.label : '',
+    continueOnFailure: r.continueOnFailure === true,
+    overrides: parseOverrides(r.overrides),
   };
 }
 
@@ -121,9 +131,9 @@ export interface DiscoveredFlow {
 /** Scan the flows/ directory for .pb-flow.json files. */
 export async function scanForFlowFiles(dir: string, rootDir: string): Promise<DiscoveredFlow[]> {
   const flowsDir = await join(rootDir, FLOWS_DIR);
-  let entries: { name: string; isDirectory: boolean }[];
+  let entries: DirEntry[];
   try {
-    entries = await readDir(flowsDir) as any[];
+    entries = await readDir(flowsDir);
   } catch {
     return []; // .flows/ directory doesn't exist yet
   }
@@ -188,9 +198,10 @@ function redactNode(node: unknown, secrets: string[], parentKey: string): unknow
     const isHeaders = parentKey === 'headers';
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(node)) {
-      out[k] = isHeaders && typeof v === 'string' && isSensitiveHeaderName(k)
-        ? REDACTED
-        : redactNode(v, secrets, k);
+      out[k] =
+        isHeaders && typeof v === 'string' && isSensitiveHeaderName(k)
+          ? REDACTED
+          : redactNode(v, secrets, k);
     }
     return out;
   }
@@ -203,7 +214,10 @@ function redactNode(node: unknown, secrets: string[], parentKey: string): unknow
  * and sensitive request/response headers are redacted by name. The original
  * record is not mutated.
  */
-export function redactFlowRunRecord(record: FlowRunRecord, secretValues: string[] = []): FlowRunRecord {
+export function redactFlowRunRecord(
+  record: FlowRunRecord,
+  secretValues: string[] = [],
+): FlowRunRecord {
   // Ignore trivially short values to avoid mangling unrelated text.
   const secrets = secretValues.filter((v) => typeof v === 'string' && v.length >= 4);
   return redactNode(record, secrets, '') as FlowRunRecord;
@@ -213,12 +227,13 @@ export function redactFlowRunRecord(record: FlowRunRecord, secretValues: string[
 
 /** Sanitize a flow name into a filesystem-safe directory name. */
 function sanitizeFlowName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    || 'unnamed';
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'unnamed'
+  );
 }
 
 /**
@@ -235,7 +250,9 @@ export async function saveFlowRunRecord(
   const resultsDir = await join(rootDir, RESULTS_DIR, dirName);
   try {
     await mkdir(resultsDir, { recursive: true });
-  } catch { /* already exists */ }
+  } catch {
+    /* already exists */
+  }
 
   const timestamp = record.startedAt.replace(/[:.]/g, '-');
   const filePath = await join(resultsDir, `${timestamp}.json`);
@@ -249,10 +266,10 @@ export async function saveFlowRunRecord(
 /** Delete the oldest run records if the count exceeds MAX_HISTORY_PER_FLOW. */
 async function pruneFlowHistory(resultsDir: string): Promise<void> {
   try {
-    const files = await readDir(resultsDir) as any[];
+    const files = await readDir(resultsDir);
     const jsonFiles = files
-      .filter((f: any) => !f.isDirectory && f.name.endsWith('.json'))
-      .sort((a: any, b: any) => b.name.localeCompare(a.name));
+      .filter((f) => !f.isDirectory && f.name.endsWith('.json'))
+      .sort((a, b) => b.name.localeCompare(a.name));
 
     if (jsonFiles.length <= MAX_HISTORY_PER_FLOW) return;
 
@@ -261,9 +278,13 @@ async function pruneFlowHistory(resultsDir: string): Promise<void> {
       try {
         const filePath = await join(resultsDir, file.name);
         await remove(filePath);
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     }
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 /** Delete all persisted run records for a given flow name. */
@@ -272,7 +293,9 @@ export async function clearFlowRunHistory(rootDir: string, flowName: string): Pr
   const resultsDir = await join(rootDir, RESULTS_DIR, dirName);
   try {
     await remove(resultsDir, { recursive: true });
-  } catch { /* directory may not exist */ }
+  } catch {
+    /* directory may not exist */
+  }
 }
 
 /** Load all flow run history from .pb-flow-results/. Returns records sorted newest first. */
@@ -280,9 +303,9 @@ export async function loadFlowHistory(rootDir: string): Promise<FlowRunRecord[]>
   const resultsRoot = await join(rootDir, RESULTS_DIR);
   const records: FlowRunRecord[] = [];
 
-  let flowDirs: { name: string; isDirectory: boolean }[];
+  let flowDirs: DirEntry[];
   try {
-    flowDirs = await readDir(resultsRoot) as any[];
+    flowDirs = await readDir(resultsRoot);
   } catch {
     return []; // No results directory yet
   }
@@ -291,16 +314,16 @@ export async function loadFlowHistory(rootDir: string): Promise<FlowRunRecord[]>
     if (!flowDir.isDirectory) continue;
 
     const flowDirPath = await join(resultsRoot, flowDir.name);
-    let files: { name: string; isDirectory: boolean }[];
+    let files: DirEntry[];
     try {
-      files = await readDir(flowDirPath) as any[];
+      files = await readDir(flowDirPath);
     } catch {
       continue;
     }
 
     // Sort by name descending (newest first) and limit
     const jsonFiles = files
-      .filter(f => !f.isDirectory && f.name.endsWith('.json'))
+      .filter((f) => !f.isDirectory && f.name.endsWith('.json'))
       .sort((a, b) => b.name.localeCompare(a.name))
       .slice(0, MAX_HISTORY_PER_FLOW);
 

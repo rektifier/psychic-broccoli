@@ -20,75 +20,75 @@ Psychic Broccoli is a **monospace-first developer tool** with a warm, focused ae
 
 ### Primary
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-primary` | `#D4900A` | Buttons, active indicators, focus rings |
-| `--color-primary-hover` | `#E09E18` | Button hover state |
-| `--color-primary-active` | `#C07D08` | Button active/pressed state |
-| `--color-primary-fg` | `#FFFFFF` | Text on primary backgrounds |
-| `--color-primary-subtle` | `rgba(212,144,10,0.06)` | Subtle hover backgrounds |
+| Token                    | Value                   | Usage                                   |
+| ------------------------ | ----------------------- | --------------------------------------- |
+| `--color-primary`        | `#D4900A`               | Buttons, active indicators, focus rings |
+| `--color-primary-hover`  | `#E09E18`               | Button hover state                      |
+| `--color-primary-active` | `#C07D08`               | Button active/pressed state             |
+| `--color-primary-fg`     | `#FFFFFF`               | Text on primary backgrounds             |
+| `--color-primary-subtle` | `rgba(212,144,10,0.06)` | Subtle hover backgrounds                |
 
 ### Neutral Scale
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-bg` | `#F8F8FA` | App background |
-| `--color-bg-sidebar` | `#F0F0F4` | Sidebar, titlebar, tab bar |
+| Token                | Value     | Usage                         |
+| -------------------- | --------- | ----------------------------- |
+| `--color-bg`         | `#F8F8FA` | App background                |
+| `--color-bg-sidebar` | `#F0F0F4` | Sidebar, titlebar, tab bar    |
 | `--color-bg-surface` | `#FFFFFF` | Content areas, modals, inputs |
-| `--color-bg-muted` | `#E4E4EA` | Hover states, close button bg |
-| `--color-bg-subtle` | `#F5F5FA` | Subtle row highlights |
-| `--color-bg-hover` | `#E8E8EC` | List item hover |
+| `--color-bg-muted`   | `#E4E4EA` | Hover states, close button bg |
+| `--color-bg-subtle`  | `#F5F5FA` | Subtle row highlights         |
+| `--color-bg-hover`   | `#E8E8EC` | List item hover               |
 
 ### Text
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-text` | `#333340` | Primary body text |
-| `--color-text-heading` | `#1A1A2E` | Headings, active labels |
-| `--color-text-secondary` | `#555` | Slightly de-emphasized text |
-| `--color-text-muted` | `#777` | Secondary labels |
-| `--color-text-faint` | `#999` | Icons, placeholders, hints |
-| `--color-text-placeholder` | `#BBB` | Input placeholders |
+| Token                      | Value     | Usage                       |
+| -------------------------- | --------- | --------------------------- |
+| `--color-text`             | `#333340` | Primary body text           |
+| `--color-text-heading`     | `#1A1A2E` | Headings, active labels     |
+| `--color-text-secondary`   | `#555`    | Slightly de-emphasized text |
+| `--color-text-muted`       | `#777`    | Secondary labels            |
+| `--color-text-faint`       | `#999`    | Icons, placeholders, hints  |
+| `--color-text-placeholder` | `#BBB`    | Input placeholders          |
 
 ### Borders
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-border` | `#D4D4D8` | Interactive element borders (inputs, buttons) |
-| `--color-border-focus` | `var(--color-primary)` | Focus ring color |
-| `--color-divider` | `#DCDCE2` | Structural dividers, section borders |
+| Token                  | Value                  | Usage                                         |
+| ---------------------- | ---------------------- | --------------------------------------------- |
+| `--color-border`       | `#D4D4D8`              | Interactive element borders (inputs, buttons) |
+| `--color-border-focus` | `var(--color-primary)` | Focus ring color                              |
+| `--color-divider`      | `#DCDCE2`              | Structural dividers, section borders          |
 
 ### Semantic / Status
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-success` | `#3D8B45` | 2xx status, passed assertions, POST method |
-| `--color-error` | `#CC4455` | Failed assertions, errors, DELETE method |
-| `--color-warning` | `#9A7520` | 4xx status, PUT method |
-| `--color-info` | `#2B7FC5` | GET method, informational badges |
-| `--color-accent-flow` | `#8040A8` | Flow editor accent, HEAD method |
+| Token                 | Value     | Usage                                      |
+| --------------------- | --------- | ------------------------------------------ |
+| `--color-success`     | `#3D8B45` | 2xx status, passed assertions, POST method |
+| `--color-error`       | `#CC4455` | Failed assertions, errors, DELETE method   |
+| `--color-warning`     | `#9A7520` | 4xx status, PUT method                     |
+| `--color-info`        | `#2B7FC5` | GET method, informational badges           |
+| `--color-accent-flow` | `#8040A8` | Flow editor accent, HEAD method            |
 
 ### HTTP Method Colors
 
-| Token | Value | Method |
-|-------|-------|--------|
-| `--color-method-get` | `#2B7FC5` | GET |
-| `--color-method-post` | `#3D8B45` | POST |
-| `--color-method-put` | `#9A7520` | PUT |
-| `--color-method-patch` | `#A06828` | PATCH |
-| `--color-method-delete` | `#CC4455` | DELETE |
-| `--color-method-head` | `#8040A8` | HEAD |
+| Token                    | Value     | Method  |
+| ------------------------ | --------- | ------- |
+| `--color-method-get`     | `#2B7FC5` | GET     |
+| `--color-method-post`    | `#3D8B45` | POST    |
+| `--color-method-put`     | `#9A7520` | PUT     |
+| `--color-method-patch`   | `#A06828` | PATCH   |
+| `--color-method-delete`  | `#CC4455` | DELETE  |
+| `--color-method-head`    | `#8040A8` | HEAD    |
 | `--color-method-options` | `#1A8898` | OPTIONS |
-| `--color-method-trace` | `#666677` | TRACE |
+| `--color-method-trace`   | `#666677` | TRACE   |
 | `--color-method-connect` | `#CC4455` | CONNECT |
 
 ### Toast Colors
 
-| Type | Background | Border | Text |
-|------|-----------|--------|------|
-| Error | `#FEF2F2` | `#FECACA` | `#991B1B` |
-| Warning | `#FFFBEB` | `#FDE68A` | `#92400E` |
-| Info | `#EFF6FF` | `#BFDBFE` | `#1E40AF` |
+| Type    | Background | Border    | Text      |
+| ------- | ---------- | --------- | --------- |
+| Error   | `#FEF2F2`  | `#FECACA` | `#991B1B` |
+| Warning | `#FFFBEB`  | `#FDE68A` | `#92400E` |
+| Info    | `#EFF6FF`  | `#BFDBFE` | `#1E40AF` |
 
 ---
 
@@ -102,33 +102,33 @@ font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospac
 
 ### Type Scale
 
-| Token | Size | Role |
-|-------|------|------|
-| `--text-2xs` | 9px | Badge counts, group counts, status indicators |
-| `--text-xs` | 10px | Small labels, inline counts |
-| `--text-sm` | 11px | Code blocks, help text, shortcuts, tree labels |
-| `--text-base` | 12px | Primary UI text, buttons, tab labels, table cells |
-| `--text-md` | 13px | Modal titles, URL input, body editor, base body text |
-| `--text-lg` | 14px | Status badges, empty state text |
-| `--text-xl` | 16px | Request name input, close button icon size |
-| `--text-2xl` | 20px | Loading indicator |
+| Token         | Size | Role                                                 |
+| ------------- | ---- | ---------------------------------------------------- |
+| `--text-2xs`  | 9px  | Badge counts, group counts, status indicators        |
+| `--text-xs`   | 10px | Small labels, inline counts                          |
+| `--text-sm`   | 11px | Code blocks, help text, shortcuts, tree labels       |
+| `--text-base` | 12px | Primary UI text, buttons, tab labels, table cells    |
+| `--text-md`   | 13px | Modal titles, URL input, body editor, base body text |
+| `--text-lg`   | 14px | Status badges, empty state text                      |
+| `--text-xl`   | 16px | Request name input, close button icon size           |
+| `--text-2xl`  | 20px | Loading indicator                                    |
 
 ### Weight Scale
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--weight-regular` | 400 | Body text, descriptions |
-| `--weight-medium` | 500 | Section toggles, interactive labels |
-| `--weight-semibold` | 600 | Buttons, headings, active tabs, badges |
-| `--weight-bold` | 700 | HTTP method labels, send button, status codes |
+| Token               | Value | Usage                                         |
+| ------------------- | ----- | --------------------------------------------- |
+| `--weight-regular`  | 400   | Body text, descriptions                       |
+| `--weight-medium`   | 500   | Section toggles, interactive labels           |
+| `--weight-semibold` | 600   | Buttons, headings, active tabs, badges        |
+| `--weight-bold`     | 700   | HTTP method labels, send button, status codes |
 
 ### Line Height
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--leading-tight` | 1.2 | Compact labels, badges |
-| `--leading-normal` | 1.4 | Standard UI text |
-| `--leading-relaxed` | 1.6 | Body editor, response output |
+| Token               | Value | Usage                        |
+| ------------------- | ----- | ---------------------------- |
+| `--leading-tight`   | 1.2   | Compact labels, badges       |
+| `--leading-normal`  | 1.4   | Standard UI text             |
+| `--leading-relaxed` | 1.6   | Body editor, response output |
 
 ---
 
@@ -137,6 +137,7 @@ font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospac
 ### Buttons
 
 **Primary** (Send, Confirm, Import):
+
 - Background: `--color-primary`, hover: `--color-primary-hover`
 - Text: `--color-primary-fg`, weight: `--weight-bold`
 - Padding: `--space-2.5` vertical, `--space-5` horizontal
@@ -144,17 +145,20 @@ font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospac
 - Letter spacing: 0.3px
 
 **Secondary** (Cancel, Done, Close):
+
 - Background: transparent, border: 1px `--color-border`
 - Text: `--color-text-muted`, hover: `--color-text`
 - Padding: `--space-1.5` vertical, `--space-3.5` horizontal
 - Radius: `--radius-default`
 
 **Ghost** (Subtle actions):
+
 - Background: transparent, no border
 - Text: `--color-text-faint`, hover: `--color-primary`
 - No padding (inherits from context)
 
 **Icon** (Small toolbar actions):
+
 - Size: 24x24px, border: 1px `--color-border`
 - Radius: `--radius-sm` (4px)
 - Color: `--color-text-faint`, hover: `--color-primary`
@@ -218,19 +222,19 @@ font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospac
 
 Base unit: 4px. All spacing values are multiples or common fractions of this base.
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--space-1` | 4px | Tight gaps, badge padding |
-| `--space-1.5` | 6px | Button padding, small gaps |
-| `--space-2` | 8px | Standard gap between items |
-| `--space-2.5` | 10px | Medium container padding |
-| `--space-3` | 12px | Section padding, header padding |
-| `--space-3.5` | 14px | Modal body, text area padding |
-| `--space-4` | 16px | Standard container padding |
-| `--space-5` | 20px | Large spacing |
-| `--space-6` | 24px | Section margins |
-| `--space-7` | 28px | Drop zone padding |
-| `--space-10` | 40px | Empty state spacing |
+| Token         | Value | Usage                           |
+| ------------- | ----- | ------------------------------- |
+| `--space-1`   | 4px   | Tight gaps, badge padding       |
+| `--space-1.5` | 6px   | Button padding, small gaps      |
+| `--space-2`   | 8px   | Standard gap between items      |
+| `--space-2.5` | 10px  | Medium container padding        |
+| `--space-3`   | 12px  | Section padding, header padding |
+| `--space-3.5` | 14px  | Modal body, text area padding   |
+| `--space-4`   | 16px  | Standard container padding      |
+| `--space-5`   | 20px  | Large spacing                   |
+| `--space-6`   | 24px  | Section margins                 |
+| `--space-7`   | 28px  | Drop zone padding               |
+| `--space-10`  | 40px  | Empty state spacing             |
 
 ### Grid and Layout
 
@@ -243,27 +247,27 @@ Base unit: 4px. All spacing values are multiples or common fractions of this bas
 
 ### Border Radius Scale
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--radius-xs` | 3px | Micro badges |
-| `--radius-sm` | 4px | Icon buttons, close buttons |
-| `--radius-md` | 5px | Filter inputs, display mode buttons |
-| `--radius-default` | 6px | Standard buttons, inputs, badges |
-| `--radius-lg` | 8px | Text areas, body output containers |
-| `--radius-xl` | 10px | Modals, root-level buttons |
-| `--radius-full` | 9999px | Pills, dependency bar items |
+| Token              | Value  | Usage                               |
+| ------------------ | ------ | ----------------------------------- |
+| `--radius-xs`      | 3px    | Micro badges                        |
+| `--radius-sm`      | 4px    | Icon buttons, close buttons         |
+| `--radius-md`      | 5px    | Filter inputs, display mode buttons |
+| `--radius-default` | 6px    | Standard buttons, inputs, badges    |
+| `--radius-lg`      | 8px    | Text areas, body output containers  |
+| `--radius-xl`      | 10px   | Modals, root-level buttons          |
+| `--radius-full`    | 9999px | Pills, dependency bar items         |
 
 ---
 
 ## 6. Depth and Elevation
 
-| Level | Name | Treatment | Usage |
-|-------|------|-----------|-------|
-| 0 | Flat | No shadow, no border | Backgrounds, panes |
-| 1 | Whisper | 1px border `--color-divider` | Section separators, table rows |
-| 2 | Raised | `--shadow-toast` | Toasts, autocomplete dropdowns |
-| 3 | Elevated | `--shadow-dropdown` | Context menus, suggestion lists |
-| 4 | Modal | `--shadow-modal` | Dialogs, variable pickers, inspectors |
+| Level | Name     | Treatment                    | Usage                                 |
+| ----- | -------- | ---------------------------- | ------------------------------------- |
+| 0     | Flat     | No shadow, no border         | Backgrounds, panes                    |
+| 1     | Whisper  | 1px border `--color-divider` | Section separators, table rows        |
+| 2     | Raised   | `--shadow-toast`             | Toasts, autocomplete dropdowns        |
+| 3     | Elevated | `--shadow-dropdown`          | Context menus, suggestion lists       |
+| 4     | Modal    | `--shadow-modal`             | Dialogs, variable pickers, inspectors |
 
 Depth is achieved primarily through borders and background contrast, not shadows. Shadows are reserved for floating elements that overlay the main content.
 
@@ -294,13 +298,13 @@ This is a **desktop-only Tauri application**. No mobile breakpoints are needed.
 
 ### Interactive States
 
-| State | Treatment |
-|-------|-----------|
-| Default | Base token colors |
-| Hover | Background shift (`--color-bg-muted` or `--color-bg-hover`), border/text color change |
-| Active | Scale or color intensification (e.g., `--color-primary-active`) |
-| Focus | Border color `--color-border-focus` (amber) |
-| Disabled | Opacity 0.5, pointer-events none |
+| State    | Treatment                                                                             |
+| -------- | ------------------------------------------------------------------------------------- |
+| Default  | Base token colors                                                                     |
+| Hover    | Background shift (`--color-bg-muted` or `--color-bg-hover`), border/text color change |
+| Active   | Scale or color intensification (e.g., `--color-primary-active`)                       |
+| Focus    | Border color `--color-border-focus` (amber)                                           |
+| Disabled | Opacity 0.5, pointer-events none                                                      |
 
 ### Keyboard Support
 
@@ -312,11 +316,11 @@ This is a **desktop-only Tauri application**. No mobile breakpoints are needed.
 
 ### Contrast
 
-| Pair | Ratio | Level |
-|------|-------|-------|
-| `--color-text` (#333340) on `--color-bg` (#F8F8FA) | ~11:1 | AAA |
-| `--color-text-muted` (#777) on `--color-bg` (#F8F8FA) | ~4.9:1 | AA |
-| `--color-primary-fg` (#FFF) on `--color-primary` (#D4900A) | ~3.5:1 | AA Large |
+| Pair                                                       | Ratio  | Level           |
+| ---------------------------------------------------------- | ------ | --------------- |
+| `--color-text` (#333340) on `--color-bg` (#F8F8FA)         | ~11:1  | AAA             |
+| `--color-text-muted` (#777) on `--color-bg` (#F8F8FA)      | ~4.9:1 | AA              |
+| `--color-primary-fg` (#FFF) on `--color-primary` (#D4900A) | ~3.5:1 | AA Large        |
 | `--color-text-faint` (#999) on `--color-bg-surface` (#FFF) | ~3.0:1 | Decorative only |
 
 ### Color Independence

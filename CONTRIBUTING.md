@@ -63,15 +63,16 @@ Optional longer description
 
 Common types:
 
-| Type | When to use |
-|------|-------------|
-| `feat` | A new feature |
-| `fix` | A bug fix |
-| `docs` | Documentation changes |
-| `chore` | Maintenance, dependencies, CI |
+| Type       | When to use                                        |
+| ---------- | -------------------------------------------------- |
+| `feat`     | A new feature                                      |
+| `fix`      | A bug fix                                          |
+| `docs`     | Documentation changes                              |
+| `chore`    | Maintenance, dependencies, CI                      |
 | `refactor` | Code changes that don't fix a bug or add a feature |
 
 Examples:
+
 - `feat: add support for multipart form requests`
 - `fix: resolve variable substitution in chained requests`
 - `docs: update README with environment file examples`

@@ -1,11 +1,12 @@
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
+use std::sync::OnceLock;
 use std::time::Duration;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-use serde::{Deserialize, Serialize};
 use tauri::Manager;
-use futures_util::StreamExt;
 
 mod mcp;
 
@@ -81,20 +82,21 @@ fn is_blocked_ip(ip: &IpAddr) -> bool {
                 return is_blocked_ip(&IpAddr::V4(v4));
             }
             v6.is_unspecified()                       // ::
-            || (v6.segments()[0] == 0xfe80)           // fe80::/10 link-local
+            || (v6.segments()[0] == 0xfe80) // fe80::/10 link-local
         }
     }
 }
 
 const BLOCKED_ADDR_MSG: &str =
     "Requests to this address are blocked (link-local, broadcast, or unspecified)";
+const NO_ADDRS_MSG: &str = "Host resolved to no addresses";
 
 /// Reject a DNS resolution if it is empty or contains any blocked address.
 /// Blocking when *any* resolved IP is blocked prevents an attacker-controlled
 /// DNS record from smuggling a blocked address in among safe ones.
 fn check_resolved_addrs(addrs: &[SocketAddr]) -> Result<(), String> {
     if addrs.is_empty() {
-        return Err("Host resolved to no addresses".to_string());
+        return Err(NO_ADDRS_MSG.to_string());
     }
     for sa in addrs {
         if is_blocked_ip(&sa.ip()) {
@@ -115,50 +117,55 @@ impl reqwest::dns::Resolve for BlocklistDnsResolver {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
-                .await?
-                .collect();
+            let addrs: Vec<SocketAddr> =
+                tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
             check_resolved_addrs(&addrs)?;
             Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
         })
     }
 }
 
-/// Validate that a URL is safe to request: correct scheme and non-private host.
-/// Returns the validated (host, resolved IPs) pair so the caller can pin the
-/// DNS resolution and prevent TOCTOU attacks.
-async fn validate_url(url_str: &str) -> Result<(String, Vec<SocketAddr>), String> {
-    let parsed = url::Url::parse(url_str)
-        .map_err(|_| "Invalid URL format".to_string())?;
+/// Extract the IP address from a URL host when it is an IP literal.
+/// `url::Host` is used instead of parsing `host_str()` because `host_str()`
+/// returns IPv6 literals with their surrounding brackets ("[fe80::1]"),
+/// which `IpAddr::from_str` rejects - the connector strips the brackets and
+/// dials such hosts directly, so a string-based check would miss them.
+fn host_ip(url: &url::Url) -> Option<IpAddr> {
+    match url.host()? {
+        url::Host::Ipv4(v4) => Some(IpAddr::V4(v4)),
+        url::Host::Ipv6(v6) => Some(IpAddr::V6(v6)),
+        url::Host::Domain(_) => None,
+    }
+}
+
+/// Validate that a URL is safe to request: correct scheme, has a host, and
+/// if the host is an IP literal it is not a blocked address. IP literals
+/// must be checked here because the connector dials them directly without
+/// consulting the DNS resolver. Hostname targets are validated at resolution
+/// time by `BlocklistDnsResolver`, which checks every lookup the connector
+/// performs, so the addresses that are checked are exactly the addresses
+/// that are dialed (no TOCTOU window).
+fn validate_url(url_str: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url_str).map_err(|_| "Invalid URL format".to_string())?;
 
     match parsed.scheme() {
         "http" | "https" => {}
         _ => return Err("Only http:// and https:// URLs are allowed".to_string()),
     }
 
-    let host = parsed.host_str()
-        .ok_or_else(|| "URL must contain a host".to_string())?
-        .to_string();
-    let port = parsed.port_or_known_default().unwrap_or(80);
+    if parsed.host().is_none() {
+        return Err("URL must contain a host".to_string());
+    }
 
     // Block a narrow set of never-valid or dangerous direct IP addresses
     // (link-local/cloud metadata, broadcast, unspecified, CGNAT).
-    if let Ok(ip) = host.parse::<IpAddr>() {
+    if let Some(ip) = host_ip(&parsed) {
         if is_blocked_ip(&ip) {
             return Err(BLOCKED_ADDR_MSG.to_string());
         }
-        return Ok((host, vec![SocketAddr::new(ip, port)]));
     }
 
-    // Resolve hostname and check all resulting IPs
-    let addr = format!("{}:{}", host, port);
-    let resolved: Vec<SocketAddr> = tokio::net::lookup_host(&addr).await
-        .map_err(|_| "Failed to resolve host".to_string())?
-        .collect();
-
-    check_resolved_addrs(&resolved)?;
-
-    Ok((host, resolved))
+    Ok(())
 }
 
 /// Custom redirect policy that re-validates each redirect target URL to
@@ -175,36 +182,74 @@ fn ssrf_safe_redirect_policy() -> reqwest::redirect::Policy {
             "http" | "https" => {}
             _ => return attempt.error("Redirect to non-HTTP scheme blocked"),
         }
-        if let Some(host) = url.host_str() {
-            if let Ok(ip) = host.parse::<IpAddr>() {
-                if is_blocked_ip(&ip) {
-                    return attempt.error("Redirect to blocked address");
-                }
+        if let Some(ip) = host_ip(url) {
+            if is_blocked_ip(&ip) {
+                return attempt.error("Redirect to blocked address");
             }
         }
         attempt.follow()
     })
 }
 
-#[tauri::command]
-async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload, String> {
-    let (host, resolved_addrs) = validate_url(&payload.url).await?;
+/// Shared HTTP client, built once and reused for every request so TCP
+/// connections and TLS sessions are pooled across requests. Sharing is safe
+/// because every builder setting (timeout, redirect policy, DNS resolver) is
+/// identical for all requests; anything request-specific (method, URL,
+/// headers, body) is set on the RequestBuilder.
+///
+/// SSRF enforcement does not need per-request DNS pinning: every hostname
+/// lookup the connector performs (initial request, each redirect hop, and
+/// any reconnect) goes through `BlocklistDnsResolver`, and the addresses it
+/// validates are exactly the addresses the connector then dials, so a DNS
+/// answer cannot swap to a blocked address between check and use. IP-literal
+/// hosts skip DNS entirely and are checked synchronously in `validate_url`
+/// (initial URL) and the redirect policy (redirect targets); literals cannot
+/// rebind, so there is no TOCTOU window for them either.
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
-    // Pin the DNS resolution we already validated to prevent TOCTOU attacks
-    // where a second lookup could return a different (private) IP. Hosts not
-    // pinned here (i.e. redirect targets) resolve through BlocklistDnsResolver,
-    // which enforces the same blocklist on every resolved address.
-    let mut builder = reqwest::Client::builder()
+fn http_client() -> Result<&'static reqwest::Client, String> {
+    if let Some(client) = HTTP_CLIENT.get() {
+        return Ok(client);
+    }
+    let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .redirect(ssrf_safe_redirect_policy())
-        .dns_resolver(BlocklistDnsResolver);
-
-    builder = builder.resolve_to_addrs(&host, &resolved_addrs);
-
-    let client = builder.build()
+        .dns_resolver(BlocklistDnsResolver)
+        .build()
         .map_err(|_| "Failed to initialize HTTP client".to_string())?;
+    // A concurrent first call may have won the race; get_or_init returns the
+    // stored client either way and the extra one is dropped.
+    Ok(HTTP_CLIENT.get_or_init(|| client))
+}
 
-    let method = payload.method.parse::<reqwest::Method>()
+/// Surface a `BlocklistDnsResolver` rejection from a send error. The
+/// resolver's error is wrapped in reqwest/hyper connect errors, so walk the
+/// source chain looking for our known messages; without this, a blocked
+/// hostname would show only a generic "Connection failed" message.
+fn resolver_block_message(e: &reqwest::Error) -> Option<String> {
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(err) = source {
+        let msg = err.to_string();
+        if msg.contains(BLOCKED_ADDR_MSG) {
+            return Some(BLOCKED_ADDR_MSG.to_string());
+        }
+        if msg.contains(NO_ADDRS_MSG) {
+            return Some(NO_ADDRS_MSG.to_string());
+        }
+        source = err.source();
+    }
+    None
+}
+
+#[tauri::command]
+async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload, String> {
+    validate_url(&payload.url)?;
+
+    let client = http_client()?;
+
+    let method = payload
+        .method
+        .parse::<reqwest::Method>()
         .map_err(|e| format!("Invalid method: {}", e))?;
 
     let mut req = client.request(method, &payload.url);
@@ -218,7 +263,9 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
     }
 
     let res = req.send().await.map_err(|e| {
-        if e.is_timeout() {
+        if let Some(msg) = resolver_block_message(&e) {
+            msg
+        } else if e.is_timeout() {
             format!("Request timed out after {} seconds", REQUEST_TIMEOUT_SECS)
         } else if e.is_connect() {
             "Connection failed - check that the server is reachable".to_string()
@@ -236,7 +283,8 @@ async fn http_request(payload: HttpRequestPayload) -> Result<HttpResponsePayload
 
     // Stream the response body with a size limit to prevent OOM from
     // malicious or unexpectedly large responses.
-    let capacity = res.content_length()
+    let capacity = res
+        .content_length()
         .map(|len| len.min(MAX_RESPONSE_BYTES as u64) as usize)
         .unwrap_or(0);
     let mut body_bytes = Vec::with_capacity(capacity);
@@ -280,18 +328,20 @@ mod keyvault_cmd {
     }
 
     fn validate_vault_url(url_str: &str) -> Result<(), String> {
-        let parsed = url::Url::parse(url_str)
-            .map_err(|e| format!("Invalid vault URL: {}", e))?;
+        let parsed = url::Url::parse(url_str).map_err(|e| format!("Invalid vault URL: {}", e))?;
         if parsed.scheme() != "https" {
             return Err("Vault URL must use https://".to_string());
         }
         match parsed.host_str() {
             Some(host) => {
                 let lower = host.to_lowercase();
-                let prefix = lower.strip_suffix(".vault.azure.net")
+                let prefix = lower
+                    .strip_suffix(".vault.azure.net")
                     .ok_or_else(|| "Vault URL host must end with .vault.azure.net".to_string())?;
                 if prefix.is_empty()
-                    || !prefix.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                    || !prefix
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-')
                     || prefix.starts_with('-')
                     || prefix.ends_with('-')
                 {
@@ -308,13 +358,17 @@ mod keyvault_cmd {
             return Err("Secret name must be 1-127 characters".to_string());
         }
         if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-            return Err("Secret name may only contain alphanumeric characters and hyphens".to_string());
+            return Err(
+                "Secret name may only contain alphanumeric characters and hyphens".to_string(),
+            );
         }
         Ok(())
     }
 
     #[tauri::command]
-    pub async fn fetch_keyvault_secret(payload: KeyVaultPayload) -> Result<KeyVaultResponse, String> {
+    pub async fn fetch_keyvault_secret(
+        payload: KeyVaultPayload,
+    ) -> Result<KeyVaultResponse, String> {
         validate_vault_url(&payload.vault_url)?;
         validate_secret_name(&payload.secret_name)?;
 
@@ -336,20 +390,39 @@ mod keyvault_cmd {
             client.get_secret(&payload.secret_name, None),
         )
         .await
-        .map_err(|_| format!(
-            "Key Vault request timed out after {} seconds", REQUEST_TIMEOUT_SECS
-        ))?
+        .map_err(|_| {
+            format!(
+                "Key Vault request timed out after {} seconds",
+                REQUEST_TIMEOUT_SECS
+            )
+        })?
         .map_err(|e| format!("Failed to fetch secret '{}': {}", payload.secret_name, e))?;
 
         let secret = response
             .into_model()
             .map_err(|e| format!("Failed to parse secret '{}': {}", payload.secret_name, e))?;
 
-        let value = secret.value.ok_or_else(|| {
-            format!("Secret '{}' exists but has no value", payload.secret_name)
-        })?;
+        let value = secret
+            .value
+            .ok_or_else(|| format!("Secret '{}' exists but has no value", payload.secret_name))?;
 
         Ok(KeyVaultResponse { value })
+    }
+}
+
+/// Stub used when the `keyvault` feature is disabled, so the invoke handler
+/// list in `run()` can be defined once for both feature configurations.
+#[cfg(not(feature = "keyvault"))]
+mod keyvault_cmd {
+    #[tauri::command]
+    pub async fn fetch_keyvault_secret(
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let _ = payload;
+        Err(
+            "Key Vault support is not enabled in this build (built without the `keyvault` feature)"
+                .to_string(),
+        )
     }
 }
 
@@ -375,7 +448,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 fn should_update(source: &Path, target: &Path) -> bool {
     let bundled = source.join(".version");
     let existing = target.join(".version");
-    match (std::fs::read_to_string(bundled), std::fs::read_to_string(existing)) {
+    match (
+        std::fs::read_to_string(bundled),
+        std::fs::read_to_string(existing),
+    ) {
         (Ok(src_ver), Ok(dst_ver)) => src_ver.trim() != dst_ver.trim(),
         _ => true,
     }
@@ -397,10 +473,12 @@ async fn extract_getting_started(app_handle: tauri::AppHandle) -> Result<String,
             std::env::var("HOME")
                 .map(std::path::PathBuf::from)
                 .map(|h| h.join("Documents"))
-                .map_err(|e| tauri::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    e.to_string(),
-                )))
+                .map_err(|e| {
+                    tauri::Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        e.to_string(),
+                    ))
+                })
         })
         .map_err(|e| format!("Failed to resolve document dir: {}", e))?;
     let target = documents.join("Psychic Broccoli").join("getting-started");
@@ -415,21 +493,16 @@ async fn extract_getting_started(app_handle: tauri::AppHandle) -> Result<String,
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_opener::init())
         .manage(mcp::McpServerState::default())
         .setup(|app| {
             mcp::init(app.handle());
             Ok(())
-        });
-
-    #[cfg(feature = "keyvault")]
-    {
-        builder = builder.invoke_handler(tauri::generate_handler![
+        })
+        .invoke_handler(tauri::generate_handler![
             http_request,
             extract_getting_started,
             keyvault_cmd::fetch_keyvault_secret,
@@ -437,22 +510,7 @@ pub fn run() {
             mcp::mcp_is_running,
             mcp::mcp_set_enabled,
             mcp::mcp_set_port
-        ]);
-    }
-
-    #[cfg(not(feature = "keyvault"))]
-    {
-        builder = builder.invoke_handler(tauri::generate_handler![
-            http_request,
-            extract_getting_started,
-            mcp::mcp_get_settings,
-            mcp::mcp_is_running,
-            mcp::mcp_set_enabled,
-            mcp::mcp_set_port
-        ]);
-    }
-
-    builder
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -516,40 +574,73 @@ mod tests {
         assert!(!is_blocked_ip(&ip("::ffff:127.0.0.1")));
     }
 
-    #[tokio::test]
-    async fn validate_url_allows_localhost_literal() {
-        let res = validate_url("http://127.0.0.1:8080/health").await;
+    #[test]
+    fn validate_url_allows_localhost_literal() {
+        let res = validate_url("http://127.0.0.1:8080/health");
         assert!(res.is_ok(), "expected Ok, got {:?}", res);
     }
 
-    #[tokio::test]
-    async fn validate_url_allows_ipv6_loopback_literal() {
-        let res = validate_url("http://[::1]:8080/").await;
+    #[test]
+    fn validate_url_allows_ipv6_loopback_literal() {
+        let res = validate_url("http://[::1]:8080/");
         assert!(res.is_ok(), "expected Ok, got {:?}", res);
     }
 
-    #[tokio::test]
-    async fn validate_url_allows_rfc1918_literal() {
-        let res = validate_url("http://192.168.1.10/").await;
+    #[test]
+    fn validate_url_allows_rfc1918_literal() {
+        let res = validate_url("http://192.168.1.10/");
         assert!(res.is_ok(), "expected Ok, got {:?}", res);
     }
 
-    #[tokio::test]
-    async fn validate_url_blocks_cloud_metadata() {
-        let res = validate_url("http://169.254.169.254/latest/meta-data/").await;
+    #[test]
+    fn validate_url_blocks_cloud_metadata() {
+        let res = validate_url("http://169.254.169.254/latest/meta-data/");
         assert!(res.is_err(), "expected Err, got {:?}", res);
     }
 
-    #[tokio::test]
-    async fn validate_url_blocks_unspecified() {
-        let res = validate_url("http://0.0.0.0/").await;
+    #[test]
+    fn validate_url_blocks_unspecified() {
+        let res = validate_url("http://0.0.0.0/");
         assert!(res.is_err(), "expected Err, got {:?}", res);
     }
 
-    #[tokio::test]
-    async fn validate_url_rejects_non_http_scheme() {
-        let res = validate_url("ftp://example.com/").await;
+    #[test]
+    fn validate_url_blocks_ipv6_link_local_literal() {
+        // host_str() would return "[fe80::1]" (with brackets), which does not
+        // parse as an IpAddr; host() must be used to catch bracketed literals.
+        let res = validate_url("http://[fe80::1]/");
+        assert!(res.is_err(), "expected Err, got {:?}", res);
+    }
+
+    #[test]
+    fn validate_url_defers_hostname_checks_to_resolver() {
+        // Hostnames pass URL validation; they are checked when the connector
+        // resolves them through BlocklistDnsResolver.
+        let res = validate_url("http://any-hostname.example/");
+        assert!(res.is_ok(), "expected Ok, got {:?}", res);
+    }
+
+    #[test]
+    fn validate_url_rejects_non_http_scheme() {
+        let res = validate_url("ftp://example.com/");
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn host_ip_parses_bracketed_ipv6_literal() {
+        let url = url::Url::parse("http://[fe80::1]:8080/").unwrap();
+        assert_eq!(host_ip(&url), Some(ip("fe80::1")));
+        let url = url::Url::parse("http://169.254.169.254/").unwrap();
+        assert_eq!(host_ip(&url), Some(ip("169.254.169.254")));
+        let url = url::Url::parse("http://example.com/").unwrap();
+        assert_eq!(host_ip(&url), None);
+    }
+
+    #[tokio::test]
+    async fn http_client_is_shared_across_calls() {
+        let a = http_client().expect("client should build");
+        let b = http_client().expect("client should build");
+        assert!(std::ptr::eq(a, b), "expected the same client instance");
     }
 
     fn sa(s: &str) -> SocketAddr {

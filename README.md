@@ -5,13 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 
-
-
-
-A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Svelte**, **TypeScript**, and **Rust**. Psychic Broccoli reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client — giving you a fast, native alternative to browser-based API tools.
+A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Svelte**, **TypeScript**, and **Rust**. Psychic Broccoli reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client - giving you a fast, native alternative to browser-based API tools.
 
 > **No CORS. No Electron. No bloat.** HTTP requests are dispatched from Rust via `reqwest`, so you never hit browser sandbox restrictions.
-
 
 ![File tree and request editor](https://github.com/user-attachments/assets/7301b8f1-671d-4b16-8400-d9db9fc69ff6)
 ![Test Flow and Steps](https://github.com/user-attachments/assets/6e47472e-8be9-4c70-9b26-6aac6cf92916)
@@ -41,29 +37,34 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 ## Features
 
 **Workspace & Files**
+
 - Open a folder and automatically discover all `.http` / `.rest` files.
-- Full `.http` spec support — comments, separators, variables, body, and all nine HTTP methods.
+- Full `.http` spec support - comments, separators, variables, body, and all nine HTTP methods.
 
 **Environments & Variables**
+
 - `http-client.env.json` with `$shared` defaults, per-environment overrides, and `.user` file support.
 - Inline environment editor for adding, renaming, and deleting environments and variables.
 - Variable substitution with file-level, environment, and chained references.
 - Dynamic variables: `$randomInt`, `$datetime`, `$timestamp`, `$localDatetime`.
 
 **Request Workflow**
-- Request chaining — name a request with `@name` and reference its response in subsequent requests.
+
+- Request chaining - name a request with `@name` and reference its response in subsequent requests.
 - Variable picker modal for inserting environment, dynamic, or response-data variables.
 - Resolved URL preview showing the fully substituted URL before sending.
 - Header autocomplete for common HTTP headers.
 
 **Test Flows**
+
 - Chain multiple requests into sequential test pipelines with pass/fail reporting.
-- Per-step overrides for URL, headers, body, and directives — without modifying source files.
+- Per-step overrides for URL, headers, body, and directives - without modifying source files.
 - Variable chaining between steps using named request responses.
 - Drag-and-drop step reordering with keyboard accessibility.
 - Run history with auto-pruning and broken reference detection.
 
 **Interface**
+
 - Resizable panes with a draggable divider between the request editor and response viewer.
 - Toggle between request names and URL paths in the sidebar.
 - Sort requests alphabetically by URL for quick navigation in large files.
@@ -76,12 +77,12 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 
 Grab the latest installer from [**GitHub Releases**](https://github.com/rektifier/psychic-broccoli/releases).
 
-| Platform             | Format              |
-| -------------------- | ------------------- |
-| Windows              | `.msi` / `.exe`     |
-| macOS (Apple Silicon) | `.dmg`             |
-| macOS (Intel)        | `.dmg`              |
-| Linux                | `.deb` / `.AppImage` |
+| Platform              | Format               |
+| --------------------- | -------------------- |
+| Windows               | `.msi` / `.exe`      |
+| macOS (Apple Silicon) | `.dmg`               |
+| macOS (Intel)         | `.dmg`               |
+| Linux                 | `.deb` / `.AppImage` |
 
 ---
 
@@ -192,13 +193,13 @@ User-specific overrides that should be added to `.gitignore`:
 
 ### Resolution Priority
 
-| Priority | Source |
-| :------: | ------ |
-| 1        | File-level `@variable` in the `.http` file |
-| 2        | `.user` file — environment-specific |
-| 3        | `env` file — environment-specific |
-| 4        | `.user` file — `$shared` |
-| 5        | `env` file — `$shared` |
+| Priority | Source                                     |
+| :------: | ------------------------------------------ |
+|    1     | File-level `@variable` in the `.http` file |
+|    2     | `.user` file - environment-specific        |
+|    3     | `env` file - environment-specific          |
+|    4     | `.user` file - `$shared`                   |
+|    5     | `env` file - `$shared`                     |
 
 ---
 
@@ -224,12 +225,12 @@ Authorization: Bearer {{login.response.body.$.token}}
 
 ### Reference Syntax
 
-| Pattern | Description |
-| ------- | ----------- |
-| `{{name.response.body.*}}` | Entire response body |
-| `{{name.response.body.$.token}}` | JSON path |
+| Pattern                               | Description                |
+| ------------------------------------- | -------------------------- |
+| `{{name.response.body.*}}`            | Entire response body       |
+| `{{name.response.body.$.token}}`      | JSON path                  |
 | `{{name.response.body.$.data[0].id}}` | JSON path with array index |
-| `{{name.response.headers.Location}}` | Response header value |
+| `{{name.response.headers.Location}}`  | Response header value      |
 
 ---
 
@@ -243,14 +244,14 @@ X-Tomorrow: {{$datetime iso8601 1 d}}
 X-Local: {{$localDatetime iso8601}}
 ```
 
-| Variable | Description |
-| -------- | ----------- |
-| `$randomInt [min max]` | Random integer (default 0–1000) |
-| `$timestamp [offset]` | Unix epoch seconds (UTC) |
-| `$datetime format [offset]` | UTC datetime string |
-| `$localDatetime format [offset]` | Local timezone datetime |
-| `$processEnv NAME` | OS environment variable *(placeholder)* |
-| `$dotenv NAME` | `.env` file variable *(placeholder)* |
+| Variable                         | Description                             |
+| -------------------------------- | --------------------------------------- |
+| `$randomInt [min max]`           | Random integer (default 0–1000)         |
+| `$timestamp [offset]`            | Unix epoch seconds (UTC)                |
+| `$datetime format [offset]`      | UTC datetime string                     |
+| `$localDatetime format [offset]` | Local timezone datetime                 |
+| `$processEnv NAME`               | OS environment variable _(placeholder)_ |
+| `$dotenv NAME`                   | `.env` file variable _(placeholder)_    |
 
 Offset units: `ms`, `s`, `m`, `h`, `d`, `w`, `M`, `y`.
 
@@ -296,7 +297,7 @@ GET {{BaseUrl}}/protected
 Authorization: Bearer {{login.response.body.$.token}}
 ```
 
-Each flow run maintains isolated variable state — no cross-flow contamination.
+Each flow run maintains isolated variable state - no cross-flow contamination.
 
 ### Per-Step Overrides
 
@@ -306,8 +307,8 @@ Override a step's URL, headers, body, or directives directly in the flow editor 
 
 Each step has a **continue on failure** toggle:
 
-- **Stop** (default) — abort the flow and mark remaining steps as skipped.
-- **Continue** — log the failure and proceed to the next step.
+- **Stop** (default) - abort the flow and mark remaining steps as skipped.
+- **Continue** - log the failure and proceed to the next step.
 
 A step fails when the HTTP status is ≥ 400 or any `@pb.assert` directive fails.
 
@@ -327,11 +328,11 @@ Psychic Broccoli includes a built-in scripting system using `# @pb.*` comment di
 
 ### Directive types
 
-| Directive | Description |
-| --------- | ----------- |
-| `# @pb.assert(expr, "label")` | Assert a condition; result is pass/fail with the given label |
-| `# @pb.set("key", expr)` | Store a value as a file-level variable for subsequent requests |
-| `# @pb.global("key", expr)` | Store a value as a global variable (persists across files) |
+| Directive                     | Description                                                    |
+| ----------------------------- | -------------------------------------------------------------- |
+| `# @pb.assert(expr, "label")` | Assert a condition; result is pass/fail with the given label   |
+| `# @pb.set("key", expr)`      | Store a value as a file-level variable for subsequent requests |
+| `# @pb.global("key", expr)`   | Store a value as a global variable (persists across files)     |
 
 ### Expression syntax
 
@@ -423,12 +424,12 @@ pnpm tauri dev
 
 ### Useful commands
 
-| Command | Description |
-| ------- | ----------- |
-| `pnpm dev` | Vite dev server only (no Tauri window) |
-| `pnpm build` | Production frontend build |
-| `pnpm check` | TypeScript / Svelte type checking |
-| `pnpm tauri build` | Full production desktop build |
+| Command            | Description                            |
+| ------------------ | -------------------------------------- |
+| `pnpm dev`         | Vite dev server only (no Tauri window) |
+| `pnpm build`       | Production frontend build              |
+| `pnpm check`       | TypeScript / Svelte type checking      |
+| `pnpm tauri build` | Full production desktop build          |
 
 ---
 

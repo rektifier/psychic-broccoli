@@ -1,9 +1,7 @@
 {
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": [
-    "main"
-  ],
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "dialog:default",
@@ -796,7 +794,6 @@
         }
       ]
     },
-    "http:default",
     "window-state:default"
   ]
 }

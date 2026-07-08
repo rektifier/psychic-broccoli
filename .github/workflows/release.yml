@@ -84,7 +84,10 @@ jobs:
           # src-tauri/Cargo.toml
           perl -i -pe "s/^(version\s*=\s*)\"[^\"]*\"/\$1\"$VERSION\"/" src-tauri/Cargo.toml
 
-          # getting-started version marker
+          # getting-started version marker: getting-started/.version is tracked
+          # in git with a placeholder value and stamped with the release version
+          # here at build time, so the bundled tutorial can report which release
+          # it shipped with. Do not hand-edit the tracked file.
           echo "$VERSION" > getting-started/.version
 
       - name: Install pnpm

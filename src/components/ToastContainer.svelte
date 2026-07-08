@@ -7,7 +7,7 @@
     {#each $toasts as toast (toast.id)}
       <div class="toast toast-{toast.type}" role="alert">
         <span class="toast-message">{toast.message}</span>
-        <button class="toast-dismiss" on:click={() => dismissToast(toast.id)}>x</button>
+        <button class="toast-dismiss" onclick={() => dismissToast(toast.id)}>x</button>
       </div>
     {/each}
   </div>
@@ -75,7 +75,13 @@
   }
 
   @keyframes slide-in {
-    from { transform: translateX(20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+    from {
+      transform: translateX(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
   }
 </style>

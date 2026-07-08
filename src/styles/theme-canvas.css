@@ -4,22 +4,22 @@
    Overrides semantic tokens from tokens.css.
    ============================================================ */
 
-[data-theme="canvas"] {
+[data-theme='canvas'] {
   /* Primary */
   --color-primary: #0075de;
   --color-primary-hover: #0066c3;
   --color-primary-active: #005bab;
-  --color-primary-fg: #FFFFFF;
+  --color-primary-fg: #ffffff;
   --color-primary-subtle: rgba(0, 117, 222, 0.06);
 
   /* Backgrounds */
-  --color-bg: #FFFFFF;
+  --color-bg: #ffffff;
   --color-bg-sidebar: #f6f5f4;
-  --color-bg-surface: #FFFFFF;
+  --color-bg-surface: #ffffff;
   --color-bg-muted: #f1f0ef;
   --color-bg-subtle: #f9f9f8;
   --color-bg-hover: #eeeded;
-  --color-bg-input: #FFFFFF;
+  --color-bg-input: #ffffff;
 
   /* Text */
   --color-text: rgba(0, 0, 0, 0.95);
@@ -77,26 +77,18 @@
 
   /* Shadows - multi-layer subtle (Notion-style stacks) */
   --shadow-sm:
-    rgba(0, 0, 0, 0.04) 0px 4px 18px,
-    rgba(0, 0, 0, 0.027) 0px 2.025px 7.85px,
-    rgba(0, 0, 0, 0.02) 0px 0.8px 2.93px,
-    rgba(0, 0, 0, 0.01) 0px 0.175px 1.04px;
+    rgba(0, 0, 0, 0.04) 0px 4px 18px, rgba(0, 0, 0, 0.027) 0px 2.025px 7.85px,
+    rgba(0, 0, 0, 0.02) 0px 0.8px 2.93px, rgba(0, 0, 0, 0.01) 0px 0.175px 1.04px;
   --shadow-toast:
-    rgba(0, 0, 0, 0.04) 0px 4px 18px,
-    rgba(0, 0, 0, 0.027) 0px 2.025px 7.85px,
-    rgba(0, 0, 0, 0.02) 0px 0.8px 2.93px,
-    rgba(0, 0, 0, 0.01) 0px 0.175px 1.04px;
+    rgba(0, 0, 0, 0.04) 0px 4px 18px, rgba(0, 0, 0, 0.027) 0px 2.025px 7.85px,
+    rgba(0, 0, 0, 0.02) 0px 0.8px 2.93px, rgba(0, 0, 0, 0.01) 0px 0.175px 1.04px;
   --shadow-dropdown:
-    rgba(0, 0, 0, 0.01) 0px 1px 3px,
-    rgba(0, 0, 0, 0.02) 0px 3px 7px,
-    rgba(0, 0, 0, 0.02) 0px 7px 15px,
-    rgba(0, 0, 0, 0.04) 0px 14px 28px,
+    rgba(0, 0, 0, 0.01) 0px 1px 3px, rgba(0, 0, 0, 0.02) 0px 3px 7px,
+    rgba(0, 0, 0, 0.02) 0px 7px 15px, rgba(0, 0, 0, 0.04) 0px 14px 28px,
     rgba(0, 0, 0, 0.05) 0px 23px 52px;
   --shadow-modal:
-    rgba(0, 0, 0, 0.01) 0px 1px 3px,
-    rgba(0, 0, 0, 0.02) 0px 3px 7px,
-    rgba(0, 0, 0, 0.02) 0px 7px 15px,
-    rgba(0, 0, 0, 0.04) 0px 14px 28px,
+    rgba(0, 0, 0, 0.01) 0px 1px 3px, rgba(0, 0, 0, 0.02) 0px 3px 7px,
+    rgba(0, 0, 0, 0.02) 0px 7px 15px, rgba(0, 0, 0, 0.04) 0px 14px 28px,
     rgba(0, 0, 0, 0.05) 0px 23px 52px;
 
   /* Toast */
