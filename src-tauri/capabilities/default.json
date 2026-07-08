@@ -794,7 +794,6 @@
         }
       ]
     },
-    "http:default",
     "window-state:default"
   ]
 }
