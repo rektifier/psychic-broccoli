@@ -77,7 +77,6 @@
   import {
     serializeHttpFile,
     substituteAll,
-    parseEnvironmentFile,
     ensureSharedEnvironment,
     buildWorkspaceTree,
     createFileNode,
@@ -97,15 +96,8 @@
     KeyVaultState,
   } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
-  import type { DiscoveredFile, DiscoveredFolder } from './lib/parser';
-  import {
-    scanForFlowFiles,
-    loadFlowHistory,
-    saveFlowRunRecord,
-    clearFlowRunHistory,
-    FLOWS_DIR,
-    migrateFlowsDirectory,
-  } from './lib/flowIO';
+  import { saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
+  import { openFolderByPath, scanForHttpFiles, safeJoinPath } from './lib/workspaceIO';
   import { generateFolderName } from './lib/folderCreate';
   import { runFlow } from './lib/flowRunner';
   import { executeHttpRequest } from './lib/requestExec';
@@ -114,7 +106,7 @@
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile, readDir, rename } from '@tauri-apps/plugin-fs';
+  import { readTextFile, writeTextFile, rename } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
   import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
@@ -443,65 +435,25 @@
   })();
 
   // ─── Open Folder (scan for .http files) ───
+  // Scanning and opening live in src/lib/workspaceIO.ts; App.svelte supplies
+  // the Key Vault hooks because the per-environment KV cache is UI state here.
 
-  async function openFolderByPath(rootPath: string) {
-    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
-    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
-    const rootName = await basename(rootPath);
-
-    workspace.set({ rootPath, rootName, tree });
-    selectedLocation.set(null);
-    currentResponse.set(null);
-    namedResults.set({});
-    tabs.set([]);
-    currentSentRequest.set(null);
-
-    // Reset environment state before loading new env files
-    envFile.set(null);
-    userEnvFile.set(null);
-    kvCache = {};
-    activeEnvironment.set(null);
-
-    // Auto-discover env files from workspace root
-    await tryLoadEnvFiles(rootPath);
-
-    // Migrate legacy flows/ to .flows/ if needed
-    try {
-      const migrated = await migrateFlowsDirectory(rootPath);
-      if (migrated) addToast("Workspace updated: renamed 'flows' to '.flows'", 'info');
-    } catch {
-      /* best effort */
-    }
-
-    // Discover test flows and load run history
-    try {
-      const discoveredFlows = await scanForFlowFiles(rootPath, rootPath);
-      const flowMap: Record<string, import('./lib/types').FlowDefinition> = {};
-      for (const df of discoveredFlows) {
-        flowMap[df.relativePath] = df.flow;
-      }
-      flows.set(flowMap);
-    } catch {
-      /* no flows yet */
-    }
-
-    try {
-      const history = await loadFlowHistory(rootPath);
-      flowRunHistory.set(history);
-    } catch {
-      /* no history yet */
-    }
-
-    // Reset flow tabs
-    flowTabs.set([]);
-    activeFlowTabPath.set(null);
+  function openWorkspaceFolder(rootPath: string) {
+    return openFolderByPath(rootPath, {
+      resetCache: () => {
+        kvCache = {};
+      },
+      refresh: () => {
+        refreshKeyVaultSecrets();
+      },
+    });
   }
 
   async function openFolder() {
     try {
       const rootPath = await open({ directory: true, title: 'Select workspace folder' });
       if (!rootPath) return;
-      await openFolderByPath(rootPath as string);
+      await openWorkspaceFolder(rootPath as string);
     } catch (e) {
       addToast(`Failed to open folder: ${errorMessage(e)}`, 'error');
     }
@@ -568,7 +520,7 @@
   /** Open a favorited folder, surfacing an error toast if it can no longer be read. */
   async function openFavorite(path: string) {
     try {
-      await openFolderByPath(path);
+      await openWorkspaceFolder(path);
     } catch (e) {
       addToast(`Could not open favorite "${path}": ${errorMessage(e)}`, 'error');
     }
@@ -577,115 +529,13 @@
   async function openGettingStarted() {
     try {
       const path = await invoke<string>('extract_getting_started');
-      await openFolderByPath(path);
+      await openWorkspaceFolder(path);
     } catch (e) {
       addToast(`Failed to open getting-started folder: ${errorMessage(e)}`, 'error');
     }
   }
 
-  // ── Recursively scan a directory for .http/.rest files ──
-
-  async function scanDir(
-    dir: string,
-    rootDir: string,
-    emptyFolderSink: DiscoveredFolder[],
-  ): Promise<DiscoveredFile[]> {
-    const entries = await readDir(dir);
-    const results: DiscoveredFile[] = [];
-    let hasHttpDescendant = false;
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      const fullPath = await join(dir, entry.name);
-      if (entry.isDirectory) {
-        const subFiles = await scanDir(fullPath, rootDir, emptyFolderSink);
-        results.push(...subFiles);
-        if (subFiles.length > 0) hasHttpDescendant = true;
-      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
-        const content = await readTextFile(fullPath);
-        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
-        results.push({ absolutePath: fullPath, relativePath, content });
-        hasHttpDescendant = true;
-      }
-    }
-
-    if (!hasHttpDescendant) {
-      const relDir = dir.substring(rootDir.length + 1).replaceAll('\\', '/');
-      emptyFolderSink.push({ relativePath: relDir });
-    }
-
-    return results;
-  }
-
-  async function scanForHttpFiles(
-    rootDir: string,
-  ): Promise<{ files: DiscoveredFile[]; emptyFolders: DiscoveredFolder[] }> {
-    const emptyFolders: DiscoveredFolder[] = [];
-    const entries = await readDir(rootDir);
-    const files: DiscoveredFile[] = [];
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      const fullPath = await join(rootDir, entry.name);
-      if (entry.isDirectory) {
-        const subFiles = await scanDir(fullPath, rootDir, emptyFolders);
-        files.push(...subFiles);
-      } else if (entry.name.endsWith('.http') || entry.name.endsWith('.rest')) {
-        const content = await readTextFile(fullPath);
-        const relativePath = fullPath.substring(rootDir.length + 1).replaceAll('\\', '/');
-        files.push({ absolutePath: fullPath, relativePath, content });
-      }
-    }
-
-    return { files, emptyFolders };
-  }
-
-  // ── Auto-discover env files from workspace root ──
-
-  async function tryLoadEnvFiles(rootDir: string) {
-    try {
-      const envPath = await join(rootDir, 'http-client.env.json');
-      const content = await readTextFile(envPath);
-      const parsed = parseEnvironmentFile(content);
-      if (parsed) {
-        envFile.set(parsed);
-        const names = Object.keys(parsed).filter((k) => k !== '$shared');
-        if (names.length > 0 && !$activeEnvironment) activeEnvironment.set(names[0]);
-      }
-    } catch {
-      /* file doesn't exist */
-    }
-
-    try {
-      const userPath = await join(rootDir, 'http-client.env.json.user');
-      const content = await readTextFile(userPath);
-      const parsed = parseEnvironmentFile(content);
-      if (parsed) userEnvFile.set(parsed);
-    } catch {
-      /* file doesn't exist */
-    }
-
-    refreshKeyVaultSecrets();
-  }
-
   // ─── Import Collections ───
-
-  /** Validate and join a relative path onto a root, preventing directory traversal. */
-  async function safeJoinPath(rootPath: string, relativePath: string): Promise<string> {
-    for (const seg of relativePath.split('/')) {
-      if (
-        !seg ||
-        seg === '..' ||
-        seg === '.' ||
-        seg.includes('\0') ||
-        seg.includes('\\') ||
-        seg.includes('/')
-      ) {
-        throw new Error(`Invalid path segment: "${seg}"`);
-      }
-    }
-    return join(rootPath, relativePath);
-  }
 
   async function writeImportedFiles(result: ImportResult): Promise<number> {
     const rootPath = $workspace.rootPath!;
