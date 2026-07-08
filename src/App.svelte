@@ -68,28 +68,15 @@
     favorites,
   } from './lib/stores';
   import { extractKeyVaultConfig, fetchKeyVaultSecrets, kvCacheKey } from './lib/keyvault';
-  import {
-    serializeHttpFile,
-    substituteAll,
-    ensureSharedEnvironment,
-    buildWorkspaceTree,
-  } from './lib/parser';
+  import { serializeHttpFile, substituteAll } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
   import { getAllFileNodes, findFile } from './lib/tree';
   import { errorMessage } from './lib/errors';
-  import { importPostmanCollection } from './lib/postman';
-  import { importInsomniaExport } from './lib/insomnia';
-  import { importOpenApiSpec } from './lib/openapi';
-  import type {
-    HttpRequest,
-    RequestLocation,
-    EnvironmentFile,
-    ImportResult,
-    KeyVaultState,
-  } from './lib/types';
+  import type { HttpRequest, RequestLocation, EnvironmentFile, KeyVaultState } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
   import { saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
-  import { openFolderByPath, scanForHttpFiles, safeJoinPath } from './lib/workspaceIO';
+  import { openFolderByPath, safeJoinPath } from './lib/workspaceIO';
+  import { importCollectionContent, applyImportedVariables } from './lib/importIO';
   import {
     createFile,
     createFolder,
@@ -107,9 +94,9 @@
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+  import { writeTextFile } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
-  import { join, basename, dirname } from '@tauri-apps/api/path';
+  import { join } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
 
@@ -149,44 +136,7 @@
 
   async function handleImportEnvConfirm(e: CustomEvent<{ target: string }>) {
     showImportEnvModal = false;
-    const envName = e.detail.target;
-    const rootPath = $workspace.rootPath;
-    if (!rootPath || pendingImportVars.length === 0) return;
-
-    try {
-      // Load or create the env file
-      const currentEnv: EnvironmentFile = ensureSharedEnvironment($envFile ?? {});
-
-      // Ensure the target environment exists
-      if (!currentEnv[envName]) {
-        currentEnv[envName] = {};
-      }
-
-      // Add discovered variables with their values (only if not already present)
-      for (const v of pendingImportVars) {
-        if (!(v.key in currentEnv[envName])) {
-          (currentEnv[envName] as Record<string, string>)[v.key] = v.value;
-        }
-      }
-
-      // Write the env file
-      const envPath = await join(rootPath, 'http-client.env.json');
-      await writeTextFile(envPath, JSON.stringify(currentEnv, null, 2));
-
-      // Update stores
-      envFile.set(currentEnv);
-      if (!$activeEnvironment) {
-        activeEnvironment.set(envName);
-      }
-
-      addToast(
-        `Added ${pendingImportVars.length} variable${pendingImportVars.length !== 1 ? 's' : ''} to "${envName}" environment.`,
-        'info',
-      );
-    } catch (e) {
-      addToast(`Failed to update environment file: ${errorMessage(e)}`, 'error');
-    }
-
+    await applyImportedVariables(e.detail.target, pendingImportVars);
     pendingImportVars = [];
   }
 
@@ -537,131 +487,24 @@
   }
 
   // ─── Import Collections ───
+  // Writing and env-merge live in src/lib/importIO.ts; App.svelte only owns
+  // the modal state and shows the env-target modal for returned variables.
 
-  async function writeImportedFiles(result: ImportResult): Promise<number> {
-    const rootPath = $workspace.rootPath!;
-    const { mkdir } = await import('@tauri-apps/plugin-fs');
-    let written = 0;
-    for (const file of result.files) {
-      const outPath = await safeJoinPath(rootPath, file.relativePath);
-      const parentDir = await dirname(outPath);
-      try {
-        await mkdir(parentDir, { recursive: true });
-      } catch {
-        /* already exists */
-      }
-      await writeTextFile(outPath, file.content);
-      written++;
-    }
-
-    // Refresh workspace tree
-    const { files: discovered, emptyFolders } = await scanForHttpFiles(rootPath);
-    const tree = buildWorkspaceTree(discovered, emptyFolders, rootPath);
-    const rootName = await basename(rootPath);
-    workspace.set({ rootPath, rootName, tree });
-
-    return written;
-  }
-
-  /** After writing files, write the env file directly if multi-env, or show the modal. */
-  async function showEnvModalIfNeeded(result: ImportResult) {
-    if (result.environmentFile && Object.keys(result.environmentFile).length > 0) {
-      await writeImportedEnvironmentFile(result.environmentFile);
-      return;
-    }
-    if (result.discoveredVariables.length > 0) {
-      pendingImportVars = result.discoveredVariables;
+  function showEnvModalIfNeeded(vars: import('./lib/types').Variable[]) {
+    if (vars.length > 0) {
+      pendingImportVars = vars;
       showImportEnvModal = true;
-    }
-  }
-
-  async function writeImportedEnvironmentFile(imported: EnvironmentFile) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-    try {
-      const current: EnvironmentFile = ensureSharedEnvironment(
-        $envFile ? structuredClone($envFile) : {},
-      );
-
-      for (const [envName, vars] of Object.entries(imported)) {
-        if (!current[envName]) current[envName] = {};
-        for (const [key, value] of Object.entries(vars)) {
-          if (typeof value === 'string' && !(key in current[envName])) {
-            current[envName][key] = value;
-          }
-        }
-      }
-
-      const envPath = await join(rootPath, 'http-client.env.json');
-      await writeTextFile(envPath, JSON.stringify(current, null, 2));
-      envFile.set(current);
-
-      const envNames = Object.keys(imported).filter((n) => n !== '$shared');
-      if (!$activeEnvironment && envNames.length > 0) {
-        activeEnvironment.set(envNames[0]);
-      }
-
-      addToast(
-        `Imported ${envNames.length} environment${envNames.length !== 1 ? 's' : ''}: ${envNames.join(', ')}`,
-        'info',
-      );
-    } catch (e) {
-      addToast(`Failed to write environment file: ${errorMessage(e)}`, 'error');
     }
   }
 
   async function handleImportFile(e: CustomEvent<{ content: string; format: ImportFormat }>) {
     showImportCollectionModal = false;
-    const { content, format } = e.detail;
-
-    if (!$workspace.rootPath) {
-      addToast('Open a workspace folder first before importing.', 'error');
-      return;
-    }
-
-    try {
-      let result: ImportResult;
-      switch (format) {
-        case 'postman':
-          result = importPostmanCollection(content);
-          break;
-        case 'insomnia':
-          result = importInsomniaExport(content);
-          break;
-        case 'openapi':
-          result = importOpenApiSpec(content);
-          break;
-      }
-      const written = await writeImportedFiles(result);
-      addToast(
-        `Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`,
-        'info',
-      );
-      await showEnvModalIfNeeded(result);
-    } catch (e) {
-      addToast(`Import failed: ${errorMessage(e)}`, 'error');
-    }
+    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, e.detail.format));
   }
 
   async function handleImportUrl(e: CustomEvent<{ content: string }>) {
     showImportCollectionModal = false;
-
-    if (!$workspace.rootPath) {
-      addToast('Open a workspace folder first before importing.', 'error');
-      return;
-    }
-
-    try {
-      const result = importOpenApiSpec(e.detail.content);
-      const written = await writeImportedFiles(result);
-      addToast(
-        `Imported ${written} file${written !== 1 ? 's' : ''} from "${result.collectionName}".`,
-        'info',
-      );
-      await showEnvModalIfNeeded(result);
-    } catch (e) {
-      addToast(`Import failed: ${errorMessage(e)}`, 'error');
-    }
+    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, 'openapi'));
   }
 
   // ─── Save File ───
