@@ -9,7 +9,7 @@
     VarSource,
   } from '../lib/types';
   import { buildVarList, type EnvVar } from '../lib/envVarModel';
-  import HelpTip from './HelpTip.svelte';
+  import KeyVaultPanel from './KeyVaultPanel.svelte';
 
   interface Props {
     envFile: EnvironmentFile;
@@ -226,35 +226,12 @@
 
   let kvConfig = $derived(envFile?.[editingEnv]?.$keyvault ?? null);
   let kvConnected = $derived(
-    kvConfig && kvState.status === 'loaded' && kvState.cacheKey?.startsWith(editingEnv + '::'),
+    Boolean(
+      kvConfig && kvState.status === 'loaded' && kvState.cacheKey?.startsWith(editingEnv + '::'),
+    ),
   );
 
-  // KV form state: recomputed from the stored config when switching environments
-  // or when the config changes externally (writable $derived: user input and the
-  // cancel button assign to these directly until the next recompute).
-  let kvVaultUrl = $derived.by(() => {
-    void editingEnv; // reset the field when switching environment tabs
-    return kvConfig?.vaultUrl ?? '';
-  });
-  let kvSecretName = $derived.by(() => {
-    void editingEnv; // reset the field when switching environment tabs
-    return kvConfig?.secretName ?? '';
-  });
-  let showKvSetup = $derived.by(() => {
-    void editingEnv; // collapse the panel when switching environment tabs
-    return kvConfig !== null;
-  });
-
-  function saveKvConfig() {
-    const url = kvVaultUrl.trim();
-    const name = kvSecretName.trim();
-    if (!url || !name) return;
-
-    const config: KeyVaultConfig = {
-      provider: 'AzureKeyVault',
-      vaultUrl: url,
-      secretName: name,
-    };
+  function saveKvConfig(config: KeyVaultConfig) {
     const updated = { ...envFile };
     updated[editingEnv] = { ...updated[editingEnv], $keyvault: config };
     onUpdate?.(updated);
@@ -266,9 +243,6 @@
     const env = { ...updated[editingEnv] };
     delete env.$keyvault;
     updated[editingEnv] = env;
-    showKvSetup = false;
-    kvVaultUrl = '';
-    kvSecretName = '';
     onUpdate?.(updated);
   }
 </script>
@@ -519,66 +493,14 @@
   </div>
 
   <!-- Key Vault config -->
-  {#if showKvSetup || kvConfig}
-    <div class="kv-setup">
-      <div class="kv-setup-header">
-        <span class="kv-setup-title">Azure Key Vault</span>
-        <HelpTip
-          label="Azure Key Vault"
-          text="Requires Azure CLI (az login) or Azure Developer CLI (azd auth login). The vault URL should point to an existing Key Vault instance that your account has Secret read permissions on."
-        />
-        {#if kvConnected}
-          <span class="kv-connected-badge">connected</span>
-        {:else if kvConfig}
-          <span class="kv-configured-badge">configured</span>
-        {/if}
-      </div>
-      <div class="kv-setup-fields">
-        <label class="kv-field">
-          <span class="kv-field-label">Vault URL</span>
-          <input
-            class="kv-field-input"
-            bind:value={kvVaultUrl}
-            placeholder="https://my-vault.vault.azure.net"
-            spellcheck="false"
-          />
-        </label>
-        <label class="kv-field">
-          <span class="kv-field-label">Secret name</span>
-          <input
-            class="kv-field-input"
-            bind:value={kvSecretName}
-            placeholder="my-secret"
-            spellcheck="false"
-          />
-        </label>
-      </div>
-      <div class="kv-setup-actions">
-        <button
-          class="btn-kv-connect"
-          onclick={saveKvConfig}
-          disabled={!kvVaultUrl.trim() || !kvSecretName.trim()}
-          >{kvConfig ? 'Save & refresh' : 'Connect'}</button
-        >
-        {#if kvConfig}
-          <button class="btn-kv-disconnect" onclick={removeKvConfig}>Disconnect</button>
-        {:else}
-          <button
-            class="btn-kv-cancel"
-            onclick={() => {
-              showKvSetup = false;
-              kvVaultUrl = '';
-              kvSecretName = '';
-            }}>Cancel</button
-          >
-        {/if}
-      </div>
-    </div>
-  {:else}
-    <button class="btn-kv-add" onclick={() => (showKvSetup = true)}>
-      + Connect to Azure Key Vault
-    </button>
-  {/if}
+  {#key editingEnv}
+    <KeyVaultPanel
+      {kvConfig}
+      connected={kvConnected}
+      onSave={saveKvConfig}
+      onRemove={removeKvConfig}
+    />
+  {/key}
 
   <!-- Footer -->
   <div class="editor-footer">
@@ -795,146 +717,6 @@
   }
   .btn-confirm-add-env:hover {
     background: color-mix(in srgb, var(--color-success) 10%, transparent);
-  }
-
-  /* Key Vault setup */
-  .btn-kv-add {
-    padding: var(--space-2) var(--space-3\.5);
-    border: 1px dashed var(--color-border);
-    border-radius: var(--radius-default);
-    background: transparent;
-    color: var(--color-text-faint);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    cursor: pointer;
-    transition: all var(--duration-normal);
-    align-self: flex-start;
-    margin-bottom: var(--space-4);
-  }
-  .btn-kv-add:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-  }
-
-  .kv-setup {
-    border: 1px solid var(--color-divider);
-    border-radius: var(--radius-default);
-    padding: var(--space-3) var(--space-4);
-    margin-bottom: var(--space-4);
-    background: color-mix(in srgb, var(--color-primary) 3%, transparent);
-  }
-  .kv-setup-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-3);
-  }
-  .kv-setup-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
-    color: var(--color-text-secondary);
-    letter-spacing: 0.3px;
-  }
-  .kv-connected-badge {
-    font-size: var(--text-xs);
-    color: var(--color-success);
-    background: color-mix(in srgb, var(--color-success) 8%, transparent);
-    padding: 1px var(--space-2);
-    border-radius: var(--radius-xl);
-  }
-  .kv-configured-badge {
-    font-size: var(--text-xs);
-    color: var(--color-text-faint);
-    background: color-mix(in srgb, var(--color-text-faint) 8%, transparent);
-    padding: 1px var(--space-2);
-    border-radius: var(--radius-xl);
-  }
-  .kv-setup-fields {
-    display: flex;
-    gap: var(--space-3);
-    margin-bottom: var(--space-3);
-  }
-  .kv-field {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .kv-field-label {
-    font-size: var(--text-xs);
-    color: var(--color-text-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .kv-field-input {
-    padding: var(--space-2) var(--space-2\.5);
-    border: 1px solid var(--color-divider);
-    border-radius: var(--radius-default);
-    background: var(--color-bg-surface);
-    color: var(--color-text);
-    font-family: inherit;
-    font-size: var(--text-md);
-    outline: none;
-    transition: border-color var(--duration-normal);
-  }
-  .kv-field-input:focus {
-    border-color: var(--color-primary);
-  }
-  .kv-field-input::placeholder {
-    color: var(--color-text-placeholder);
-  }
-  .kv-setup-actions {
-    display: flex;
-    gap: var(--space-2);
-  }
-  .btn-kv-connect {
-    padding: 5px var(--space-3);
-    border: 1px solid var(--color-primary);
-    border-radius: var(--radius-default);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-    color: var(--color-primary);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-    transition: all var(--duration-normal);
-  }
-  .btn-kv-connect:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-  }
-  .btn-kv-connect:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .btn-kv-disconnect {
-    padding: 5px var(--space-3);
-    border: 1px solid var(--color-divider);
-    border-radius: var(--radius-default);
-    background: transparent;
-    color: var(--color-error);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    cursor: pointer;
-    transition: all var(--duration-normal);
-  }
-  .btn-kv-disconnect:hover {
-    border-color: var(--color-error);
-    background: color-mix(in srgb, var(--color-error) 8%, transparent);
-  }
-  .btn-kv-cancel {
-    padding: 5px var(--space-3);
-    border: 1px solid var(--color-divider);
-    border-radius: var(--radius-default);
-    background: transparent;
-    color: var(--color-text-faint);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    cursor: pointer;
-    transition: all var(--duration-normal);
-  }
-  .btn-kv-cancel:hover {
-    border-color: var(--color-text-faint);
-    color: var(--color-text);
   }
 
   /* Column headers */
