@@ -27,7 +27,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs;
 use std::net::Ipv4Addr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -51,6 +51,10 @@ use tokio::sync::{mpsc, oneshot, watch};
 const DEFAULT_PORT: u16 = 3742;
 const SERVER_NAME: &str = "psychic-broccoli";
 const PROTOCOL_VERSION: &str = "2024-11-05";
+/// Protocol versions this server can speak. `initialize` echoes the client's
+/// version only when it is in this list; otherwise it answers with
+/// [`PROTOCOL_VERSION`], per MCP version negotiation.
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[PROTOCOL_VERSION];
 const SETTINGS_FILE: &str = "mcp.json";
 
 /// Event the backend emits to ask the frontend for live app state.
@@ -99,28 +103,111 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join(SETTINGS_FILE))
 }
 
-fn read_settings(app: &AppHandle) -> McpSettings {
-    match settings_path(app).and_then(|p| fs::read_to_string(p).map_err(|e| e.to_string())) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => McpSettings::default(),
+/// Result of reading the settings file, distinguishing a missing file (fresh
+/// install, safe to initialise) from an unreadable or corrupt one (user
+/// configuration that must not be overwritten).
+enum SettingsRead {
+    Loaded(McpSettings),
+    Missing,
+    Corrupt(String),
+}
+
+fn read_settings_at(path: &Path) -> SettingsRead {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return SettingsRead::Missing,
+        Err(e) => return SettingsRead::Corrupt(e.to_string()),
+    };
+    match serde_json::from_str(&content) {
+        Ok(settings) => SettingsRead::Loaded(settings),
+        Err(e) => SettingsRead::Corrupt(e.to_string()),
     }
 }
 
 fn write_settings(app: &AppHandle, settings: &McpSettings) -> Result<(), String> {
     let path = settings_path(app)?;
+    write_settings_at(&path, settings)
+}
+
+fn write_settings_at(path: &Path, settings: &McpSettings) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| format!("Failed to write MCP settings: {}", e))
+    // The file holds the bearer token, so restrict it to the owner on Unix.
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|e| format!("Failed to write MCP settings: {}", e))?;
+        file.write_all(json.as_bytes())
+            .map_err(|e| format!("Failed to write MCP settings: {}", e))?;
+        // mode() only applies on create; tighten files created by older builds.
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        fs::write(path, json).map_err(|e| format!("Failed to write MCP settings: {}", e))
+    }
 }
 
 /// Load settings, generating and persisting a token on first run.
+///
+/// A corrupt settings file is left untouched on disk: the server runs with
+/// in-memory defaults and the parse error is returned so the caller can
+/// surface it. Overwriting would silently rotate the token and reset the
+/// port, breaking every configured MCP client.
+fn load_or_init_settings_at(path: &Path) -> (McpSettings, Option<String>) {
+    match read_settings_at(path) {
+        SettingsRead::Loaded(mut settings) => {
+            if settings.token.is_empty() {
+                settings.token = generate_token();
+                let _ = write_settings_at(path, &settings);
+            }
+            (settings, None)
+        }
+        SettingsRead::Missing => {
+            let mut settings = McpSettings::default();
+            settings.token = generate_token();
+            let _ = write_settings_at(path, &settings);
+            (settings, None)
+        }
+        SettingsRead::Corrupt(err) => {
+            let mut settings = McpSettings::default();
+            settings.token = generate_token();
+            (settings, Some(err))
+        }
+    }
+}
+
 fn load_or_init_settings(app: &AppHandle) -> McpSettings {
-    let mut settings = read_settings(app);
-    if settings.token.is_empty() {
-        settings.token = generate_token();
-        let _ = write_settings(app, &settings);
+    let path = match settings_path(app) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("MCP settings unavailable: {}", e);
+            let mut settings = McpSettings::default();
+            settings.token = generate_token();
+            return settings;
+        }
+    };
+    let (settings, error) = load_or_init_settings_at(&path);
+    if let Some(err) = error {
+        eprintln!(
+            "MCP settings file is corrupt; running with defaults without overwriting it: {}",
+            err
+        );
+        let _ = app.emit(
+            "mcp:settings-error",
+            format!("MCP settings file could not be parsed: {}", err),
+        );
     }
     settings
 }
@@ -296,7 +383,36 @@ fn tokens_match(a: &str, b: &str) -> bool {
     diff == 0
 }
 
+/// True when an Origin header value refers to this machine's loopback
+/// (`http://localhost`, `http://127.0.0.1`, or `http://[::1]`, each with an
+/// optional port).
+fn is_localhost_origin(origin: &str) -> bool {
+    let Some(host_port) = origin.strip_prefix("http://") else {
+        return false;
+    };
+    let host = match host_port.rsplit_once(':') {
+        Some((h, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => h,
+        _ => host_port,
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]")
+}
+
 async fn auth_middleware(State(state): State<McpState>, req: Request, next: Next) -> Response {
+    // The MCP spec requires localhost HTTP servers to validate Origin against
+    // DNS rebinding: a page in the victim's browser can otherwise reach
+    // 127.0.0.1 directly. Non-browser MCP clients send no Origin header, which
+    // is accepted; anything non-localhost is rejected regardless of token.
+    let origin_ok = match req.headers().get(header::ORIGIN) {
+        None => true,
+        Some(value) => match value.to_str() {
+            Ok(origin) => origin.is_empty() || is_localhost_origin(origin),
+            Err(_) => false,
+        },
+    };
+    if !origin_ok {
+        return (StatusCode::FORBIDDEN, "Forbidden origin").into_response();
+    }
+
     let provided = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -425,12 +541,16 @@ fn handle_rpc_message(
 
     let result: Result<serde_json::Value, (i64, String)> = match method {
         "initialize" => {
-            let proto = msg
+            let requested = msg
                 .get("params")
                 .and_then(|p| p.get("protocolVersion"))
-                .and_then(|v| v.as_str())
-                .unwrap_or(PROTOCOL_VERSION)
-                .to_string();
+                .and_then(|v| v.as_str());
+            // Echo the client's version only if we support it; otherwise
+            // answer with ours and let the client decide whether to proceed.
+            let proto = match requested {
+                Some(v) if SUPPORTED_PROTOCOL_VERSIONS.contains(&v) => v,
+                _ => PROTOCOL_VERSION,
+            };
             Ok(json!({
                 "protocolVersion": proto,
                 "capabilities": { "tools": { "listChanged": false } },
@@ -889,6 +1009,75 @@ mod tests {
     }
 
     #[test]
+    fn initialize_replaces_unsupported_protocol_version() {
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": "9999-12-31" }
+        });
+        let resp = handle_rpc_message(&msg, SERVER_NAME, "0.4.2").unwrap();
+        assert_eq!(resp["result"]["protocolVersion"], json!(PROTOCOL_VERSION));
+    }
+
+    #[test]
+    fn is_localhost_origin_accepts_only_loopback_http() {
+        assert!(is_localhost_origin("http://localhost"));
+        assert!(is_localhost_origin("http://localhost:3742"));
+        assert!(is_localhost_origin("http://127.0.0.1"));
+        assert!(is_localhost_origin("http://127.0.0.1:8080"));
+        assert!(is_localhost_origin("http://[::1]"));
+        assert!(is_localhost_origin("http://[::1]:3742"));
+
+        assert!(!is_localhost_origin("https://evil.example"));
+        assert!(!is_localhost_origin("http://evil.example"));
+        assert!(!is_localhost_origin("http://localhost.evil.example"));
+        assert!(!is_localhost_origin("http://127.0.0.1.evil.example"));
+        assert!(!is_localhost_origin("https://localhost"));
+        assert!(!is_localhost_origin("null"));
+        assert!(!is_localhost_origin(""));
+    }
+
+    #[test]
+    fn corrupt_settings_file_is_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("pb-mcp-test-{}", generate_token()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(SETTINGS_FILE);
+        fs::write(&path, "{ not valid json").unwrap();
+
+        let (settings, error) = load_or_init_settings_at(&path);
+
+        assert!(error.is_some(), "corrupt file must be reported");
+        assert!(!settings.enabled);
+        assert_eq!(settings.port, DEFAULT_PORT);
+        assert!(!settings.token.is_empty());
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "{ not valid json",
+            "corrupt file must stay untouched on disk"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_settings_file_is_initialized_and_persisted() {
+        let dir = std::env::temp_dir().join(format!("pb-mcp-test-{}", generate_token()));
+        let path = dir.join(SETTINGS_FILE);
+
+        let (settings, error) = load_or_init_settings_at(&path);
+
+        assert!(error.is_none());
+        assert!(!settings.token.is_empty());
+        let persisted: McpSettings =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(persisted.token, settings.token);
+        assert_eq!(persisted.port, DEFAULT_PORT);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn tools_list_advertises_list_requests() {
         let msg = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
         let resp = handle_rpc_message(&msg, SERVER_NAME, "v").unwrap();
@@ -1196,5 +1385,48 @@ mod tests {
         // An unauthenticated POST is also rejected.
         let resp = client.post(&post_url).json(&init).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// DNS rebinding defense: a valid token does not help a cross-origin
+    /// browser page, while requests with a localhost or absent Origin pass.
+    #[tokio::test]
+    async fn server_rejects_cross_origin_requests() {
+        let token = "test-secret-token";
+        let (state, _shutdown_tx) = test_state(token);
+        let router = build_router(state);
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+
+        let client = reqwest::Client::new();
+        let sse_url = format!("http://{}/sse", addr);
+
+        // Valid token but foreign Origin -> rejected.
+        let resp = client
+            .get(&sse_url)
+            .bearer_auth(token)
+            .header(header::ORIGIN, "https://evil.example")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Valid token and localhost Origin -> accepted.
+        let resp = client
+            .get(&sse_url)
+            .bearer_auth(token)
+            .header(header::ORIGIN, "http://localhost:1420")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // No Origin (non-browser MCP client) and valid token -> accepted.
+        let resp = client.get(&sse_url).bearer_auth(token).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }
