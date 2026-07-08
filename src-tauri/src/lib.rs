@@ -366,6 +366,22 @@ mod keyvault_cmd {
     }
 }
 
+/// Stub used when the `keyvault` feature is disabled, so the invoke handler
+/// list in `run()` can be defined once for both feature configurations.
+#[cfg(not(feature = "keyvault"))]
+mod keyvault_cmd {
+    #[tauri::command]
+    pub async fn fetch_keyvault_secret(
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let _ = payload;
+        Err(
+            "Key Vault support is not enabled in this build (built without the `keyvault` feature)"
+                .to_string(),
+        )
+    }
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -433,7 +449,7 @@ async fn extract_getting_started(app_handle: tauri::AppHandle) -> Result<String,
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -441,11 +457,8 @@ pub fn run() {
         .setup(|app| {
             mcp::init(app.handle());
             Ok(())
-        });
-
-    #[cfg(feature = "keyvault")]
-    {
-        builder = builder.invoke_handler(tauri::generate_handler![
+        })
+        .invoke_handler(tauri::generate_handler![
             http_request,
             extract_getting_started,
             keyvault_cmd::fetch_keyvault_secret,
@@ -453,22 +466,7 @@ pub fn run() {
             mcp::mcp_is_running,
             mcp::mcp_set_enabled,
             mcp::mcp_set_port
-        ]);
-    }
-
-    #[cfg(not(feature = "keyvault"))]
-    {
-        builder = builder.invoke_handler(tauri::generate_handler![
-            http_request,
-            extract_getting_started,
-            mcp::mcp_get_settings,
-            mcp::mcp_is_running,
-            mcp::mcp_set_enabled,
-            mcp::mcp_set_port
-        ]);
-    }
-
-    builder
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
