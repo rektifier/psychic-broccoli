@@ -736,8 +736,8 @@
   namedResults={$namedResults}
   activeEnv={$activeEnvironment}
   activeFileName={$activeFile?.name?.replace(/\.(http|rest)$/, '') ?? ''}
-  on:close={() => (showVarInspector = false)}
-  on:clearRuntime={() => {
+  onClose={() => (showVarInspector = false)}
+  onClearRuntime={() => {
     pbFileOverrides.set({});
     pbGlobals.set({});
     namedResults.set({});
