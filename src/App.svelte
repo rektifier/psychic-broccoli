@@ -437,14 +437,14 @@
     }
   }
 
-  async function handleImportFile(e: CustomEvent<{ content: string; format: ImportFormat }>) {
+  async function handleImportFile(content: string, format: ImportFormat) {
     showImportCollectionModal = false;
-    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, e.detail.format));
+    showEnvModalIfNeeded(await importCollectionContent(content, format));
   }
 
-  async function handleImportUrl(e: CustomEvent<{ content: string }>) {
+  async function handleImportUrl(content: string) {
     showImportCollectionModal = false;
-    showEnvModalIfNeeded(await importCollectionContent(e.detail.content, 'openapi'));
+    showEnvModalIfNeeded(await importCollectionContent(content, 'openapi'));
   }
 
   // ─── Save File ───
@@ -753,9 +753,9 @@
 />
 <ImportCollectionModal
   visible={showImportCollectionModal}
-  on:importFile={handleImportFile}
-  on:importUrl={handleImportUrl}
-  on:cancel={() => (showImportCollectionModal = false)}
+  onImportFile={handleImportFile}
+  onImportUrl={handleImportUrl}
+  onCancel={() => (showImportCollectionModal = false)}
 />
 <AddFavoriteModal
   visible={showAddFavoriteModal}
