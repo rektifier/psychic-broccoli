@@ -74,7 +74,6 @@
   } from './lib/keyvaultCache';
   import { serializeHttpFile, substituteAll } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
-  import { getAllFileNodes, findFile } from './lib/tree';
   import { errorMessage } from './lib/errors';
   import type { HttpRequest, RequestLocation, EnvironmentFile } from './lib/types';
   import type { BottomTab, ResponseTab } from './lib/stores';
@@ -82,6 +81,7 @@
   import { openFolderByPath } from './lib/workspaceIO';
   import { importCollectionContent, applyImportedVariables } from './lib/importIO';
   import { createFlow, duplicateFlow, saveFlow, deleteFlow } from './lib/flowOps';
+  import { runAllRequests, nameRequest } from './lib/requestOps';
   import {
     createFile,
     createFolder,
@@ -593,81 +593,6 @@
     toggleFolder(e.detail);
   }
 
-  /** Resolve the full dependency chain in topological order, then run each unsent request. */
-  async function handleRunAll(e: CustomEvent<string[]>) {
-    const allFiles = getAllFileNodes($workspace.tree);
-    const depRe = /\{\{(\w+)\.(?:request|response)\./g;
-
-    // Build a lookup: varName -> HttpRequest
-    const requestByName = new Map<string, HttpRequest>();
-    for (const file of allFiles) {
-      for (const req of file.requests) {
-        if (req.varName) requestByName.set(req.varName, req);
-      }
-    }
-
-    // Collect transitive dependencies in execution order (deepest first)
-    const ordered: string[] = [];
-    const visited = new Set<string>();
-
-    function resolve(name: string) {
-      if (visited.has(name)) return;
-      visited.add(name);
-      const req = requestByName.get(name);
-      if (!req) return;
-      // Find this request's own dependencies
-      const text = `${req.url} ${req.headers.map((h) => h.value).join(' ')} ${req.body}`;
-      let match;
-      const re = new RegExp(depRe.source, 'g');
-      while ((match = re.exec(text)) !== null) {
-        resolve(match[1]);
-      }
-      ordered.push(name);
-    }
-
-    for (const name of e.detail) {
-      resolve(name);
-    }
-
-    // Execute in order, skipping already-sent requests
-    for (const name of ordered) {
-      if ($namedResults[name]) continue;
-      const req = requestByName.get(name);
-      if (req) await sendRequest(req);
-    }
-  }
-
-  function handleNameRequest(
-    e: CustomEvent<{ filePath: string; requestIndex: number; varName: string }>,
-  ) {
-    const { filePath, requestIndex, varName } = e.detail;
-    const file = findFile($workspace.tree, filePath);
-    if (!file) return;
-    const req = file.requests[requestIndex];
-    if (!req) return;
-    // Block duplicate names
-    if (varName) {
-      const duplicate = getAllFileNodes($workspace.tree).some((f) =>
-        f.requests.some(
-          (r, ri) => r.varName === varName && !(f.path === filePath && ri === requestIndex),
-        ),
-      );
-      if (duplicate) {
-        addToast(`Name "${varName}" is already in use`);
-        return;
-      }
-    }
-    // Remove old name from namedResults if it changed or was cleared
-    if (req.varName && req.varName !== varName) {
-      namedResults.update((nr) => {
-        const updated = { ...nr };
-        delete updated[req.varName!];
-        return updated;
-      });
-    }
-    updateRequestInTree(filePath, requestIndex, { ...req, varName: varName || null });
-  }
-
   // ─── Flow Handlers ───
 
   function handleOpenFlow(e: CustomEvent<string>) {
@@ -894,7 +819,8 @@
         on:openVarInspector={() => (showVarInspector = true)}
         on:openHelp={() => (showHelp = true)}
         on:openSettings={() => (showSettings = true)}
-        on:nameRequest={handleNameRequest}
+        on:nameRequest={(e) =>
+          nameRequest(e.detail.filePath, e.detail.requestIndex, e.detail.varName)}
         on:openFlow={handleOpenFlow}
         on:createFlow={(e) => createFlow(e.detail)}
         on:duplicateFlow={(e) => duplicateFlow(e.detail)}
@@ -982,7 +908,7 @@
               on:update={handleUpdateRequest}
               on:send={(e) => sendRequest(e.detail)}
               on:save={saveActiveFile}
-              on:runAll={handleRunAll}
+              on:runAll={(e) => runAllRequests(e.detail, sendRequest)}
               on:bottomTabChange={handleBottomTabChange}
             />
           </div>
