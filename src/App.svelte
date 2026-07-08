@@ -308,9 +308,9 @@
     return tab?.responseTab ?? ('body' as ResponseTab);
   })();
 
-  function handleResponseTabChange(e: CustomEvent<ResponseTab>) {
+  function handleResponseTabChange(tab: ResponseTab) {
     if ($selectedLocation) {
-      setTabResponseTab($selectedLocation, e.detail);
+      setTabResponseTab($selectedLocation, tab);
     }
   }
 
@@ -922,7 +922,7 @@
               sentRequest={$currentSentRequest}
               assertionResults={$pbAssertionResults}
               activeTab={activeResponseTab}
-              on:tabChange={handleResponseTabChange}
+              onTabChange={handleResponseTabChange}
             />
           </div>
         {:else}
