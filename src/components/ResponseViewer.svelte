@@ -23,6 +23,9 @@
 
   $: passedCount = assertionResults.filter((t) => t.passed).length;
   $: failedCount = assertionResults.filter((t) => !t.passed).length;
+  // Binary bodies arrive base64-encoded from the backend; show a notice
+  // instead of the (useless) base64 text.
+  $: isBinaryBody = response?.bodyEncoding === 'base64';
 
   function getStatusClass(status: number): string {
     if (status >= 200 && status < 300) return 'status-success';
@@ -128,8 +131,10 @@
     <div class="tabs">
       <button class="tab" class:active={activeTab === 'body'} on:click={() => setTab('body')}>
         Body
-        {#if isJson(response.body)}
+        {#if !isBinaryBody && isJson(response.body)}
           <span class="tab-badge">JSON</span>
+        {:else if isBinaryBody}
+          <span class="tab-badge">Binary</span>
         {/if}
       </button>
       <button class="tab" class:active={activeTab === 'headers'} on:click={() => setTab('headers')}>
@@ -166,9 +171,15 @@
     <!-- Content -->
     <div class="content">
       {#if activeTab === 'body'}
-        <pre class="body-output" class:json={isJson(response.body)}>{formatBody(
-            response.body,
-          )}</pre>
+        {#if isBinaryBody}
+          <div class="binary-note">
+            Binary response body ({formatSize(response.size)}). Text preview is not available.
+          </div>
+        {:else}
+          <pre class="body-output" class:json={isJson(response.body)}>{formatBody(
+              response.body,
+            )}</pre>
+        {/if}
       {:else if activeTab === 'headers'}
         <div class="headers-table">
           {#each Object.entries(response.headers) as [key, value]}
@@ -436,6 +447,16 @@
     color: var(--zinc-300);
     font-size: var(--text-base);
     background: var(--color-bg-surface);
+  }
+
+  .binary-note {
+    padding: var(--space-5);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--text-base);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-lg);
   }
 
   /* Assertion Results */

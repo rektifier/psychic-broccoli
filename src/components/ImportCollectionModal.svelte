@@ -5,6 +5,7 @@
   import { readTextFile } from '@tauri-apps/plugin-fs';
   import { basename } from '@tauri-apps/api/path';
   import { detectImportFormat, formatLabel, type ImportFormat } from '../lib/detect';
+  import type { HttpInvokeResult } from '../lib/requestExec';
 
   export let visible: boolean = false;
 
@@ -36,7 +37,7 @@
     isDragOver = true;
   }
 
-  function handleDragLeave() {
+  function handleDragLeave(_e: DragEvent) {
     dragDepth--;
     if (dragDepth <= 0) {
       dragDepth = 0;
@@ -161,12 +162,7 @@
     urlError = '';
 
     try {
-      const res: {
-        status: number;
-        status_text: string;
-        headers: Record<string, string>;
-        body: string;
-      } = await invoke('http_request', {
+      const res: HttpInvokeResult = await invoke('http_request', {
         payload: {
           method: 'GET',
           url: trimmedUrl,
@@ -177,6 +173,11 @@
 
       if (res.status >= 400) {
         urlError = `Server returned ${res.status} ${res.status_text}`;
+        return;
+      }
+
+      if (res.body_encoding === 'base64') {
+        urlError = 'URL returned binary content, not a text spec';
         return;
       }
 
