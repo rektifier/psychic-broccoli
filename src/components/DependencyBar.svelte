@@ -1,20 +1,22 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { NamedRequestResult } from '../lib/types';
 
-  /** The raw URL + headers + body text to scan for dependencies */
-  export let requestText: string = '';
-  /** Map of named request results that have been sent */
-  export let namedResults: Record<string, NamedRequestResult> = {};
+  interface Props {
+    /** The raw URL + headers + body text to scan for dependencies */
+    requestText?: string;
+    /** Map of named request results that have been sent */
+    namedResults?: Record<string, NamedRequestResult>;
+    onRunAll?: (dependencies: string[]) => void;
+  }
 
-  const dispatch = createEventDispatcher();
+  let { requestText = '', namedResults = {}, onRunAll }: Props = $props();
 
   // Extract all {{name.response...}} references
   const DEP_RE = /\{\{(\w+)\.(?:request|response)\./g;
 
-  $: dependencies = extractDeps(requestText);
+  const dependencies = $derived(extractDeps(requestText));
   // Force re-evaluation of statuses when namedResults changes
-  $: statuses = buildStatuses(dependencies, namedResults);
+  const statuses = $derived(buildStatuses(dependencies, namedResults));
 
   function extractDeps(text: string): string[] {
     const names = new Set<string>();
@@ -41,7 +43,7 @@
   }
 
   function runAll() {
-    dispatch('runAll', dependencies);
+    onRunAll?.(dependencies);
   }
 </script>
 
@@ -49,7 +51,7 @@
   <div class="dep-bar">
     <span class="dep-label">Depends on</span>
     {#each dependencies as dep}
-      <span class="dep-pill" class:sent={statuses[dep]?.sent} class:unsent={!statuses[dep]?.sent}>
+      <span class={['dep-pill', { sent: statuses[dep]?.sent, unsent: !statuses[dep]?.sent }]}>
         <span class="dep-dot"></span>
         <span class="dep-name">{dep}</span>
         {#if statuses[dep]?.sent}
@@ -60,7 +62,7 @@
       </span>
     {/each}
     {#if dependencies.some((d) => !namedResults[d])}
-      <button class="btn-run-all" on:click={runAll}>Run all</button>
+      <button class="btn-run-all" onclick={runAll}>Run all</button>
     {/if}
   </div>
 {/if}

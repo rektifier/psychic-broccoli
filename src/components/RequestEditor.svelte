@@ -431,7 +431,7 @@
   {/if}
 
   <!-- Dependency bar -->
-  <DependencyBar {requestText} {namedResults} on:runAll />
+  <DependencyBar {requestText} {namedResults} onRunAll={(deps) => dispatch('runAll', deps)} />
 
   <!-- Headers (collapsible) -->
   <div class="section">
