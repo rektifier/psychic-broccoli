@@ -25,6 +25,8 @@
     urlFromLabel as getUrl,
   } from '../lib/flowValidation';
   import { applyAliasSync, autoAliasFor } from '../lib/flowAlias';
+  import { DragReorder } from '../lib/dragReorder.svelte';
+  import { reorderBySlot } from '../lib/dragReorder';
   import { baseEnvVars, dotenvVariables } from '../lib/stores';
   import { METHOD_COLORS } from '../lib/theme';
 
@@ -120,101 +122,16 @@
   let nameInputEl: HTMLInputElement | undefined = $state();
   let showPicker = $state(false);
 
-  // Drag-and-drop reordering
-  let draggingIndex = $state(-1);
-  /** Insertion slot: 0 = before first, 1 = after first / before second, etc. */
-  let insertSlot = $state(-1);
-  /** Cached card positions from drag start - prevents layout-feedback flicker */
-  let cachedRects: { top: number; height: number }[] = [];
-  const HYSTERESIS = 8; // px deadzone before switching slots
-  let handleGrabbed = false;
-
-  function onDragStart(e: DragEvent, index: number) {
-    // Only allow drag from the drag handle
-    if (!handleGrabbed) {
-      e.preventDefault();
-      return;
-    }
-    draggingIndex = index;
-    // Snapshot card positions before any visual changes
-    const card = e.currentTarget as HTMLElement;
-    const list = card.closest('.steps-list');
-    if (list) {
-      const cards = list.querySelectorAll('.step-card');
-      cachedRects = Array.from(cards).map((c) => {
-        const r = c.getBoundingClientRect();
-        return { top: r.top, height: r.height };
-      });
-    }
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', String(index));
-    }
-  }
-
-  function onListDragOver(e: DragEvent) {
-    if (draggingIndex === -1 || cachedRects.length === 0) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-
-    // Find which insertion slot the cursor is closest to using cached rects
-    let newSlot = cachedRects.length; // default: after last
-
-    for (let i = 0; i < cachedRects.length; i++) {
-      const midY = cachedRects[i].top + cachedRects[i].height / 2;
-      if (e.clientY < midY) {
-        newSlot = i;
-        break;
-      }
-    }
-
-    // Don't show indicator right above or below the dragged item (no-op drop)
-    if (newSlot === draggingIndex || newSlot === draggingIndex + 1) {
-      insertSlot = -1;
-      return;
-    }
-
-    // Hysteresis: if we already have a slot, require cursor to move past deadzone
-    if (insertSlot !== -1 && newSlot !== insertSlot) {
-      const boundaryIdx = newSlot < cachedRects.length ? newSlot : cachedRects.length - 1;
-      const mid = cachedRects[boundaryIdx].top + cachedRects[boundaryIdx].height / 2;
-      if (Math.abs(e.clientY - mid) < HYSTERESIS) return;
-    }
-
-    insertSlot = newSlot;
-  }
-
-  function onListDrop(e: DragEvent) {
-    e.preventDefault();
-    if (draggingIndex === -1 || insertSlot === -1) {
-      draggingIndex = -1;
-      insertSlot = -1;
-      cachedRects = [];
-      return;
-    }
-
-    const steps = [...flow.steps];
-    const [moved] = steps.splice(draggingIndex, 1);
-    // Adjust target index after removal
-    const target = insertSlot > draggingIndex ? insertSlot - 1 : insertSlot;
-    steps.splice(target, 0, moved);
-    flow = { ...flow, steps: applyAliasSync(steps) };
-    save();
-    draggingIndex = -1;
-    insertSlot = -1;
-    cachedRects = [];
-  }
-
-  function onDragEnd() {
-    draggingIndex = -1;
-    insertSlot = -1;
-    cachedRects = [];
-    handleGrabbed = false;
-  }
-
-  function onListDragLeave(e: DragEvent) {
-    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) insertSlot = -1;
-  }
+  // Drag-and-drop reordering: handle-gated drags with cached rects and a
+  // hysteresis deadzone (see lib/dragReorder.svelte.ts).
+  const drag = new DragReorder({
+    listSelector: '.steps-list',
+    itemSelector: '.step-card',
+    onDrop: (from, slot) => {
+      flow = { ...flow, steps: applyAliasSync(reorderBySlot(flow.steps, from, slot)) };
+      save();
+    },
+  });
 
   function moveStep(from: number, to: number) {
     if (from === to || to < 0 || to >= flow.steps.length) return;
@@ -721,12 +638,12 @@
       <div
         class="steps-list"
         role="list"
-        ondragover={onListDragOver}
-        ondrop={onListDrop}
-        ondragleave={onListDragLeave}
+        ondragover={drag.handleListDragOver}
+        ondrop={drag.handleListDrop}
+        ondragleave={drag.handleListDragLeave}
       >
         {#each flow.steps as step, i (step.id)}
-          {#if insertSlot === i}
+          {#if drag.insertSlot === i}
             <div class="drop-indicator"></div>
           {/if}
           {@const sr = getStepStatus(step.id)}
@@ -754,13 +671,13 @@
                 'step-running': sr?.status === 'running',
                 'step-skipped': sr?.status === 'skipped',
                 'step-broken': broken,
-                dragging: draggingIndex === i,
+                dragging: drag.draggingIndex === i,
               },
             ]}
             draggable="true"
-            ondragstart={(e) => onDragStart(e, i)}
+            ondragstart={(e) => drag.handleDragStart(e, i)}
             ondragover={(e) => e.preventDefault()}
-            ondragend={onDragEnd}
+            ondragend={drag.handleDragEnd}
             role="listitem"
           >
             <div class="step-card-row">
@@ -771,8 +688,8 @@
                 tabindex="0"
                 aria-label="Reorder step {i + 1}, use arrow keys"
                 onkeydown={(e) => onStepKeydown(e, i)}
-                onmousedown={() => (handleGrabbed = true)}
-                onmouseup={() => (handleGrabbed = false)}
+                onmousedown={drag.grabHandle}
+                onmouseup={drag.releaseHandle}
               >
                 <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
                   <circle cx="3" cy="2.5" r="1.2" fill="currentColor" />
@@ -1243,7 +1160,7 @@
             {/if}
           </div>
         {/each}
-        {#if insertSlot === flow.steps.length}
+        {#if drag.insertSlot === flow.steps.length}
           <div class="drop-indicator"></div>
         {/if}
       </div>
