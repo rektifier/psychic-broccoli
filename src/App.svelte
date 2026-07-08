@@ -761,8 +761,8 @@
   visible={showAddFavoriteModal}
   folderPath={pendingFavoritePath}
   defaultName={pendingFavoriteName}
-  on:confirm={(e) => confirmAddFavorite(e.detail.name)}
-  on:cancel={cancelAddFavorite}
+  onConfirm={confirmAddFavorite}
+  onCancel={cancelAddFavorite}
 />
 
 <svelte:window on:dragover|preventDefault={() => {}} on:drop|preventDefault={() => {}} />
