@@ -562,7 +562,7 @@
     pinTab({ filePath: e.detail.filePath, requestIndex: e.detail.requestIndex }, e.detail.label);
   }
 
-  function handleTabActivate(e: CustomEvent<RequestLocation>) {
+  function handleTabActivate(location: RequestLocation) {
     if (showEnvEditor) {
       if ($envFile) saveEnvFile($envFile);
       showEnvEditor = false;
@@ -570,11 +570,11 @@
     // Deactivate any flow tab when switching to a request tab
     activeFlowTabPath.set(null);
     activeFlowPath.set(null);
-    activateTab(e.detail);
+    activateTab(location);
   }
 
-  function handleTabClose(e: CustomEvent<RequestLocation>) {
-    closeTab(e.detail);
+  function handleTabClose(location: RequestLocation) {
+    closeTab(location);
   }
 
   function handleUpdateRequest(e: CustomEvent<HttpRequest>) {
@@ -761,8 +761,8 @@
   visible={showAddFavoriteModal}
   folderPath={pendingFavoritePath}
   defaultName={pendingFavoriteName}
-  on:confirm={(e) => confirmAddFavorite(e.detail.name)}
-  on:cancel={cancelAddFavorite}
+  onConfirm={confirmAddFavorite}
+  onCancel={cancelAddFavorite}
 />
 
 <svelte:window on:dragover|preventDefault={() => {}} on:drop|preventDefault={() => {}} />
@@ -839,12 +839,12 @@
         previewLabel={$activeRequest?.name ?? ''}
         flowTabs={$flowTabs}
         activeFlowPath={$activeFlowTabPath}
-        on:activate={handleTabActivate}
-        on:close={handleTabClose}
-        on:activateFlowTab={(e) => activateFlowTab(e.detail)}
-        on:closeFlowTab={(e) => {
-          delete flowUIState[e.detail];
-          closeFlowTab(e.detail);
+        onActivate={handleTabActivate}
+        onClose={handleTabClose}
+        onActivateFlowTab={(flowPath) => activateFlowTab(flowPath)}
+        onCloseFlowTab={(flowPath) => {
+          delete flowUIState[flowPath];
+          closeFlowTab(flowPath);
         }}
       />
       <div class="main-panels" bind:this={mainPanelsEl} class:dragging>

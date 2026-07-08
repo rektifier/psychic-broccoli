@@ -1,14 +1,28 @@
 <script lang="ts">
-  export let label: string;
-  export let value: string;
-  export let inserted: boolean = false;
-  export let nested: boolean = false;
-  export let maxValueLength: number = 30;
+  interface Props {
+    label: string;
+    value: string;
+    inserted?: boolean;
+    nested?: boolean;
+    maxValueLength?: number;
+    onclick?: (e: MouseEvent) => void;
+  }
 
-  $: truncated = value.length > maxValueLength ? value.slice(0, maxValueLength) + '...' : value;
+  let {
+    label,
+    value,
+    inserted = false,
+    nested = false,
+    maxValueLength = 30,
+    onclick,
+  }: Props = $props();
+
+  let truncated = $derived(
+    value.length > maxValueLength ? value.slice(0, maxValueLength) + '...' : value,
+  );
 </script>
 
-<button class="picker-row" class:row-nested={nested} class:inserted on:click>
+<button class={['picker-row', { 'row-nested': nested, inserted }]} {onclick}>
   <span class="row-key">{label}</span>
   <span class="row-value">{truncated}</span>
   <span class="row-action">{inserted ? 'Inserted' : 'Insert'}</span>

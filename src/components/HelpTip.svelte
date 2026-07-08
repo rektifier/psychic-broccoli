@@ -1,6 +1,10 @@
 <script lang="ts">
-  export let label: string;
-  export let text: string;
+  interface Props {
+    label: string;
+    text: string;
+  }
+
+  let { label, text }: Props = $props();
 
   const id = `helptip-${Math.random().toString(36).slice(2, 8)}`;
   const anchorName = `--ht-${id}`;
