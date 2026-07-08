@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 
-A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Svelte**, **TypeScript**, and **Rust**. Psychic Broccoli reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client — giving you a fast, native alternative to browser-based API tools.
+A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Svelte**, **TypeScript**, and **Rust**. Psychic Broccoli reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client - giving you a fast, native alternative to browser-based API tools.
 
 > **No CORS. No Electron. No bloat.** HTTP requests are dispatched from Rust via `reqwest`, so you never hit browser sandbox restrictions.
 
@@ -39,7 +39,7 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 **Workspace & Files**
 
 - Open a folder and automatically discover all `.http` / `.rest` files.
-- Full `.http` spec support — comments, separators, variables, body, and all nine HTTP methods.
+- Full `.http` spec support - comments, separators, variables, body, and all nine HTTP methods.
 
 **Environments & Variables**
 
@@ -50,7 +50,7 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 
 **Request Workflow**
 
-- Request chaining — name a request with `@name` and reference its response in subsequent requests.
+- Request chaining - name a request with `@name` and reference its response in subsequent requests.
 - Variable picker modal for inserting environment, dynamic, or response-data variables.
 - Resolved URL preview showing the fully substituted URL before sending.
 - Header autocomplete for common HTTP headers.
@@ -58,7 +58,7 @@ A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Sve
 **Test Flows**
 
 - Chain multiple requests into sequential test pipelines with pass/fail reporting.
-- Per-step overrides for URL, headers, body, and directives — without modifying source files.
+- Per-step overrides for URL, headers, body, and directives - without modifying source files.
 - Variable chaining between steps using named request responses.
 - Drag-and-drop step reordering with keyboard accessibility.
 - Run history with auto-pruning and broken reference detection.
@@ -196,10 +196,10 @@ User-specific overrides that should be added to `.gitignore`:
 | Priority | Source                                     |
 | :------: | ------------------------------------------ |
 |    1     | File-level `@variable` in the `.http` file |
-|    2     | `.user` file — environment-specific        |
-|    3     | `env` file — environment-specific          |
-|    4     | `.user` file — `$shared`                   |
-|    5     | `env` file — `$shared`                     |
+|    2     | `.user` file - environment-specific        |
+|    3     | `env` file - environment-specific          |
+|    4     | `.user` file - `$shared`                   |
+|    5     | `env` file - `$shared`                     |
 
 ---
 
@@ -297,7 +297,7 @@ GET {{BaseUrl}}/protected
 Authorization: Bearer {{login.response.body.$.token}}
 ```
 
-Each flow run maintains isolated variable state — no cross-flow contamination.
+Each flow run maintains isolated variable state - no cross-flow contamination.
 
 ### Per-Step Overrides
 
@@ -307,8 +307,8 @@ Override a step's URL, headers, body, or directives directly in the flow editor 
 
 Each step has a **continue on failure** toggle:
 
-- **Stop** (default) — abort the flow and mark remaining steps as skipped.
-- **Continue** — log the failure and proceed to the next step.
+- **Stop** (default) - abort the flow and mark remaining steps as skipped.
+- **Continue** - log the failure and proceed to the next step.
 
 A step fails when the HTTP status is ≥ 400 or any `@pb.assert` directive fails.
 

@@ -1,7 +1,7 @@
 {
   "name": "psychic-broccoli",
   "version": "0.4.2",
-  "description": "",
+  "description": "Desktop HTTP client that reads and writes .http files",
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "scripts": {
@@ -22,8 +22,6 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "~2.7.1",
     "@tauri-apps/plugin-fs": "~2.5.1",
-    "@tauri-apps/plugin-http": "~2.5.9",
-    "@tauri-apps/plugin-opener": "^2",
     "js-yaml": "^5.2.1"
   },
   "devDependencies": {
