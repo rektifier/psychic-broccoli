@@ -1,48 +1,98 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { getVersion } from '@tauri-apps/api/app';
   import TreeNode from './TreeNode.svelte';
-  import type { TreeNode as TNode, RequestLocation, FlowDefinition, Favorite } from '../lib/types';
+  import type { RequestLocation } from '../lib/types';
   import { getAllFileNodes, filterTreeByQuery } from '../lib/tree';
+  import {
+    workspace,
+    favorites,
+    availableEnvironments,
+    activeEnvironment,
+    flows,
+    activeFlowPath,
+    addRequestToFile,
+    deleteRequestFromFile,
+    toggleFolder,
+    openFlowTab,
+  } from '../lib/stores';
+  import {
+    createFile,
+    createFolder,
+    renameFile,
+    renameFolder,
+    duplicateFile,
+    deleteFile,
+    deleteFolder,
+    cancelRename,
+  } from '../lib/fileOps';
+  import { nameRequest } from '../lib/requestOps';
+  import { createFlow, duplicateFlow } from '../lib/flowOps';
 
-  let appVersion = '';
+  interface Props {
+    selected?: RequestLocation | null;
+    editingFilePath?: string | null;
+    editingFolderPath?: string | null;
+    onOpenFolder?: () => void;
+    onOpenGettingStarted?: () => void;
+    onToggleFavorite?: () => void;
+    onOpenFavorite?: (path: string) => void;
+    onRemoveFavorite?: (path: string) => void;
+    onImportCollection?: () => void;
+    onSelect?: (location: RequestLocation) => void;
+    onPinRequest?: (detail: { filePath: string; requestIndex: number; label: string }) => void;
+    onEditEnv?: () => void;
+    onOpenVarInspector?: () => void;
+    onOpenHelp?: () => void;
+    onOpenSettings?: () => void;
+    onDeleteFlow?: (path: string) => void;
+  }
 
-  export let tree: TNode[] = [];
-  export let selected: RequestLocation | null = null;
-  export let rootName: string = 'Workspace';
-  export let hasWorkspace: boolean = false;
+  let {
+    selected = null,
+    editingFilePath = null,
+    editingFolderPath = null,
+    onOpenFolder,
+    onOpenGettingStarted,
+    onToggleFavorite,
+    onOpenFavorite,
+    onRemoveFavorite,
+    onImportCollection,
+    onSelect,
+    onPinRequest,
+    onEditEnv,
+    onOpenVarInspector,
+    onOpenHelp,
+    onOpenSettings,
+    onDeleteFlow,
+  }: Props = $props();
 
-  // Environment props
-  export let environments: string[] = [];
-  export let activeEnv: string | null = null;
+  let appVersion = $state('');
 
-  // File management props
-  export let editingFilePath: string | null = null;
-  export let editingFolderPath: string | null = null;
+  const tree = $derived($workspace.tree);
+  const rootPath = $derived($workspace.rootPath);
+  const hasWorkspace = $derived(!!$workspace.rootPath);
+  /**
+   * Name shown for the open folder: the favorite's custom name when the open
+   * folder is favorited, otherwise the folder basename.
+   */
+  const rootName = $derived(
+    $favorites.find((f) => f.path === $workspace.rootPath)?.name ?? $workspace.rootName,
+  );
 
-  // Flow props
-  export let flows: Record<string, FlowDefinition> = {};
-  export let activeFlowPath: string | null = null;
-
-  // Favorites props
-  export let favorites: Favorite[] = [];
-  export let rootPath: string | null = null;
-
-  const dispatch = createEventDispatcher();
-
-  let displayMode: 'name' | 'url' = 'name';
-  let flowsExpanded = false;
-  let showNewFlow = false;
-  let newFlowName = '';
-  let newFlowInputEl: HTMLInputElement;
-  let confirmDeleteFlow: string | null = null;
-  let sortByUrl = false;
-  let filterText = '';
-  let filterInputEl: HTMLInputElement;
-  let showFavorites = false;
-  let favBtnEl: HTMLButtonElement;
-  let favMenuPos = { top: 0, left: 0 };
-  $: isFavorite = !!rootPath && favorites.some((f) => f.path === rootPath);
+  let displayMode: 'name' | 'url' = $state('name');
+  let flowsExpanded = $state(false);
+  let showNewFlow = $state(false);
+  let newFlowName = $state('');
+  let newFlowInputEl: HTMLInputElement | null = $state(null);
+  let confirmDeleteFlow: string | null = $state(null);
+  let sortByUrl = $state(false);
+  let filterText = $state('');
+  let filterInputEl: HTMLInputElement | null = $state(null);
+  let showFavorites = $state(false);
+  let favBtnEl: HTMLButtonElement | null = $state(null);
+  let favMenuPos = $state({ top: 0, left: 0 });
+  const isFavorite = $derived(!!rootPath && $favorites.some((f) => f.path === rootPath));
 
   function toggleFavorites() {
     showFavorites = !showFavorites;
@@ -58,21 +108,29 @@
     } catch {}
   });
 
-  $: usedNames = getAllFileNodes(tree)
-    .flatMap((f) => f.requests)
-    .map((r) => r.varName)
-    .filter((n): n is string => !!n);
+  const usedNames = $derived(
+    getAllFileNodes(tree)
+      .flatMap((f) => f.requests)
+      .map((r) => r.varName)
+      .filter((n): n is string => !!n),
+  );
 
-  $: displayTree = filterText.trim() ? filterTreeByQuery(tree, filterText.trim()) : tree;
+  const displayTree = $derived(
+    filterText.trim() ? filterTreeByQuery(tree, filterText.trim()) : tree,
+  );
 
-  $: if (showNewFlow && newFlowInputEl) newFlowInputEl.focus();
+  $effect(() => {
+    if (showNewFlow && newFlowInputEl) newFlowInputEl.focus();
+  });
 
-  $: flowEntries = Object.entries(flows).sort(([, a], [, b]) => a.name.localeCompare(b.name));
+  const flowEntries = $derived(
+    Object.entries($flows).sort(([, a], [, b]) => a.name.localeCompare(b.name)),
+  );
 
   function addFlow() {
     const name = newFlowName.trim();
     if (!name) return;
-    dispatch('createFlow', name);
+    createFlow(name);
     newFlowName = '';
     showNewFlow = false;
   }
@@ -81,10 +139,16 @@
     if (e.key === 'Enter') addFlow();
     if (e.key === 'Escape') showNewFlow = false;
   }
+
+  function openFlow(path: string) {
+    const flow = $flows[path];
+    if (!flow) return;
+    openFlowTab(path, flow.name);
+  }
 </script>
 
 <svelte:window
-  on:keydown={(e) => {
+  onkeydown={(e) => {
     if (e.key === 'Escape' && showFavorites) showFavorites = false;
   }}
 />
@@ -93,7 +157,7 @@
   <!-- Root folder button -->
   <div class="section root-section">
     <div class="root-row">
-      <button class="root-btn" on:click={() => dispatch('openFolder')} title="Open folder">
+      <button class="root-btn" onclick={() => onOpenFolder?.()} title="Open folder">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
           <path
             d="M2 13V3a1 1 0 011-1h4l2 2h4a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1z"
@@ -104,11 +168,9 @@
         <span class="root-name">{rootName}</span>
       </button>
       <button
-        class="btn-star"
-        class:active={isFavorite}
-        class:disabled={!hasWorkspace}
-        on:click={() => {
-          if (hasWorkspace) dispatch('toggleFavorite');
+        class={['btn-star', { active: isFavorite, disabled: !hasWorkspace }]}
+        onclick={() => {
+          if (hasWorkspace) onToggleFavorite?.();
         }}
         title={!hasWorkspace
           ? 'Open a folder first'
@@ -141,7 +203,7 @@
       <button
         class="btn-favorites"
         bind:this={favBtnEl}
-        on:click={toggleFavorites}
+        onclick={toggleFavorites}
         title="Favorites"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -161,10 +223,9 @@
         </svg>
       </button>
       <button
-        class="btn-import"
-        class:disabled={!hasWorkspace}
-        on:click={() => {
-          if (hasWorkspace) dispatch('importCollection');
+        class={['btn-import', { disabled: !hasWorkspace }]}
+        onclick={() => {
+          if (hasWorkspace) onImportCollection?.();
         }}
         title={hasWorkspace ? 'Import collection' : 'Open a folder before importing'}
       >
@@ -182,8 +243,8 @@
       {#if showFavorites}
         <div
           class="favorites-backdrop"
-          on:click={() => (showFavorites = false)}
-          on:keydown={(e) => {
+          onclick={() => (showFavorites = false)}
+          onkeydown={(e) => {
             if (e.key === 'Escape') showFavorites = false;
           }}
           role="button"
@@ -192,21 +253,21 @@
         ></div>
         <div class="favorites-dropdown" style="top: {favMenuPos.top}px; left: {favMenuPos.left}px;">
           <div class="favorites-dropdown-header">Favorites</div>
-          {#if favorites.length === 0}
+          {#if $favorites.length === 0}
             <div class="favorites-empty">No favorites yet</div>
           {:else}
-            {#each favorites as fav (fav.path)}
-              <div class="favorite-item" class:current={fav.path === rootPath}>
+            {#each $favorites as fav (fav.path)}
+              <div class={['favorite-item', { current: fav.path === rootPath }]}>
                 <div
                   class="favorite-open"
-                  on:click={() => {
-                    dispatch('openFavorite', fav.path);
+                  onclick={() => {
+                    onOpenFavorite?.(fav.path);
                     showFavorites = false;
                   }}
-                  on:keydown={(e) => {
+                  onkeydown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      dispatch('openFavorite', fav.path);
+                      onOpenFavorite?.(fav.path);
                       showFavorites = false;
                     }
                   }}
@@ -219,7 +280,10 @@
                 </div>
                 <button
                   class="btn-remove-fav"
-                  on:click|stopPropagation={() => dispatch('removeFavorite', fav.path)}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    onRemoveFavorite?.(fav.path);
+                  }}
                   title="Remove from favorites">&times;</button
                 >
               </div>
@@ -236,18 +300,17 @@
       <span class="env-dot"></span>
       <select
         class="env-select"
-        value={activeEnv ?? ''}
-        on:change={(e) => dispatch('changeEnv', e.currentTarget.value || null)}
+        value={$activeEnvironment ?? ''}
+        onchange={(e) => activeEnvironment.set(e.currentTarget.value || null)}
       >
-        {#each environments as env}
+        {#each $availableEnvironments as env}
           <option value={env}>{env}</option>
         {/each}
       </select>
       <button
-        class="btn-edit-env"
-        class:disabled={!hasWorkspace}
-        on:click={() => {
-          if (hasWorkspace) dispatch('editEnv');
+        class={['btn-edit-env', { disabled: !hasWorkspace }]}
+        onclick={() => {
+          if (hasWorkspace) onEditEnv?.();
         }}
         title={hasWorkspace ? 'Edit environment variables' : 'Open a folder first'}
       >
@@ -261,10 +324,9 @@
         </svg>
       </button>
       <button
-        class="btn-var-inspector"
-        class:disabled={!hasWorkspace}
-        on:click={() => {
-          if (hasWorkspace) dispatch('openVarInspector');
+        class={['btn-var-inspector', { disabled: !hasWorkspace }]}
+        onclick={() => {
+          if (hasWorkspace) onOpenVarInspector?.();
         }}
         title={hasWorkspace ? 'Variable inspector' : 'Open a folder first'}
       >
@@ -294,18 +356,18 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="flow-header"
-        on:click={(e) => {
+        onclick={(e) => {
           if ((e.target as HTMLElement).closest('.btn-new-flow')) return;
           flowsExpanded = !flowsExpanded;
         }}
-        on:keydown={(e) => {
+        onkeydown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             flowsExpanded = !flowsExpanded;
           }
         }}
       >
-        <span class="chevron" class:open={flowsExpanded}>
+        <span class={['chevron', { open: flowsExpanded }]}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path
               d="M3 1.5l4 3.5-4 3.5"
@@ -335,7 +397,8 @@
         <span class="flow-count">{flowEntries.length}</span>
         <button
           class="btn-new-flow"
-          on:click|stopPropagation={() => {
+          onclick={(e) => {
+            e.stopPropagation();
             showNewFlow = !showNewFlow;
             flowsExpanded = true;
           }}
@@ -349,24 +412,23 @@
             <input
               bind:this={newFlowInputEl}
               bind:value={newFlowName}
-              on:keydown={handleFlowKeydown}
+              onkeydown={handleFlowKeydown}
               placeholder="Flow name..."
               class="new-flow-input"
             />
-            <button class="btn-confirm-flow" on:click={addFlow}>Add</button>
+            <button class="btn-confirm-flow" onclick={addFlow}>Add</button>
           </div>
         {/if}
 
         {#each flowEntries as [path, flow]}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
-            class="flow-item"
-            class:active={activeFlowPath === path}
-            on:click={() => dispatch('openFlow', path)}
-            on:keydown={(e) => {
+            class={['flow-item', { active: $activeFlowPath === path }]}
+            onclick={() => openFlow(path)}
+            onkeydown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                dispatch('openFlow', path);
+                openFlow(path);
               }
             }}
             role="button"
@@ -376,23 +438,34 @@
             <span class="flow-item-name">{flow.name}</span>
             {#if confirmDeleteFlow === path}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <span class="flow-confirm-delete" on:click|stopPropagation on:keydown|stopPropagation>
+              <span
+                class="flow-confirm-delete"
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => e.stopPropagation()}
+              >
                 <button
                   class="flow-del-yes"
-                  on:click|stopPropagation={() => {
-                    dispatch('deleteFlow', path);
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    onDeleteFlow?.(path);
                     confirmDeleteFlow = null;
                   }}>Del</button
                 >
                 <button
                   class="flow-del-no"
-                  on:click|stopPropagation={() => (confirmDeleteFlow = null)}>No</button
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    confirmDeleteFlow = null;
+                  }}>No</button
                 >
               </span>
             {:else}
               <button
                 class="btn-dup-flow"
-                on:click|stopPropagation={() => dispatch('duplicateFlow', path)}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  duplicateFlow(path);
+                }}
                 title="Duplicate flow"
               >
                 <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
@@ -414,7 +487,10 @@
               </button>
               <button
                 class="btn-del-flow"
-                on:click|stopPropagation={() => (confirmDeleteFlow = path)}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  confirmDeleteFlow = path;
+                }}
                 title="Delete flow">&times;</button
               >
             {/if}
@@ -446,17 +522,17 @@
         class="filter-input"
         placeholder="Filter..."
         spellcheck="false"
-        on:keydown={(e) => {
+        onkeydown={(e) => {
           if (e.key === 'Escape') {
             filterText = '';
-            filterInputEl.blur();
+            filterInputEl?.blur();
           }
         }}
       />
       {#if filterText}
         <button
           class="filter-clear"
-          on:click={() => {
+          onclick={() => {
             filterText = '';
           }}
           title="Clear filter">&times;</button
@@ -464,10 +540,8 @@
       {/if}
     </div>
     <button
-      class="btn-display-mode"
-      class:active={sortByUrl}
-      class:disabled={!hasWorkspace}
-      on:click={() => {
+      class={['btn-display-mode', { active: sortByUrl, disabled: !hasWorkspace }]}
+      onclick={() => {
         if (hasWorkspace) sortByUrl = !sortByUrl;
       }}
       title={!hasWorkspace
@@ -503,9 +577,8 @@
       </svg>
     </button>
     <button
-      class="btn-display-mode"
-      class:disabled={!hasWorkspace}
-      on:click={() => {
+      class={['btn-display-mode', { disabled: !hasWorkspace }]}
+      onclick={() => {
         if (hasWorkspace) displayMode = displayMode === 'name' ? 'url' : 'name';
       }}
       title={!hasWorkspace
@@ -541,10 +614,9 @@
       {/if}
     </button>
     <button
-      class="btn-display-mode"
-      class:disabled={!hasWorkspace}
-      on:click={() => {
-        if (hasWorkspace) dispatch('createFile', null);
+      class={['btn-display-mode', { disabled: !hasWorkspace }]}
+      onclick={() => {
+        if (hasWorkspace) createFile(null);
       }}
       title={!hasWorkspace ? 'Open a folder first' : 'New .http file'}
     >
@@ -553,10 +625,9 @@
       </svg>
     </button>
     <button
-      class="btn-display-mode"
-      class:disabled={!hasWorkspace}
-      on:click={() => {
-        if (hasWorkspace) dispatch('createFolder', null);
+      class={['btn-display-mode', { disabled: !hasWorkspace }]}
+      onclick={() => {
+        if (hasWorkspace) createFolder(null);
       }}
       title={!hasWorkspace ? 'Open a folder first' : 'New folder'}
     >
@@ -581,8 +652,8 @@
       <div class="empty-tree">
         <span class="empty-icon">📂</span>
         <span class="empty-text">Open a folder to browse .http files</span>
-        <button class="btn-open" on:click={() => dispatch('openFolder')}>Open Folder</button>
-        <button class="btn-getting-started" on:click={() => dispatch('openGettingStarted')}
+        <button class="btn-open" onclick={() => onOpenFolder?.()}>Open Folder</button>
+        <button class="btn-getting-started" onclick={() => onOpenGettingStarted?.()}
           >Getting Started</button
         >
       </div>
@@ -604,26 +675,28 @@
           {editingFolderPath}
           siblingNames={tree.filter((n) => n.type === 'file').map((n) => n.name)}
           siblingFolderNames={tree.map((n) => n.name)}
-          onToggleFolder={(path) => dispatch('toggleFolder', path)}
-          onSelect={(location) => dispatch('select', location)}
-          onPinRequest={(detail) => dispatch('pinRequest', detail)}
-          onAddRequest={(filePath) => dispatch('addRequest', filePath)}
-          onDeleteRequest={(detail) => dispatch('deleteRequest', detail)}
-          onDeleteFile={(filePath) => dispatch('deleteFile', filePath)}
-          onDeleteFolder={(folderPath) => dispatch('deleteFolder', folderPath)}
-          onNameRequest={(detail) => dispatch('nameRequest', detail)}
-          onRenameFile={(detail) => dispatch('renameFile', detail)}
-          onRenameFolder={(detail) => dispatch('renameFolder', detail)}
-          onDuplicateFile={(filePath) => dispatch('duplicateFile', filePath)}
-          onCreateFile={(parentPath) => dispatch('createFile', parentPath)}
-          onCreateFolder={(parentPath) => dispatch('createFolder', parentPath)}
-          onCancelRename={() => dispatch('cancelRename')}
+          onToggleFolder={toggleFolder}
+          {onSelect}
+          {onPinRequest}
+          onAddRequest={addRequestToFile}
+          onDeleteRequest={({ filePath, requestIndex }) =>
+            deleteRequestFromFile(filePath, requestIndex)}
+          onDeleteFile={deleteFile}
+          onDeleteFolder={deleteFolder}
+          onNameRequest={({ filePath, requestIndex, varName }) =>
+            nameRequest(filePath, requestIndex, varName)}
+          onRenameFile={({ oldPath, newName }) => renameFile(oldPath, newName)}
+          onRenameFolder={({ oldPath, newName }) => renameFolder(oldPath, newName)}
+          onDuplicateFile={duplicateFile}
+          onCreateFile={createFile}
+          onCreateFolder={createFolder}
+          onCancelRename={cancelRename}
         />
       {/each}
     {/if}
   </div>
   <div class="sidebar-footer">
-    <button class="btn-help" on:click={() => dispatch('openSettings')} title="Settings">
+    <button class="btn-help" onclick={() => onOpenSettings?.()} title="Settings">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.3" />
         <path
@@ -635,11 +708,7 @@
       </svg>
       <span>Settings</span>
     </button>
-    <button
-      class="btn-help"
-      on:click={() => dispatch('openHelp')}
-      title="Help and keyboard shortcuts"
-    >
+    <button class="btn-help" onclick={() => onOpenHelp?.()} title="Help and keyboard shortcuts">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
         <path
