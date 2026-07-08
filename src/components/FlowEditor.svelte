@@ -536,8 +536,7 @@
     showVarPicker = true;
   }
 
-  function handleVarPickerInsert(e: CustomEvent<string>) {
-    const value = e.detail;
+  function handleVarPickerInsert(value: string) {
     showVarPicker = false;
     const t = pickerTarget;
     if (!t) return;
@@ -1222,8 +1221,8 @@
   flowAliases={pickerFlowAliases}
   flowName={flow.name}
   flowSetVars={flowScopeVars}
-  on:insert={handleVarPickerInsert}
-  on:close={() => {
+  onInsert={handleVarPickerInsert}
+  onClose={() => {
     showVarPicker = false;
     pickerTarget = null;
   }}

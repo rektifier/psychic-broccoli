@@ -283,8 +283,7 @@
     showPicker = true;
   }
 
-  function handlePickerInsert(e: CustomEvent<string>) {
-    const value = e.detail;
+  function handlePickerInsert(value: string) {
     showPicker = false;
     if (pickerTarget === 'url') {
       update({ url: insertAtCursor(request.url, value) });
@@ -633,8 +632,8 @@
   {fileVariables}
   {envVariables}
   {namedResults}
-  on:insert={handlePickerInsert}
-  on:close={() => (showPicker = false)}
+  onInsert={handlePickerInsert}
+  onClose={() => (showPicker = false)}
 />
 
 <style>
