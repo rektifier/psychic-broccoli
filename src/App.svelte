@@ -40,12 +40,6 @@
     updateRequestInTree,
     addRequestToFile,
     deleteRequestFromFile,
-    removeFileFromTree,
-    removeFolderFromTree,
-    addFileToTree,
-    addFolderToTree,
-    renameFolderInTree,
-    renameFileInTree,
     editingFilePath,
     editingFolderPath,
     toggleFolder,
@@ -79,11 +73,9 @@
     substituteAll,
     ensureSharedEnvironment,
     buildWorkspaceTree,
-    createFileNode,
-    createEmptyFileNode,
   } from './lib/parser';
   import type { SubstitutionContext } from './lib/parser';
-  import { getAllFileNodes, findFile, findFolder, collectFilePaths } from './lib/tree';
+  import { getAllFileNodes, findFile } from './lib/tree';
   import { errorMessage } from './lib/errors';
   import { importPostmanCollection } from './lib/postman';
   import { importInsomniaExport } from './lib/insomnia';
@@ -98,7 +90,16 @@
   import type { BottomTab, ResponseTab } from './lib/stores';
   import { saveFlowRunRecord, clearFlowRunHistory, FLOWS_DIR } from './lib/flowIO';
   import { openFolderByPath, scanForHttpFiles, safeJoinPath } from './lib/workspaceIO';
-  import { generateFolderName } from './lib/folderCreate';
+  import {
+    createFile,
+    createFolder,
+    renameFile,
+    renameFolder,
+    duplicateFile,
+    deleteFile,
+    deleteFolder,
+    cancelRename,
+  } from './lib/fileOps';
   import { runFlow } from './lib/flowRunner';
   import { executeHttpRequest } from './lib/requestExec';
   import { startMcpBridge } from './lib/mcpBridge';
@@ -106,7 +107,7 @@
   import type { FlowStepResult, FlowRunRecord } from './lib/types';
 
   import { open } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile, rename } from '@tauri-apps/plugin-fs';
+  import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
   import { invoke } from '@tauri-apps/api/core';
   import { join, basename, dirname } from '@tauri-apps/api/path';
   import { onDestroy } from 'svelte';
@@ -806,202 +807,6 @@
     deleteRequestFromFile(e.detail.filePath, e.detail.requestIndex);
   }
 
-  async function handleDeleteFile(e: CustomEvent<string>) {
-    const filePath = e.detail;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      await remove(filePath);
-    } catch (err) {
-      addToast(`Failed to delete file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    removeFileFromTree(filePath);
-  }
-
-  async function handleDeleteFolder(e: CustomEvent<string>) {
-    const folderPath = e.detail;
-
-    try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      await remove(folderPath, { recursive: true });
-    } catch (err) {
-      addToast(`Failed to delete folder: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    removeFolderFromTree(folderPath);
-  }
-
-  async function handleCreateFile(e: CustomEvent<string | null>) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const folderPath = e.detail || rootPath;
-
-    // Generate unique filename
-    const stem = 'new-request';
-    let fileName = stem + '.http';
-    let filePath = await join(folderPath, fileName);
-    let counter = 2;
-
-    // Check for collisions in the tree
-    const existingNames = new Set(collectFilePaths($workspace.tree));
-
-    while (existingNames.has(filePath)) {
-      fileName = `${stem}-${counter}.http`;
-      filePath = await join(folderPath, fileName);
-      counter++;
-    }
-
-    const fileNode = createEmptyFileNode(filePath, fileName);
-    const content = serializeHttpFile(fileNode.requests, fileNode.variables);
-
-    try {
-      await writeTextFile(filePath, content);
-    } catch (err) {
-      addToast(`Failed to create file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    fileNode.dirty = false;
-    fileNode.savedContent = content;
-    addFileToTree(folderPath === rootPath ? null : folderPath, fileNode);
-    editingFilePath.set(filePath);
-  }
-
-  async function handleCreateFolder(e: CustomEvent<string | null>) {
-    const rootPath = $workspace.rootPath;
-    if (!rootPath) return;
-
-    const parentDir = e.detail || rootPath;
-
-    // Collect sibling names in the target parent
-    const siblings = new Set<string>();
-    if (parentDir === rootPath) {
-      for (const n of $workspace.tree) siblings.add(n.name);
-    } else {
-      const parent = findFolder($workspace.tree, parentDir);
-      for (const c of parent?.children ?? []) siblings.add(c.name);
-    }
-
-    const folderName = generateFolderName(siblings);
-    const folderPath = await join(parentDir, folderName);
-
-    try {
-      const { mkdir } = await import('@tauri-apps/plugin-fs');
-      await mkdir(folderPath, { recursive: true });
-    } catch (err) {
-      addToast(`Failed to create folder: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    addFolderToTree(parentDir === rootPath ? null : parentDir, {
-      type: 'folder',
-      name: folderName,
-      path: folderPath,
-      children: [],
-      expanded: true,
-    });
-    editingFolderPath.set(folderPath);
-  }
-
-  async function handleRenameFolder(e: CustomEvent<{ oldPath: string; newName: string }>) {
-    const { oldPath, newName } = e.detail;
-    const dir = await dirname(oldPath);
-    const newPath = await join(dir, newName);
-
-    try {
-      await rename(oldPath, newPath);
-    } catch (err) {
-      addToast(`Failed to rename folder: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    renameFolderInTree(oldPath, newPath, newName);
-    editingFolderPath.set(null);
-  }
-
-  async function handleRenameFile(e: CustomEvent<{ oldPath: string; newName: string }>) {
-    const { oldPath, newName } = e.detail;
-
-    // If file is dirty, save first
-    const file = findFile($workspace.tree, oldPath);
-    if (file && file.dirty) {
-      try {
-        const content = serializeHttpFile(file.requests, file.variables);
-        await writeTextFile(oldPath, content);
-        markFileSaved(oldPath);
-      } catch (err) {
-        addToast(`Failed to save file before rename: ${errorMessage(err)}`, 'error');
-        return;
-      }
-    }
-
-    const dir = await dirname(oldPath);
-    const newPath = await join(dir, newName);
-
-    try {
-      await rename(oldPath, newPath);
-    } catch (err) {
-      addToast(`Failed to rename file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    renameFileInTree(oldPath, newPath, newName);
-    editingFilePath.set(null);
-  }
-
-  async function handleDuplicateFile(e: CustomEvent<string>) {
-    const sourcePath = e.detail;
-
-    let content: string;
-    try {
-      content = await readTextFile(sourcePath);
-    } catch (err) {
-      addToast(`Failed to read file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    const dir = await dirname(sourcePath);
-    const sourceBase = await basename(sourcePath);
-    const sourceStem = sourceBase.replace(/\.(http|rest)$/, '');
-
-    // Generate unique copy name
-    let copyStem = `${sourceStem} (copy)`;
-    let copyName = copyStem + '.http';
-    let copyPath = await join(dir, copyName);
-    let counter = 2;
-
-    const existingNames = new Set(collectFilePaths($workspace.tree));
-
-    while (existingNames.has(copyPath)) {
-      copyStem = `${sourceStem} (copy ${counter})`;
-      copyName = copyStem + '.http';
-      copyPath = await join(dir, copyName);
-      counter++;
-    }
-
-    try {
-      await writeTextFile(copyPath, content);
-    } catch (err) {
-      addToast(`Failed to duplicate file: ${errorMessage(err)}`, 'error');
-      return;
-    }
-
-    const fileNode = createFileNode(copyPath, copyName, content);
-    const rootPath = $workspace.rootPath;
-    const parentPath = dir === rootPath ? null : dir;
-    addFileToTree(parentPath, fileNode);
-    editingFilePath.set(copyPath);
-  }
-
-  function handleCancelRename() {
-    editingFilePath.set(null);
-    editingFolderPath.set(null);
-  }
-
   function handleToggleFolder(e: CustomEvent<string>) {
     toggleFolder(e.detail);
   }
@@ -1390,14 +1195,14 @@
         on:toggleFolder={handleToggleFolder}
         on:addRequest={handleAddRequest}
         on:deleteRequest={handleDeleteRequest}
-        on:deleteFile={handleDeleteFile}
-        on:deleteFolder={handleDeleteFolder}
-        on:createFile={handleCreateFile}
-        on:createFolder={handleCreateFolder}
-        on:renameFile={handleRenameFile}
-        on:renameFolder={handleRenameFolder}
-        on:duplicateFile={handleDuplicateFile}
-        on:cancelRename={handleCancelRename}
+        on:deleteFile={(e) => deleteFile(e.detail)}
+        on:deleteFolder={(e) => deleteFolder(e.detail)}
+        on:createFile={(e) => createFile(e.detail)}
+        on:createFolder={(e) => createFolder(e.detail)}
+        on:renameFile={(e) => renameFile(e.detail.oldPath, e.detail.newName)}
+        on:renameFolder={(e) => renameFolder(e.detail.oldPath, e.detail.newName)}
+        on:duplicateFile={(e) => duplicateFile(e.detail)}
+        on:cancelRename={cancelRename}
         on:changeEnv={(e) => activeEnvironment.set(e.detail)}
         on:editEnv={() => (showEnvEditor = true)}
         on:openVarInspector={() => (showVarInspector = true)}
