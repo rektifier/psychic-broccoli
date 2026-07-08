@@ -291,9 +291,9 @@
     return tab?.bottomTab ?? ('body' as BottomTab);
   })();
 
-  function handleBottomTabChange(e: CustomEvent<BottomTab>) {
+  function handleBottomTabChange(tab: BottomTab) {
     if ($selectedLocation) {
-      setTabBottomTab($selectedLocation, e.detail);
+      setTabBottomTab($selectedLocation, tab);
     }
   }
 
@@ -577,9 +577,9 @@
     closeTab(location);
   }
 
-  function handleUpdateRequest(e: CustomEvent<HttpRequest>) {
+  function handleUpdateRequest(updated: HttpRequest) {
     if (!$selectedLocation) return;
-    updateRequestInTree($selectedLocation.filePath, $selectedLocation.requestIndex, e.detail);
+    updateRequestInTree($selectedLocation.filePath, $selectedLocation.requestIndex, updated);
   }
 
   function handleAddRequest(e: CustomEvent<string>) {
@@ -906,11 +906,11 @@
               envVariables={$resolvedEnvVars}
               namedResults={$namedResults}
               bottomTab={activeBottomTab}
-              on:update={handleUpdateRequest}
-              on:send={(e) => sendRequest(e.detail)}
-              on:save={saveActiveFile}
-              on:runAll={(e) => runAllRequests(e.detail, sendRequest)}
-              on:bottomTabChange={handleBottomTabChange}
+              onUpdate={handleUpdateRequest}
+              onSend={sendRequest}
+              onSave={saveActiveFile}
+              onRunAll={(deps) => runAllRequests(deps, sendRequest)}
+              onBottomTabChange={handleBottomTabChange}
             />
           </div>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
