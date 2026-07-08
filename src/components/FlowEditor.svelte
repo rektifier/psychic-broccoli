@@ -261,8 +261,8 @@
     dispatch('save', { flowPath, flow });
   }
 
-  function addStep(e: CustomEvent<FlowStep>) {
-    flow = { ...flow, steps: applyAliasSync([...flow.steps, e.detail]) };
+  function addStep(step: FlowStep) {
+    flow = { ...flow, steps: applyAliasSync([...flow.steps, step]) };
     save();
   }
 
@@ -1205,11 +1205,11 @@
   <FlowStepPicker
     {tree}
     {rootPath}
-    on:pick={(e) => {
-      addStep(e);
+    onPick={(step) => {
+      addStep(step);
       showPicker = false;
     }}
-    on:close={() => (showPicker = false)}
+    onClose={() => (showPicker = false)}
   />
 {/if}
 
