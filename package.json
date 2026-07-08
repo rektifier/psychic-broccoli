@@ -1,7 +1,7 @@
 {
   "name": "psychic-broccoli",
   "version": "0.4.2",
-  "description": "",
+  "description": "Desktop HTTP client that reads and writes .http files",
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "scripts": {
