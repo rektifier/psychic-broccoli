@@ -855,16 +855,16 @@
               userEnvFile={$userEnvFile}
               activeEnv={$activeEnvironment ?? '$shared'}
               kvState={$keyVaultState}
-              on:update={(e) => {
-                envFile.set(e.detail);
-                saveEnvFile(e.detail);
+              onUpdate={(updated) => {
+                envFile.set(updated);
+                saveEnvFile(updated);
               }}
-              on:changeEnv={(e) => activeEnvironment.set(e.detail)}
-              on:close={() => (showEnvEditor = false)}
-              on:sourcePref={(e) => {
-                varSourcePrefs.update((p) => ({ ...p, [e.detail.key]: e.detail.source }));
+              onChangeEnv={(env) => activeEnvironment.set(env)}
+              onClose={() => (showEnvEditor = false)}
+              onSourcePref={(key, source) => {
+                varSourcePrefs.update((p) => ({ ...p, [key]: source }));
               }}
-              on:refreshKv={(e) => refreshKeyVaultForEnv(e.detail)}
+              onRefreshKv={(env) => refreshKeyVaultForEnv(env)}
             />
           </div>
         {:else if $activeFlowTabPath && $activeFlow}

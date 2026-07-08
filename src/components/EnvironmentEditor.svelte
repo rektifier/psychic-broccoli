@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { createEventDispatcher, tick, onMount } from 'svelte';
+  import { tick, onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import type {
     EnvironmentFile,
     EnvironmentVariables,
@@ -10,25 +11,41 @@
   import { buildVarList, type EnvVar } from '../lib/envVarModel';
   import HelpTip from './HelpTip.svelte';
 
-  export let envFile: EnvironmentFile;
-  export let userEnvFile: EnvironmentFile | null = null;
-  export let activeEnv: string;
-  export let kvState: KeyVaultState;
+  interface Props {
+    envFile: EnvironmentFile;
+    userEnvFile?: EnvironmentFile | null;
+    activeEnv: string;
+    kvState: KeyVaultState;
+    onUpdate?: (envFile: EnvironmentFile) => void;
+    onChangeEnv?: (env: string | null) => void;
+    onClose?: () => void;
+    onSourcePref?: (key: string, source: VarSource) => void;
+    onRefreshKv?: (env: string) => void;
+  }
 
-  const dispatch = createEventDispatcher();
+  let {
+    envFile,
+    userEnvFile = null,
+    activeEnv,
+    kvState,
+    onUpdate,
+    onChangeEnv,
+    onClose,
+    onSourcePref,
+    onRefreshKv,
+  }: Props = $props();
 
-  let showSecrets = false;
-  let showKvSetup = false;
-  let kvVaultUrl = '';
-  let kvSecretName = '';
+  let showSecrets = $state(false);
 
   function masked(val: string | undefined): string {
     if (!val) return '';
     return '*'.repeat(Math.min(val.length, 12));
   }
 
-  // Local editing state - independent from sidebar's active env
-  let editingEnv = activeEnv;
+  // Local editing state - independent from sidebar's active env; intentionally
+  // captures only the initial value (the editor keeps its own tab selection)
+  // svelte-ignore state_referenced_locally
+  let editingEnv = $state(activeEnv);
 
   // ─── Unified grouped variable model (see lib/envVarModel.ts) ───────────────
 
@@ -49,54 +66,31 @@
     }
   }
 
-  function envFileFingerprint(
-    ef: EnvironmentFile,
-    uef: EnvironmentFile | null,
-    env: string,
-  ): string {
-    const envData = ef?.[env];
-    const userData = uef?.[env];
-    return (
-      (envData ? JSON.stringify(envData) : '') + '|' + (userData ? JSON.stringify(userData) : '')
-    );
-  }
+  // Local editable array - recomputed when switching environments, when KV state
+  // changes, or when the env files change externally (writable $derived: local
+  // edits assign to it directly and are persisted back via saveVars, which
+  // round-trips through the parent as a new envFile prop).
+  let envVars: EnvVar[] = $derived(buildVarList(envFile, userEnvFile, editingEnv, kvState));
 
-  // Local editable array - rebuilt when switching environments, KV status changes, or envFile changes externally
-  let envVars: EnvVar[] = buildVarList(envFile, userEnvFile, editingEnv, kvState);
-  let lastEditingEnv = editingEnv;
-  let lastKvStatus = kvState.status;
-  let lastEnvFingerprint = envFileFingerprint(envFile, userEnvFile, editingEnv);
-  $: {
-    const currentFingerprint = envFileFingerprint(envFile, userEnvFile, editingEnv);
-    if (
-      editingEnv !== lastEditingEnv ||
-      kvState.status !== lastKvStatus ||
-      currentFingerprint !== lastEnvFingerprint
-    ) {
-      envVars = buildVarList(envFile, userEnvFile, editingEnv, kvState);
-      lastEditingEnv = editingEnv;
-      lastKvStatus = kvState.status;
-      lastEnvFingerprint = currentFingerprint;
-    }
-  }
-
-  $: groupedCount = envVars.filter((v) => v.sources.length > 1).length;
+  let groupedCount = $derived(envVars.filter((v) => v.sources.length > 1).length);
 
   // Environments list: $shared first, then the rest (including user-file-only envs)
-  $: envNames = [
+  let envNames = $derived([
     ...new Set([
       ...Object.keys(envFile || {}).filter((k) => k !== '$shared'),
       ...Object.keys(userEnvFile || {}).filter((k) => k !== '$shared'),
     ]),
-  ];
-  $: userOnlyEnvs = new Set(
-    Object.keys(userEnvFile || {}).filter((k) => k !== '$shared' && !(envFile || {})[k]),
+  ]);
+  let userOnlyEnvs = $derived(
+    new Set(Object.keys(userEnvFile || {}).filter((k) => k !== '$shared' && !(envFile || {})[k])),
   );
-  $: hasShared = envFile?.['$shared'] !== undefined || userEnvFile?.['$shared'] !== undefined;
-  $: allTabs = hasShared ? ['$shared', ...envNames] : envNames;
+  let hasShared = $derived(
+    envFile?.['$shared'] !== undefined || userEnvFile?.['$shared'] !== undefined,
+  );
+  let allTabs = $derived(hasShared ? ['$shared', ...envNames] : envNames);
 
   // Track which variable keys have their source group expanded
-  let expandedGroups = new Set<string>();
+  const expandedGroups = new SvelteSet<string>();
 
   function toggleGroupExpand(key: string) {
     if (expandedGroups.has(key)) {
@@ -104,7 +98,6 @@
     } else {
       expandedGroups.add(key);
     }
-    expandedGroups = expandedGroups; // trigger reactivity
   }
 
   /** Switch the active source for a grouped variable. */
@@ -112,23 +105,22 @@
     const v = envVars[index];
     if (v.activeSource === newSource) return;
     envVars = envVars.map((item, i) => (i === index ? { ...item, activeSource: newSource } : item));
-    dispatch('sourcePref', { key: v.key, source: newSource });
+    onSourcePref?.(v.key, newSource);
   }
 
   // Editing state
-  let renaming = false;
-  let renameValue = '';
-  let confirmingDelete = false;
-  let showAddEnv = false;
-  let newEnvName = '';
-  let addEnvInputEl: HTMLInputElement;
+  let renaming = $state(false);
+  let renameValue = $state('');
+  let confirmingDelete = $state(false);
+  let showAddEnv = $state(false);
+  let newEnvName = $state('');
 
   function addEnvironment() {
     const name = newEnvName.trim();
     if (!name || envFile[name]) return;
     const updated = { ...envFile, [name]: {} };
-    dispatch('update', updated);
-    dispatch('changeEnv', name);
+    onUpdate?.(updated);
+    onChangeEnv?.(name);
     editingEnv = name;
     newEnvName = '';
     showAddEnv = false;
@@ -148,9 +140,9 @@
     const updated = { ...envFile };
     updated[newName] = updated[editingEnv];
     delete updated[editingEnv];
-    dispatch('update', updated);
+    onUpdate?.(updated);
     if (editingEnv === activeEnv) {
-      dispatch('changeEnv', newName);
+      onChangeEnv?.(newName);
     }
     editingEnv = newName;
     renaming = false;
@@ -160,10 +152,10 @@
     if (envNames.length <= 1) return;
     const updated = { ...envFile };
     delete updated[editingEnv];
-    dispatch('update', updated);
+    onUpdate?.(updated);
     const remaining = Object.keys(updated).filter((k) => k !== '$shared');
     if (editingEnv === activeEnv) {
-      dispatch('changeEnv', remaining[0] || null);
+      onChangeEnv?.(remaining[0] || null);
     }
     editingEnv = remaining[0] || '';
   }
@@ -227,33 +219,31 @@
       }
     }
     updated[editingEnv] = envData;
-    dispatch('update', updated);
+    onUpdate?.(updated);
   }
 
   // ─── Key Vault config ───
 
-  $: kvConfig = envFile?.[editingEnv]?.$keyvault ?? null;
-  $: kvConnected =
-    kvConfig && kvState.status === 'loaded' && kvState.cacheKey?.startsWith(editingEnv + '::');
+  let kvConfig = $derived(envFile?.[editingEnv]?.$keyvault ?? null);
+  let kvConnected = $derived(
+    kvConfig && kvState.status === 'loaded' && kvState.cacheKey?.startsWith(editingEnv + '::'),
+  );
 
-  // Sync local inputs when switching envs or when config changes externally
-  let lastKvConfigEnv = editingEnv;
-  $: {
-    if (editingEnv !== lastKvConfigEnv) {
-      const cfg = envFile?.[editingEnv]?.$keyvault;
-      kvVaultUrl = cfg?.vaultUrl ?? '';
-      kvSecretName = cfg?.secretName ?? '';
-      showKvSetup = !!cfg;
-      lastKvConfigEnv = editingEnv;
-    }
-  }
-
-  // Also sync when kvConfig appears externally (e.g. file reload)
-  $: if (kvConfig) {
-    kvVaultUrl = kvConfig.vaultUrl;
-    kvSecretName = kvConfig.secretName;
-    showKvSetup = true;
-  }
+  // KV form state: recomputed from the stored config when switching environments
+  // or when the config changes externally (writable $derived: user input and the
+  // cancel button assign to these directly until the next recompute).
+  let kvVaultUrl = $derived.by(() => {
+    void editingEnv; // reset the field when switching environment tabs
+    return kvConfig?.vaultUrl ?? '';
+  });
+  let kvSecretName = $derived.by(() => {
+    void editingEnv; // reset the field when switching environment tabs
+    return kvConfig?.secretName ?? '';
+  });
+  let showKvSetup = $derived.by(() => {
+    void editingEnv; // collapse the panel when switching environment tabs
+    return kvConfig !== null;
+  });
 
   function saveKvConfig() {
     const url = kvVaultUrl.trim();
@@ -267,8 +257,8 @@
     };
     const updated = { ...envFile };
     updated[editingEnv] = { ...updated[editingEnv], $keyvault: config };
-    dispatch('update', updated);
-    dispatch('refreshKv', editingEnv);
+    onUpdate?.(updated);
+    onRefreshKv?.(editingEnv);
   }
 
   function removeKvConfig() {
@@ -279,11 +269,7 @@
     showKvSetup = false;
     kvVaultUrl = '';
     kvSecretName = '';
-    dispatch('update', updated);
-  }
-
-  function close() {
-    dispatch('close');
+    onUpdate?.(updated);
   }
 </script>
 
@@ -291,26 +277,25 @@
   <!-- Header -->
   <div class="editor-header">
     <div class="header-left">
-      <span class="env-dot" class:active-dot={editingEnv === activeEnv}></span>
+      <span class={['env-dot', { 'active-dot': editingEnv === activeEnv }]}></span>
       {#if renaming}
         <!-- svelte-ignore a11y_autofocus -->
         <input
           class="rename-input"
           bind:value={renameValue}
-          on:keydown={(e) => {
+          onkeydown={(e) => {
             if (e.key === 'Enter') confirmRename();
             if (e.key === 'Escape') {
               renaming = false;
             }
           }}
-          on:blur={confirmRename}
+          onblur={confirmRename}
           autofocus
         />
       {:else if editingEnv === '$shared'}
         <span class="env-name-static">{editingEnv}</span>
       {:else}
-        <button class="env-name" on:click={startRename} title="Click to rename">{editingEnv}</button
-        >
+        <button class="env-name" onclick={startRename} title="Click to rename">{editingEnv}</button>
       {/if}
       <span class="var-count">{envVars.length} variable{envVars.length !== 1 ? 's' : ''}</span>
       {#if editingEnv === activeEnv}
@@ -321,12 +306,12 @@
       {#if kvConfig && (kvState.status === 'loaded' || kvState.status === 'error')}
         <button
           class="btn-toggle-secrets"
-          on:click={() => (showSecrets = !showSecrets)}
+          onclick={() => (showSecrets = !showSecrets)}
           title={showSecrets ? 'Hide secret values' : 'Show secret values'}
           >{showSecrets ? '[Hide secrets]' : '[Show secrets]'}</button
         >
       {/if}
-      <button class="btn-done" on:click={close}>Close</button>
+      <button class="btn-done" onclick={() => onClose?.()}>Close</button>
     </div>
   </div>
 
@@ -334,11 +319,15 @@
   <div class="env-tabs">
     {#each allTabs as env}
       <button
-        class="env-tab"
-        class:active={env === editingEnv}
-        class:shared-tab={env === '$shared'}
-        class:user-only-tab={userOnlyEnvs.has(env)}
-        on:click={() => {
+        class={[
+          'env-tab',
+          {
+            active: env === editingEnv,
+            'shared-tab': env === '$shared',
+            'user-only-tab': userOnlyEnvs.has(env),
+          },
+        ]}
+        onclick={() => {
           editingEnv = env;
           confirmingDelete = false;
         }}
@@ -350,16 +339,15 @@
       <div class="add-env-inline">
         <!-- svelte-ignore a11y_autofocus -->
         <input
-          bind:this={addEnvInputEl}
           bind:value={newEnvName}
-          on:keydown={(e) => {
+          onkeydown={(e) => {
             if (e.key === 'Enter') addEnvironment();
             if (e.key === 'Escape') {
               showAddEnv = false;
               newEnvName = '';
             }
           }}
-          on:blur={() => {
+          onblur={() => {
             if (!newEnvName.trim()) {
               showAddEnv = false;
             }
@@ -368,12 +356,12 @@
           class="add-env-inline-input"
           autofocus
         />
-        <button class="btn-confirm-add-env" on:click={addEnvironment}>Add</button>
+        <button class="btn-confirm-add-env" onclick={addEnvironment}>Add</button>
       </div>
     {:else}
       <button
         class="btn-add-env-tab"
-        on:click={() => {
+        onclick={() => {
           showAddEnv = true;
         }}
         title="Add environment">+ Add environment</button
@@ -394,7 +382,7 @@
   {:else if kvState.status === 'error'}
     <div class="kv-status kv-error">
       Key Vault error: {kvState.error}
-      <button class="btn-kv-retry" on:click={() => dispatch('refreshKv', editingEnv)}>Retry</button>
+      <button class="btn-kv-retry" onclick={() => onRefreshKv?.(editingEnv)}>Retry</button>
     </div>
   {/if}
 
@@ -415,18 +403,18 @@
       {@const hasLocal = v.sources.some((s) => s.source === 'local')}
       <div class="var-row-wrapper">
         <!-- Main row: shows the active source's value -->
-        <div class="var-row" class:disabled={!v.enabled} class:grouped-row={isGrouped}>
+        <div class={['var-row', { disabled: !v.enabled, 'grouped-row': isGrouped }]}>
           <input
             type="checkbox"
             class="var-check"
             checked={v.enabled}
-            on:change={() => toggleVariable(i)}
+            onchange={() => toggleVariable(i)}
           />
 
           <input
             class="var-key"
             value={v.key}
-            on:input={(e) => updateLocalValue(i, 'key', e.currentTarget.value)}
+            oninput={(e) => updateLocalValue(i, 'key', e.currentTarget.value)}
             placeholder="variableName"
             spellcheck="false"
             disabled={!hasLocal}
@@ -441,7 +429,7 @@
                     ? activeValue(v)
                     : masked(activeValue(v))
                   : activeValue(v)}
-                on:input={(e) => {
+                oninput={(e) => {
                   if (isLocalActive && hasLocal)
                     updateLocalValue(i, 'value', e.currentTarget.value);
                 }}
@@ -454,9 +442,8 @@
               >
               {#if isGrouped}
                 <button
-                  class="btn-group-chevron"
-                  class:open={isExpanded}
-                  on:click={() => toggleGroupExpand(v.key)}
+                  class={['btn-group-chevron', { open: isExpanded }]}
+                  onclick={() => toggleGroupExpand(v.key)}
                   title="{v.sources.length} sources"
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -474,7 +461,7 @@
           </div>
 
           {#if hasLocal && !isGrouped}
-            <button class="btn-remove" on:click={() => removeVariable(i)}>x</button>
+            <button class="btn-remove" onclick={() => removeVariable(i)}>x</button>
           {:else}
             <div class="btn-remove-placeholder"></div>
           {/if}
@@ -490,7 +477,7 @@
                     type="checkbox"
                     class="var-check"
                     checked={false}
-                    on:change={() => setActiveSource(i, entry.source)}
+                    onchange={() => setActiveSource(i, entry.source)}
                     title="Switch to {sourceLabel(entry.source)} value"
                   />
                   <span class="source-tag source-tag-{entry.source}"
@@ -503,7 +490,7 @@
                         ? entry.value
                         : masked(entry.value)
                       : entry.value}
-                    on:input={(e) => {
+                    oninput={(e) => {
                       if (entry.source === 'local') {
                         envVars = envVars.map((item, idx) => {
                           if (idx !== i) return item;
@@ -528,7 +515,7 @@
       </div>
     {/each}
 
-    <button class="btn-add-var" on:click={addVariable}> + Add variable </button>
+    <button class="btn-add-var" onclick={addVariable}> + Add variable </button>
   </div>
 
   <!-- Key Vault config -->
@@ -569,16 +556,16 @@
       <div class="kv-setup-actions">
         <button
           class="btn-kv-connect"
-          on:click={saveKvConfig}
+          onclick={saveKvConfig}
           disabled={!kvVaultUrl.trim() || !kvSecretName.trim()}
           >{kvConfig ? 'Save & refresh' : 'Connect'}</button
         >
         {#if kvConfig}
-          <button class="btn-kv-disconnect" on:click={removeKvConfig}>Disconnect</button>
+          <button class="btn-kv-disconnect" onclick={removeKvConfig}>Disconnect</button>
         {:else}
           <button
             class="btn-kv-cancel"
-            on:click={() => {
+            onclick={() => {
               showKvSetup = false;
               kvVaultUrl = '';
               kvSecretName = '';
@@ -588,7 +575,7 @@
       </div>
     </div>
   {:else}
-    <button class="btn-kv-add" on:click={() => (showKvSetup = true)}>
+    <button class="btn-kv-add" onclick={() => (showKvSetup = true)}>
       + Connect to Azure Key Vault
     </button>
   {/if}
@@ -601,16 +588,16 @@
           <span class="confirm-text">Delete "{editingEnv}"?</span>
           <button
             class="btn-confirm-delete"
-            on:click={() => {
+            onclick={() => {
               deleteEnvironment();
               confirmingDelete = false;
             }}>Yes, delete</button
           >
-          <button class="btn-cancel-delete" on:click={() => (confirmingDelete = false)}
+          <button class="btn-cancel-delete" onclick={() => (confirmingDelete = false)}
             >Cancel</button
           >
         {:else}
-          <button class="btn-delete-env" on:click={() => (confirmingDelete = true)}
+          <button class="btn-delete-env" onclick={() => (confirmingDelete = true)}
             >Delete environment</button
           >
         {/if}
