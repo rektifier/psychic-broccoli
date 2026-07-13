@@ -3,7 +3,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/rektifier/psychic-broccoli/ci.yml?branch=develop&style=flat-square&label=CI)](https://github.com/rektifier/psychic-broccoli/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/rektifier/psychic-broccoli?style=flat-square)](https://github.com/rektifier/psychic-broccoli/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](<>)
 
 A lightweight, cross-platform desktop HTTP client built with **Tauri v2**, **Svelte**, **TypeScript**, and **Rust**. Psychic Broccoli reads `.http` files compatible with Visual Studio, VS Code REST Client, and JetBrains HTTP Client - giving you a fast, native alternative to browser-based API tools.
 
