@@ -129,7 +129,7 @@
   // Build response field options for each named result
   const responseGroups = $derived(
     Object.entries(namedResults).map(([name, result]) => {
-      let bodyFields: { path: string; value: string }[] = [];
+      let bodyFields: { path: string; value: string }[];
       try {
         const parsed = JSON.parse(result.response.body);
         bodyFields = flattenJson(parsed);
