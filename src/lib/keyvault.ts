@@ -61,6 +61,7 @@ export async function fetchKeyVaultSecrets(
       throw new Error(
         'Key Vault integration is not available in this build. ' +
           'Rebuild with the "keyvault" Cargo feature enabled.',
+        { cause: err },
       );
     }
     throw err;
