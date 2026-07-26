@@ -25,7 +25,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
 reqwest = { version = "0.13", features = ["json", "stream"] }
-base64 = "0.22"
+base64 = "0.23"
 futures-util = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
 url = "2"
