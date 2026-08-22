@@ -23,7 +23,7 @@ updates:
     groups:
       cargo:
         patterns:
-          - "*"
+          - '*'
         update-types:
           - minor
           - patch
@@ -35,7 +35,7 @@ updates:
     groups:
       github-actions:
         patterns:
-          - "*"
+          - '*'
         update-types:
           - minor
           - patch
